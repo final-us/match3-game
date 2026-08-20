@@ -1,0 +1,13 @@
+{
+  "name": "match3-battle-server",
+  "version": "1.0.0",
+  "description": "消消乐双人对战服务器（微信云托管 + WebSocket）",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test-local.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
