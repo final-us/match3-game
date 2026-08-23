@@ -1,0 +1,75 @@
+THIRD-PARTY NOTICES
+====================
+
+This file is shipped in the match3-wechat main package. It records third-party
+material used by the project; it does not license the project as a whole.
+
+1. pixi-game-match3
+-------------------
+
+Source repository:
+https://github.com/xiaozhu188/pixi-game-match3
+
+Adopted commit:
+658679250f30ef8d01ff570eb976017c5727cbf0
+
+Adopted source file:
+src/match3/Match3Utility.ts
+
+The local adaptation is match3-wechat/js/core/grid.js. It changes the
+TypeScript/ES module source to a WeChat Mini Game-compatible CommonJS/ES5-style
+module and adds Chinese comments. It adopts board generation, random type
+selection, match detection, cloning, swapping, position access, gravity,
+filling, empty-position, and coordinate helper logic. The local version also
+adds the blockedFn gravity-blocking adapter for covered board cells.
+
+License: MIT
+Copyright (c) 2023-PRESENT hairyf <https://github.com/hairyf>
+
+MIT License
+
+Copyright (c) 2023-PRESENT hairyf <https://github.com/hairyf>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+2. wx-server-sdk
+----------------
+
+Dependency: wx-server-sdk 4.0.2
+Location: match3-wechat/cloudfunctions/battle/package.json
+Scope: WeChat cloud function deployment; cloudfunctions/ is excluded from the
+client main package by project.config.json.
+
+License: MIT, as recorded in the cloud function package lockfile.
+No copyright holder is asserted here; do not infer or invent one from this
+notice.
+
+The package-lock.json inventory contains 102 dependency records. The following
+Tencent SDK transitive packages are UNDECLARED: their npm package metadata and
+installed package contents contain no license declaration or LICENSE file.
+
+- @cloudbase/signature-nodejs@2.2.0
+- @cloudbase/wx-cloud-client-sdk@1.7.1
+
+The wx-server-sdk MIT statement above does not relabel these two packages as
+MIT. They are recorded as an accepted vendor-dependency exception with residual
+commercial-compliance risk. The product owner chose to continue with Tencent's
+official dependency chain and not submit an external clarification request.
+These packages are used only by the cloud function and are not included in the
+client main package.

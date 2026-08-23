@@ -1,6 +1,9 @@
 /**
  * 三消核心网格算法
- * 移植自 pixi-game-match3 (MIT License) 的 Match3Utility.ts
+ * 上游来源：https://github.com/xiaozhu188/pixi-game-match3
+ * 采用提交：658679250f30ef8d01ff570eb976017c5727cbf0
+ * 采用文件：src/match3/Match3Utility.ts
+ * 上游许可证：MIT；完整文本与本地修改摘要见 ../../THIRD_PARTY_NOTICES.txt
  * 纯逻辑、无平台依赖：棋盘生成 / 匹配检测 / 重力下落 / 空格填充
  */
 

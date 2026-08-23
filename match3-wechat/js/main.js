@@ -11,8 +11,8 @@ const AudioFX = require('./audio');
 const heart = require('./core/heart');
 const ad = require('./core/ad');
 const coin = require('./core/coin');
-const share = require('./core/share');
 const config = require('./core/config');
+const runtime = require('./core/runtime');
 const assets = require('./render/assets');
 const cloudBattle = require('./net/cloud-battle');
 const BattleUI = require('./render/battle-ui');
@@ -27,18 +27,51 @@ const BATTLE_LEVEL = {
     goals: [{ type: 'score', target: 99999999 }] // 巨大分数目标，1 分钟内不可能达成
 };
 
+const BATTLE_DURATION_MS = 60000;
+const BATTLE_WARNING_MS = 30000;
+const BATTLE_WARNING_DISPLAY_MS = 1400;
+const COUNTDOWN_START_DISPLAY_MS = 650;
+const BATTLE_INVITE_EXPIRED_MESSAGE = '邀请已失效或对局已结束，请让好友重新发起邀请';
+const BATTLE_JOIN_NETWORK_MESSAGE = '暂时无法加入对局，请检查网络后重试';
+
 class Main {
     constructor() {
+        runtime.init('menu');
+
         // 主屏 canvas
         this.canvas = wx.createCanvas();
         this.ctx = this.canvas.getContext('2d');
-        const info = wx.getSystemInfoSync();
+        const info = typeof wx.getSystemInfoSync === 'function' ? (wx.getSystemInfoSync() || {}) : {};
+        const width = Number(info.windowWidth) || this.canvas.width || 375;
+        const height = Number(info.windowHeight) || this.canvas.height || 667;
+        const safeArea = info.safeArea || {};
+        const safeBottomEdge = Number(safeArea.bottom);
+        const safeRightEdge = Number(safeArea.right);
+        const deviceText = [info.platform, info.system, info.AppPlatform, info.osName, info.brand, info.model]
+            .map(function (value) { return String(value || ''); })
+            .join(' ')
+            .toLowerCase();
+        const isHarmony = /harmony|hongmeng|鸿蒙|ohos/.test(deviceText);
+        const nativeDpr = Number(info.pixelRatio) || 1;
+        const dpr = Math.min(isHarmony ? 1.25 : 2, Math.max(1, nativeDpr));
         this.screen = {
-            width: info.windowWidth,
-            height: info.windowHeight
+            width: width,
+            height: height,
+            safeTop: Math.max(0, Number(safeArea.top) || 0),
+            safeBottom: safeBottomEdge > 0 ? Math.max(0, height - safeBottomEdge) : 0,
+            safeLeft: Math.max(0, Number(safeArea.left) || 0),
+            safeRight: safeRightEdge > 0 ? Math.max(0, width - safeRightEdge) : 0,
+            dpr: dpr,
+            isHarmony: isHarmony,
+            reduceEffects: isHarmony
         };
-        this.canvas.width = this.screen.width;
-        this.canvas.height = this.screen.height;
+        this.canvas.width = Math.round(this.screen.width * dpr);
+        this.canvas.height = Math.round(this.screen.height * dpr);
+        if (this.ctx && typeof this.ctx.setTransform === 'function') {
+            this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        } else if (this.ctx && typeof this.ctx.scale === 'function') {
+            this.ctx.scale(dpr, dpr);
+        }
 
         // 进度存档
         this.progress = wx.getStorageSync(STORAGE_KEY) || { unlockedLevel: 1, stars: {} };
@@ -51,6 +84,8 @@ class Main {
 
         // 状态
         this.state = 'menu';
+        this.audioScene = null;
+        this.runtimeState = null;
         this.core = null;
         this.board = null;
         this.result = null;
@@ -58,7 +93,8 @@ class Main {
         this.resultButtons = null;
         this.shopButtons = null;
         this.levelSelectButtons = null;
-        this.reviveUsed = 0; // 本局已复活次数
+        this.settingsButtons = null;
+        this.resultLeaving = false;
 
         // 双人对战状态
         this.battle = null;       // 对战数据
@@ -86,7 +122,7 @@ class Main {
         // 被动分享（右上角菜单）：自定义分享文案
         if (wx.onShareAppMessage) {
             wx.onShareAppMessage(function () {
-                return { title: share.SHARE_CONFIG.title };
+                return { title: '快来和我一起玩' + config.GAME_CONFIG.title + '！' };
             });
         }
 
@@ -116,7 +152,7 @@ class Main {
         // 消耗体力（不足则不进入）
         if (!heart.consumeHeart()) return;
 
-        this.reviveUsed = 0;
+        this.resultLeaving = false;
 
         // 先创建渲染层（动画回调需要引用它）
         this.board = new BoardRenderer(this.ctx, this.screen);
@@ -198,8 +234,8 @@ class Main {
             hasNext: this.core.level.id < levelData.getLevelCount(),
             coinReward: coinReward,
             star: star,
-            // 失败且本局复活次数未用满 → 可看广告复活
-            canRevive: !result.win && this.reviveUsed < config.AD_CONFIG.reviveLimitPerGame
+            // 只要激励视频可用，失败后可重复观看广告复活
+            canRevive: !result.win && ad.isRewardedAvailable()
         };
 
         this.state = 'result';
@@ -224,40 +260,42 @@ class Main {
             return;
         }
         const self = this;
-        ad.showRewarded().then(function (completed) {
+        ad.showRewarded('heart_refill').then(function (completed) {
             if (completed) {
                 heart.markAdHeart();
                 heart.addHeart(1);
+                ad.markRewardGranted('heart_refill');
                 AudioFX.win();
             }
         });
     }
 
-    /** 分享得体力（每日限次） */
-    handleShare() {
-        const result = share.shareAndReward();
-        if (result.rewarded) {
-            heart.addHeart(share.SHARE_CONFIG.heartReward);
-            AudioFX.win();
-        } else if (result.remaining <= 0) {
-            AudioFX.invalid(); // 今日次数已用完
-        }
-    }
-
     /** 看广告复活（+步数继续玩） */
     reviveGame() {
         const self = this;
-        ad.showRewarded().then(function (completed) {
+        ad.showRewarded('revive').then(function (completed) {
             if (!completed) return;
             if (!self.core) return;
             // 复活：加步数、解除结束状态、回到游戏中
             self.core.movesLeft += config.AD_CONFIG.reviveSteps;
             self.core.ended = false;
-            self.reviveUsed++;
+            ad.markRewardGranted('revive');
             self.result = null;
             self.state = 'playing';
             AudioFX.win();
         });
+    }
+
+    /** 最终离开单人结算：计入插屏节奏，广告关闭/失败后继续原导航。 */
+    leaveSoloResult(action) {
+        if (this.resultLeaving) return;
+        this.resultLeaving = true;
+        const self = this;
+        function finish() {
+            self.resultLeaving = false;
+            action();
+        }
+        ad.onSoloResultExit().then(finish).catch(finish);
     }
 
     // ===== 双人对战 =====
@@ -284,7 +322,17 @@ class Main {
         if (!this.battle || !this.battle.roomId) return;
         const self = this;
         cloudBattle.call('query', { roomId: this.battle.roomId }).then(function (res) {
-            if (!res.ok) return;
+            if (!res.ok) {
+                if (res.err === '邀请已失效' || res.err === '房间不存在') {
+                    self.stopPolling();
+                    self.battle = null;
+                    self.battleCore = null;
+                    self.battleBoard = null;
+                    self.state = 'menu';
+                    self.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
+                }
+                return;
+            }
             self.applyPoll(res);
         }).catch(function () {});
     }
@@ -319,7 +367,12 @@ class Main {
 
         // 状态切换：开局 / 结算
         if (res.status === 'playing' && this.state !== 'battle_playing') {
-            this.battle.endTime = Date.now() + 60000;
+            this.battle.startTime = Number(res.startTime) || Date.now();
+            this.battle.endTime = this.battle.startTime + BATTLE_DURATION_MS;
+            this.battle.countdownStarted = false;
+            this.battle.countdownStartUntil = 0;
+            this.battle.warningShown = false;
+            this.battle.warningUntil = 0;
             this.startBattleBoard();
             this.state = 'battle_playing';
             AudioFX.win();
@@ -355,10 +408,16 @@ class Main {
     }
 
     /** 创建房间 + 分享邀请卡片 + 进等待页 */
+    showBattleNotice(message) {
+        if (typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
+            wx.showToast({ title: message, icon: 'none', duration: 2200 });
+        }
+    }
+
     startBattle() {
         const self = this;
         this.battle = this.newBattleState(true);
-        cloudBattle.call('create', { nickname: '我' }).then(function (res) {
+        cloudBattle.call('create', { nickname: '房主猫' }).then(function (res) {
             if (res.ok && res.roomId) {
                 self.battle.roomId = res.roomId;
                 self.state = 'battle_wait';
@@ -367,29 +426,38 @@ class Main {
             } else {
                 AudioFX.invalid();
                 self.battle = null;
+                self.showBattleNotice('暂时无法创建对局，请稍后重试');
             }
         }).catch(function () {
             AudioFX.invalid();
             self.battle = null;
+            self.showBattleNotice('暂时无法创建对局，请稍后重试');
         });
     }
 
     /** 好友点卡片进入 → 加入房间 */
     joinBattle(roomId) {
+        if (!cloudBattle.isValidRoomId(roomId)) {
+            AudioFX.invalid();
+            this.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
+            return;
+        }
         const self = this;
         this.battle = this.newBattleState(false);
         this.battle.roomId = roomId;
-        cloudBattle.call('join', { roomId: roomId, nickname: '我' }).then(function (res) {
+        cloudBattle.call('join', { roomId: roomId, nickname: '挑战猫' }).then(function (res) {
             if (res.ok) {
                 self.state = 'battle_wait';
                 self.startPolling();
             } else {
                 AudioFX.invalid();
                 self.battle = null;
+                self.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
             }
         }).catch(function () {
             AudioFX.invalid();
             self.battle = null;
+            self.showBattleNotice(BATTLE_JOIN_NETWORK_MESSAGE);
         });
     }
 
@@ -403,7 +471,12 @@ class Main {
             oppJoined: false,
             myScore: 0,
             oppScore: 0,
+            startTime: 0,
             endTime: 0,
+            countdownStarted: false,
+            countdownStartUntil: 0,
+            warningShown: false,
+            warningUntil: 0,
             items: { freeze: 1, disturb: 1 },
             frozenUntil: 0,
             disturbUntil: 0,
@@ -419,7 +492,7 @@ class Main {
     shareBattleInvite(roomId) {
         if (typeof wx !== 'undefined' && wx.shareAppMessage) {
             wx.shareAppMessage({
-                title: '来和我 PK 消消乐，60 秒见胜负！',
+                title: '来和我 PK ' + config.GAME_CONFIG.title + '，60 秒见胜负！',
                 query: 'roomId=' + roomId + '&invite=1'
             });
         }
@@ -427,14 +500,22 @@ class Main {
 
     /** 处理 onShow（好友点卡片进入时拿参数加入房间） */
     handleShow(res) {
-        let query = (res && res.query) || null;
+        let query = res && typeof res === 'object' ? res.query : null;
         if (!query && wx.getLaunchOptionsSync) {
-            const opts = wx.getLaunchOptionsSync();
-            query = opts && opts.query;
+            try {
+                const opts = wx.getLaunchOptionsSync();
+                query = opts && opts.query;
+            } catch (e) {
+                query = null;
+            }
         }
-        if (query && query.roomId && query.invite && this.state !== 'battle_wait' && this.state !== 'battle_playing') {
-            this.joinBattle(query.roomId);
+        if (!query || typeof query !== 'object' || query.invite !== '1' ||
+            this.state === 'battle_wait' || this.state === 'battle_playing') return;
+        if (!cloudBattle.isValidRoomId(query.roomId)) {
+            this.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
+            return;
         }
+        this.joinBattle(query.roomId);
     }
 
     /** 初始化对战棋盘（复用 GameCore + BoardRenderer，对战模式） */
@@ -451,6 +532,9 @@ class Main {
             onReshuffle: () => this.battleBoard.animateReshuffle(),
             onLevelEnd: () => {}
         });
+        if (this.battle.disturbUntil > Date.now()) {
+            this.battleCore.minMatchCount = 4;
+        }
         this.battleBoard.setGame(this.battleCore);
     }
 
@@ -503,13 +587,22 @@ class Main {
     /** 更新对战帧逻辑（干扰到期、分数上报、倒计时结束） */
     updateBattle(now) {
         if (!this.battle) return;
+        if (this.battle.startTime && now < this.battle.startTime) return;
+        if (this.battle.startTime && !this.battle.countdownStarted) {
+            this.battle.countdownStarted = true;
+            this.battle.countdownStartUntil = now + COUNTDOWN_START_DISPLAY_MS;
+        }
+        if (this.battle.endTime && !this.battle.warningShown && now >= this.battle.endTime - BATTLE_WARNING_MS) {
+            this.battle.warningShown = true;
+            this.battle.warningUntil = now + BATTLE_WARNING_DISPLAY_MS;
+        }
         // 干扰到期恢复
         if (this.battle.disturbUntil && now >= this.battle.disturbUntil && this.battleCore && this.battleCore.minMatchCount !== 3) {
             this.battleCore.minMatchCount = 3;
             this.battle.disturbUntil = 0;
         }
-        // 分数上报（300ms 节流）
-        if (this.battleCore && now - this.lastScoreSync > 300 && this.battleCore.score !== this.battle.myScore) {
+        // 分数上报（800ms 节流，兼顾观感与云函数调用成本）
+        if (this.battleCore && now - this.lastScoreSync > 800 && this.battleCore.score !== this.battle.myScore) {
             this.battle.myScore = this.battleCore.score;
             this.lastScoreSync = now;
             cloudBattle.call('syncScore', { roomId: this.battle.roomId, score: this.battleCore.score });
@@ -529,6 +622,7 @@ class Main {
 
     handleTouchStart(e) {
         if (!e.touches || !e.touches.length) return;
+        AudioFX.unlock();
         const x = e.touches[0].clientX;
         const y = e.touches[0].clientY;
 
@@ -548,9 +642,25 @@ class Main {
             } else if (UI.hitTest(x, y, this.menuButtons.shop)) {
                 AudioFX.click();
                 this.state = 'shop';
-            } else if (UI.hitTest(x, y, this.menuButtons.share)) {
+            } else if (UI.hitTest(x, y, this.menuButtons.settings)) {
                 AudioFX.click();
-                this.handleShare();
+                this.state = 'settings';
+            }
+        } else if (this.state === 'settings' && this.settingsButtons) {
+            if (UI.hitTest(x, y, this.settingsButtons.music)) {
+                const next = !AudioFX.isMusicEnabled();
+                AudioFX.setMusicEnabled(next);
+                if (AudioFX.isSfxEnabled()) AudioFX.click();
+            } else if (UI.hitTest(x, y, this.settingsButtons.sfx)) {
+                const next = !AudioFX.isSfxEnabled();
+                AudioFX.setSfxEnabled(next);
+                if (next) AudioFX.click();
+            } else if (UI.hitTest(x, y, this.settingsButtons.privacy)) {
+                AudioFX.click();
+                runtime.openPrivacyContract();
+            } else if (UI.hitTest(x, y, this.settingsButtons.back)) {
+                AudioFX.click();
+                this.state = 'menu';
             }
         } else if (this.state === 'levelselect' && this.levelSelectButtons) {
             // 关卡节点点击
@@ -591,15 +701,22 @@ class Main {
                 AudioFX.click();
                 this.reviveGame();
             } else if (UI.hitTest(x, y, this.resultButtons.main)) {
-                AudioFX.click();
-                if (this.result.win && this.result.hasNext) {
-                    this.startGame(this.result.levelId + 1);
-                } else {
-                    this.startGame(this.result.levelId);
+                if (heart.getHeartState().count <= 0) {
+                    AudioFX.invalid();
+                    return;
                 }
+                AudioFX.click();
+                const result = this.result;
+                this.leaveSoloResult(() => {
+                    if (result.win && result.hasNext) {
+                        this.startGame(result.levelId + 1);
+                    } else {
+                        this.startGame(result.levelId);
+                    }
+                });
             } else if (UI.hitTest(x, y, this.resultButtons.menu)) {
                 AudioFX.click();
-                this.backToMenu();
+                this.leaveSoloResult(this.backToMenu.bind(this));
             }
         } else if (this.state === 'battle_wait' && this.battleButtons) {
             if (BattleUI.hitTest(x, y, this.battleButtons.ready)) {
@@ -608,6 +725,7 @@ class Main {
                 this.battleCancel();
             }
         } else if (this.state === 'battle_playing' && this.battleBoard) {
+            if (this.battle && this.battle.startTime && Date.now() < this.battle.startTime) return;
             // 冰冻中不能操作
             if (this.isFrozen()) return;
             // 道具栏点击
@@ -675,6 +793,11 @@ class Main {
     }
 
     update(dt) {
+        if (this.runtimeState !== this.state) {
+            this.runtimeState = this.state;
+            runtime.maybePromptUpdate(this.state);
+        }
+
         // 动画插值更新（仅游戏中）
         if (this.state === 'playing' && this.board) {
             this.board.update(dt);
@@ -685,6 +808,11 @@ class Main {
     }
 
     render() {
+        const audioScene = this.state.indexOf('battle_') === 0 ? 'battle' : 'calm';
+        if (audioScene !== this.audioScene) {
+            this.audioScene = audioScene;
+            AudioFX.setScene(audioScene);
+        }
         if (this.state === 'menu') {
             const heartState = heart.getHeartState();
             // 已解锁关数封顶显示（防止脏存档显示超范围关卡）
@@ -692,8 +820,9 @@ class Main {
             this.menuButtons = UI.drawMenu(this.ctx, this.screen, unlocked, {
                 count: heartState.count,
                 timeLeftText: heart.formatTimeLeft(),
-                canPlay: heartState.count > 0
-            }, share.getRemaining());
+                canPlay: heartState.count > 0,
+                canAd: ad.isRewardedAvailable() && heart.canAdHeart()
+            }, { coins: coin.getCoins() });
         } else if (this.state === 'playing' && this.board) {
             this.board.draw();
         } else if (this.state === 'result') {
@@ -708,6 +837,11 @@ class Main {
                 levelData.getLevelCount(),
                 this.progress.stars || {}
             );
+        } else if (this.state === 'settings') {
+            this.settingsButtons = UI.drawSettings(this.ctx, this.screen, {
+                musicEnabled: AudioFX.isMusicEnabled(),
+                sfxEnabled: AudioFX.isSfxEnabled()
+            });
         } else if (this.state === 'battle_wait' && this.battle) {
             this.battleButtons = BattleUI.drawWait(this.ctx, this.screen, {
                 roomId: this.battle.roomId || '...',
@@ -719,12 +853,14 @@ class Main {
                 isHost: this.battle.isHost
             });
         } else if (this.state === 'battle_playing' && this.battleBoard && this.battle) {
+            const now = Date.now();
             this.battleBoard.draw();
-            const timeLeft = Math.max(0, Math.ceil((this.battle.endTime - Date.now()) / 1000));
+            const timeLeft = Math.max(0, Math.ceil((this.battle.endTime - now) / 1000));
             BattleUI.drawTop(this.ctx, this.screen, {
                 timeLeft: timeLeft,
                 myScore: this.battle.myScore,
-                oppScore: this.battle.oppScore
+                oppScore: this.battle.oppScore,
+                urgent: timeLeft <= 10
             });
             const items = coin.getItems();
             this.battleButtons = BattleUI.drawItems(this.ctx, this.screen, {
@@ -736,8 +872,20 @@ class Main {
             });
             BattleUI.drawEffects(this.ctx, this.screen, {
                 frozen: this.isFrozen(),
-                disturb: this.battle.disturbUntil > Date.now()
+                disturb: this.battle.disturbUntil > now,
+                boardY: this.battleBoard.boardY,
+                boardH: this.battleBoard.boardH
             });
+            if (this.battle.warningUntil > now) {
+                BattleUI.drawWarning(this.ctx, this.screen);
+            }
+            if (this.battle.startTime && now < this.battle.startTime) {
+                BattleUI.drawCountdown(this.ctx, this.screen, {
+                    seconds: Math.max(1, Math.ceil((this.battle.startTime - now) / 1000))
+                });
+            } else if (this.battle.countdownStartUntil > now) {
+                BattleUI.drawCountdown(this.ctx, this.screen, { label: '开始' });
+            }
         } else if (this.state === 'battle_result' && this.battle) {
             this.battleButtons = BattleUI.drawResult(this.ctx, this.screen, {
                 result: this.battle.result,

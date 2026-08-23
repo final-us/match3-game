@@ -46,7 +46,124 @@
   },
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "cloudfunctions"
+      },
+      {
+        "type": "folder",
+        "value": "test"
+      },
+      {
+        "type": "folder",
+        "value": "tools"
+      },
+      {
+        "type": "file",
+        "value": "res/piece1-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece2-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece3-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece4-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece5-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/btnBack.png"
+      },
+      {
+        "type": "file",
+        "value": "res/btnClose.png"
+      },
+      {
+        "type": "file",
+        "value": "res/btnContinue.png"
+      },
+      {
+        "type": "file",
+        "value": "res/btnRefresh.png"
+      },
+      {
+        "type": "file",
+        "value": "res/btnStart.png"
+      },
+      {
+        "type": "file",
+        "value": "res/coinBar.png"
+      },
+      {
+        "type": "file",
+        "value": "res/goalBar.png"
+      },
+      {
+        "type": "file",
+        "value": "res/heartBar.png"
+      },
+      {
+        "type": "file",
+        "value": "res/levelBadge.png"
+      },
+      {
+        "type": "file",
+        "value": "res/movesBadge.png"
+      },
+      {
+        "type": "file",
+        "value": "res/navBar.png"
+      },
+      {
+        "type": "file",
+        "value": "res/nodeCurrent.png"
+      },
+      {
+        "type": "file",
+        "value": "res/nodeDone.png"
+      },
+      {
+        "type": "file",
+        "value": "res/nodeLocked.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece1.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece3.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece4.png"
+      },
+      {
+        "type": "file",
+        "value": "res/piece5.png"
+      },
+      {
+        "type": "file",
+        "value": "res/progressBar.png"
+      },
+      {
+        "type": "file",
+        "value": "res/toolBar.png"
+      }
+    ],
     "include": []
   },
   "isGameTourist": false,

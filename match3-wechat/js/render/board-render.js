@@ -13,6 +13,21 @@ const AudioFX = require('../audio');
 const assets = require('./assets');
 const THEME = require('./theme');
 
+function drawImageCover(ctx, img, w, h) {
+    if (!img || !img.width || !img.height) return false;
+    const scale = Math.max(w / img.width, h / img.height);
+    const sw = w / scale;
+    const sh = h / scale;
+    ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, 0, 0, w, h);
+    return true;
+}
+
+function specialBaseType(type) {
+    if (type === config.SPECIAL_TYPES.H_ROCKET) return 2;
+    if (type === config.SPECIAL_TYPES.V_ROCKET) return 3;
+    return 4;
+}
+
 class BoardRenderer {
     constructor(ctx, screen) {
         this.ctx = ctx;
@@ -67,6 +82,16 @@ class BoardRenderer {
     drawTools() {
         const ctx = this.ctx;
         const defs = coin.ITEM_DEFS;
+        if (this.tools.length) {
+            const left = this.tools[0].x - 44;
+            const right = this.tools[this.tools.length - 1].x + 44;
+            ctx.fillStyle = THEME.glassBgSoft;
+            this.roundRect(left, this.tools[0].y - 38, right - left, 76, 28);
+            ctx.fill();
+            ctx.strokeStyle = THEME.glassBorder;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
         for (let i = 0; i < this.tools.length; i++) {
             const t = this.tools[i];
             const def = defs[t.type];
@@ -74,11 +99,11 @@ class BoardRenderer {
             const selected = this.selectedTool === t.type;
 
             // 圆形底（选中高亮）
-            ctx.fillStyle = selected ? THEME.primaryLight : 'rgba(255,255,255,0.88)';
+            ctx.fillStyle = selected ? THEME.primary : 'rgba(255,245,252,0.42)';
             ctx.beginPath();
             ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = selected ? THEME.primaryDark : THEME.boardBorder;
+            ctx.strokeStyle = selected ? THEME.gold : THEME.glassBorder;
             ctx.lineWidth = selected ? 3 : 2;
             ctx.stroke();
 
@@ -112,12 +137,30 @@ class BoardRenderer {
     computeLayout() {
         const cols = this.core.level.columns;
         const rows = this.core.level.rows;
-        const margin = 12;
-        this.tileSize = Math.floor((this.screen.width - margin * 2) / cols);
+        const safeLeft = Number(this.screen.safeLeft) || 0;
+        const safeRight = Number(this.screen.safeRight) || 0;
+        const safeWidth = Math.max(0, this.screen.width - safeLeft - safeRight);
+        const margin = this.battleMode ? 8 : 6;
+        const widthTileSize = Math.floor((safeWidth - margin * 2) / cols);
+        if (this.battleMode) {
+            const top = (Number(this.screen.safeTop) || 0) + 64;
+            const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 88;
+            const availableHeight = Math.max(rows, bottom - top);
+            this.tileSize = Math.max(1, Math.min(widthTileSize, Math.floor(availableHeight / rows)));
+            this.boardW = this.tileSize * cols;
+            this.boardH = this.tileSize * rows;
+            this.boardX = Math.floor(safeLeft + (safeWidth - this.boardW) / 2);
+            this.boardY = Math.floor(top + (availableHeight - this.boardH) / 2);
+            return;
+        }
+
+        this.tileSize = Math.floor((safeWidth - margin * 2) / cols);
         this.boardW = this.tileSize * cols;
         this.boardH = this.tileSize * rows;
-        this.boardX = Math.floor((this.screen.width - this.boardW) / 2);
-        this.boardY = 100;
+        this.boardX = Math.floor(safeLeft + (safeWidth - this.boardW) / 2);
+        const top = (Number(this.screen.safeTop) || 0) + 92;
+        const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 108;
+        this.boardY = Math.max(top, Math.floor(top + Math.max(0, bottom - top - this.boardH) / 2));
     }
 
     /** 从逻辑 grid 一次性建立视觉棋子（初始状态，无动画） */
@@ -155,7 +198,8 @@ class BoardRenderer {
             targetX: 0, targetY: 0,
             scale: 1, targetScale: 1,
             alpha: 1,
-            dying: false
+            dying: false,
+            baseType: config.isSpecialType(type) ? specialBaseType(type) : type
         };
     }
 
@@ -253,6 +297,7 @@ class BoardRenderer {
 
     /** 爆发一组碎屑粒子 */
     spawnBurst(x, y, colors, count) {
+        if (this.screen.reduceEffects) return;
         count = count || 12;
         for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -301,6 +346,7 @@ class BoardRenderer {
             const g = generated[i];
             const p = this.findPiece(g.pos.row, g.pos.column);
             if (p) {
+                if (!config.isSpecialType(p.type)) p.baseType = p.type;
                 p.type = g.type;
                 p.targetScale = 1.35; // 弹出
                 const self = this;
@@ -405,12 +451,15 @@ class BoardRenderer {
         if (!this.core) return;
         const ctx = this.ctx;
 
-        // 渐变背景
-        const g = ctx.createLinearGradient(0, 0, 0, this.screen.height);
-        g.addColorStop(0, THEME.bgTop);
-        g.addColorStop(0.55, THEME.bgMid);
-        g.addColorStop(1, THEME.bgBottom);
-        ctx.fillStyle = g;
+        if (!drawImageCover(ctx, assets.get('gameBackground'), this.screen.width, this.screen.height)) {
+            const g = ctx.createLinearGradient(0, 0, 0, this.screen.height);
+            g.addColorStop(0, THEME.bgTop);
+            g.addColorStop(0.55, THEME.bgMid);
+            g.addColorStop(1, THEME.bgBottom);
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, this.screen.width, this.screen.height);
+        }
+        ctx.fillStyle = 'rgba(8, 12, 48, 0.12)';
         ctx.fillRect(0, 0, this.screen.width, this.screen.height);
 
         if (!this.battleMode) {
@@ -424,84 +473,63 @@ class BoardRenderer {
         }
     }
 
-    /** 顶部信息栏（卡片化：关卡名 / 分数 / 步数 / 目标） */
-    /**
-     * 顶部栏（素材版）：关卡号框 + 目标栏（4只猫+数字）+ 步数框
-     * 数字用 canvas 动态覆盖在素材的示例数字位置
-     */
+    /** 顶部信息栏：月夜玻璃 HUD，所有数据由 Canvas 动态绘制 */
     drawTopBar() {
         const ctx = this.ctx;
         const w = this.screen.width;
-
-        // 三个框的布局（基于设计稿 720 宽按屏宽等比缩放）
-        const scale = w / 720;
-        const topY = 16;
-
-        // 关卡号框（左）
-        const lvlW = 68;
-        const lvlH = 52;
-        const lvlX = 10;
-        const lvlImg = assets.get('levelBadge');
-        if (lvlImg && lvlImg.width > 0) {
-            ctx.drawImage(lvlImg, lvlX, topY, lvlW, lvlH);
+        const x = 8;
+        const y = (Number(this.screen.safeTop) || 0) + 8;
+        const panelW = w - 16;
+        const panelH = 72;
+        ctx.save();
+        if (!this.screen.reduceEffects) {
+            ctx.shadowColor = THEME.cardShadow;
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetY = 3;
         }
-        // 覆盖关卡号
-        ctx.fillStyle = '#5A3A1A';
-        ctx.font = 'bold 24px sans-serif';
+        ctx.fillStyle = THEME.glassBg;
+        this.roundRect(x, y, panelW, panelH, 20);
+        ctx.fill();
+        ctx.strokeStyle = THEME.glassBorder;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(this.core.level.id), lvlX + lvlW / 2, topY + lvlH * 0.66);
+        ctx.fillStyle = THEME.textSceneMuted;
+        ctx.font = '11px sans-serif';
+        ctx.fillText('关卡', x + 38, y + 20);
+        ctx.fillText('剩余步数', x + panelW - 43, y + 20);
+        ctx.fillStyle = THEME.textScene;
+        ctx.font = 'bold 23px sans-serif';
+        ctx.fillText(String(this.core.level.id), x + 38, y + 43);
+        ctx.fillStyle = THEME.gold;
+        ctx.fillText(String(this.core.movesLeft), x + panelW - 43, y + 43);
 
-        // 步数框（右）
-        const mvW = 58;
-        const mvH = 52;
-        const mvX = w - mvW - 10;
-        const mvImg = assets.get('movesBadge');
-        if (mvImg && mvImg.width > 0) {
-            ctx.drawImage(mvImg, mvX, topY, mvW, mvH);
-        }
-        ctx.fillText(String(this.core.movesLeft), mvX + mvW / 2, topY + mvH * 0.66);
-
-        // 目标栏（中）
-        const goalW = mvX - lvlX - lvlW - 16;
-        const goalH = 42;
-        const goalX = lvlX + lvlW + 8;
-        const goalY = topY + 5;
-        const goalImg = assets.get('goalBar');
-        if (goalImg && goalImg.width > 0) {
-            ctx.drawImage(goalImg, goalX, goalY, goalW, goalH);
-        }
-        // 覆盖目标数字（4 个等分位置）
         const goals = this.core.level.goals || [];
-        const jellyLeft = this.core.getJellyLeft();
-        const targets = [];
-        for (let i = 0; i < goals.length && targets.length < 4; i++) {
-            if (goals[i].type === 'jelly') targets.push(jellyLeft);
+        const goalText = [];
+        for (let i = 0; i < goals.length; i++) {
+            if (goals[i].type === 'jelly') goalText.push('果冻 ' + this.core.getJellyLeft());
+            if (goals[i].type === 'score') goalText.push('分数 ' + this.core.score + '/' + goals[i].target);
         }
-        while (targets.length < 4) targets.push('');
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillStyle = THEME.textSceneMuted;
+        ctx.font = '11px sans-serif';
+        ctx.fillText('本关目标', w / 2, y + 19);
+        ctx.fillStyle = THEME.textScene;
         ctx.font = 'bold 13px sans-serif';
-        ctx.textBaseline = 'alphabetic';
-        for (let i = 0; i < 4; i++) {
-            if (targets[i] === '') continue;
-            const sx = goalX + goalW * (i + 0.5) / 4;
-            ctx.fillText(String(targets[i]), sx, goalY + goalH - 4);
-        }
+        ctx.fillText(goalText.join(' · ') || '完成挑战', w / 2, y + 42);
 
-        // 步数进度条（顶部框下）
-        const pbW = w - 20;
-        const pbH = 16;
-        const pbX = 10;
-        const pbY = topY + lvlH + 8;
-        const pbImg = assets.get('progressBar');
-        if (pbImg && pbImg.width > 0) {
-            ctx.drawImage(pbImg, pbX, pbY, pbW, pbH);
-        }
-        // 进度条填充比例（movesLeft 越大，左侧猫越多——按比例）
         const total = this.core.level.moveCount || 20;
         const ratio = Math.max(0, Math.min(1, this.core.movesLeft / total));
-        ctx.fillStyle = 'rgba(255, 138, 165, 0.6)';
-        ctx.fillRect(pbX + 6, pbY + 4, (pbW - 12) * ratio, pbH - 8);
+        const barX = x + 76;
+        const barW = panelW - 152;
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        this.roundRect(barX, y + 58, barW, 5, 3);
+        ctx.fill();
+        ctx.fillStyle = THEME.primaryLight;
+        this.roundRect(barX, y + 58, barW * ratio, 5, 3);
+        ctx.fill();
     }
 
     /** 画棋盘底板 + 棋子 + 果冻罩 + 冰块罩 + 粒子 */
@@ -509,11 +537,18 @@ class BoardRenderer {
         const ctx = this.ctx;
 
         // 棋盘底板
+        ctx.save();
+        if (!this.screen.reduceEffects) {
+            ctx.shadowColor = 'rgba(8, 9, 43, 0.55)';
+            ctx.shadowBlur = 18;
+            ctx.shadowOffsetY = 6;
+        }
         ctx.fillStyle = THEME.boardBg;
         this.roundRect(this.boardX, this.boardY, this.boardW, this.boardH, 12);
         ctx.fill();
+        ctx.restore();
         ctx.strokeStyle = THEME.boardBorder;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
         // 轻格子纹理（每个格子的淡色底）
@@ -658,7 +693,7 @@ class BoardRenderer {
     drawPiece(piece) {
         const ctx = this.ctx;
 
-        // 特殊棋子样式（火箭/炸弹）
+        // 特殊棋子：保留猫咪底图，叠加统一的月光标记
         const special = config.getSpecialDef(piece.type);
         if (special) {
             const size = this.tileSize * piece.scale;
@@ -668,23 +703,26 @@ class BoardRenderer {
             ctx.translate(piece.x, piece.y);
             ctx.scale(piece.scale, piece.scale);
 
-            const half = this.tileSize / 2 - 2;
-            // 深色圆底
-            ctx.fillStyle = special.color;
+            const s = Math.min(this.tileSize - 2, this.tileSize * 0.94);
+            const img = assets.get('piece' + (piece.baseType || specialBaseType(piece.type)));
+            if (img && img.width > 0) ctx.drawImage(img, -s / 2, -s / 2, s, s);
+            const half = this.tileSize / 2 - 3;
+            ctx.fillStyle = 'rgba(28, 21, 75, 0.28)';
             ctx.beginPath();
             ctx.arc(0, 0, half, 0, Math.PI * 2);
             ctx.fill();
-            // 白色内圈（特殊感）
-            ctx.strokeStyle = '#FFFFFF';
+            ctx.strokeStyle = piece.type === config.SPECIAL_TYPES.BOMB ? THEME.primaryLight : THEME.gold;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(0, 0, half - 5, 0, Math.PI * 2);
+            ctx.arc(0, 0, half - 1, 0, Math.PI * 2);
             ctx.stroke();
-            // 符号
-            ctx.font = 'bold ' + Math.floor(this.tileSize * 0.5) + 'px sans-serif';
+            ctx.font = 'bold ' + Math.floor(this.tileSize * 0.44) + 'px sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#FFFFFF';
+            ctx.strokeStyle = 'rgba(39, 23, 77, 0.8)';
+            ctx.lineWidth = 4;
+            ctx.strokeText(special.label, 0, 1);
             ctx.fillText(special.label, 0, 1);
 
             ctx.restore();
@@ -704,7 +742,7 @@ class BoardRenderer {
 
         // 优先用猫咪素材图（type 1-5 对应 piece1-5），无图则回退代码绘制
         const pieceImg = assets.get('piece' + piece.type);
-        const s = this.tileSize * 0.78;
+        const s = Math.min(this.tileSize - 2, this.tileSize * 0.94);
         if (pieceImg && pieceImg.width > 0) {
             ctx.drawImage(pieceImg, -s / 2, -s / 2, s, s);
         } else {

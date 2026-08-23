@@ -1,14 +1,46 @@
 /**
- * 音效管理器：用 WebAudio 实时合成音效（零素材文件，不增加包体）
- * 微信小游戏环境：wx.createWebAudioContext()（基础库 2.19.0+）
- * 所有音效都是短音合成，触发时机都在用户触摸之后（满足移动端音频解锁要求）
+ * 音频管理器：用 WebAudio 实时合成音乐与音效（零素材文件，不增加包体）
+ * 背景音乐由低频计时器驱动；首次触摸通过 unlock() 解锁移动端音频。
  */
 
 let ctx = null;
+let musicEnabled = true;
+let sfxEnabled = true;
+let scene = 'calm';
+let musicTimer = null;
+let musicStep = 0;
+let hidden = false;
+let interrupted = false;
+let lifecycleStore = null;
+const musicSources = [];
+
+const AUDIO_KEY = 'match3_audio_enabled_v1';
+const MUSIC_KEY = 'match3_music_enabled_v1';
+const SFX_KEY = 'match3_sfx_enabled_v1';
+const MUSIC_SCENES = {
+    calm: {
+        interval: 1450,
+        duration: 0.42,
+        volume: 0.045,
+        notes: [523, 659, 784, 659, 587, 659, 523, 392]
+    },
+    battle: {
+        interval: 560,
+        duration: 0.24,
+        volume: 0.055,
+        notes: [392, 523, 659, 784, 659, 523, 440, 659]
+    }
+};
+
+function getStore() {
+    if (typeof wx !== 'undefined') return wx;
+    if (typeof global !== 'undefined') return global.wx;
+    return null;
+}
 
 /** 获取 WebAudio 上下文（懒创建） */
 function ensureCtx() {
-    if (!ctx) {
+    if (!ctx || ctx.state === 'closed') {
         try {
             if (typeof wx !== 'undefined' && wx.createWebAudioContext) {
                 ctx = wx.createWebAudioContext();
@@ -20,9 +52,132 @@ function ensureCtx() {
         }
     }
     if (ctx && ctx.resume && ctx.state === 'suspended') {
-        try { ctx.resume(); } catch (e) {}
+        try {
+            const result = ctx.resume();
+            if (result && result.catch) result.catch(function () {});
+        } catch (e) {}
     }
     return ctx;
+}
+
+function ensureSfxCtx() {
+    return sfxEnabled ? ensureCtx() : null;
+}
+
+function readBool(store, key) {
+    if (!store || !store.getStorageSync) return undefined;
+    try {
+        const value = store.getStorageSync(key);
+        return typeof value === 'boolean' ? value : undefined;
+    } catch (e) {
+        return undefined;
+    }
+}
+
+function writeBool(store, key, value) {
+    if (!store || !store.setStorageSync) return;
+    try { store.setStorageSync(key, !!value); } catch (e) {}
+}
+
+function loadSettings(store) {
+    const oldValue = readBool(store, AUDIO_KEY);
+    const savedMusic = readBool(store, MUSIC_KEY);
+    const savedSfx = readBool(store, SFX_KEY);
+    musicEnabled = savedMusic == null ? (oldValue == null ? true : oldValue) : savedMusic;
+    sfxEnabled = savedSfx == null ? (oldValue == null ? true : oldValue) : savedSfx;
+
+    // 旧总开关为关闭时，迁移出的独立开关也必须保持关闭。
+    if (oldValue != null) {
+        if (savedMusic == null) writeBool(store, MUSIC_KEY, musicEnabled);
+        if (savedSfx == null) writeBool(store, SFX_KEY, sfxEnabled);
+    }
+}
+
+function canPlayMusic() {
+    return musicEnabled && !hidden && !interrupted;
+}
+
+function stopMusic() {
+    if (musicTimer !== null) {
+        clearTimeout(musicTimer);
+        musicTimer = null;
+    }
+    for (let i = 0; i < musicSources.length; i++) {
+        try { musicSources[i].stop(); } catch (e) {}
+    }
+    musicSources.length = 0;
+}
+
+function playMusicNote(freq, duration, volume) {
+    const c = ensureCtx();
+    if (!c || !canPlayMusic()) return;
+    try {
+        const t0 = c.currentTime;
+        const osc = c.createOscillator();
+        const gain = c.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t0);
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.linearRampToValueAtTime(volume, t0 + 0.025);
+        gain.gain.linearRampToValueAtTime(0.001, t0 + duration);
+        osc.connect(gain);
+        gain.connect(c.destination);
+        musicSources.push(osc);
+        osc.onended = function () {
+            const index = musicSources.indexOf(osc);
+            if (index >= 0) musicSources.splice(index, 1);
+        };
+        osc.start(t0);
+        osc.stop(t0 + duration + 0.05);
+    } catch (e) {}
+}
+
+function scheduleMusic() {
+    musicTimer = null;
+    if (!canPlayMusic()) return;
+    const config = MUSIC_SCENES[scene];
+    playMusicNote(config.notes[musicStep % config.notes.length], config.duration, config.volume);
+    musicStep++;
+    if (canPlayMusic()) musicTimer = setTimeout(scheduleMusic, config.interval);
+}
+
+function startMusic() {
+    if (!canPlayMusic() || musicTimer !== null) return;
+    if (!ensureCtx()) return;
+    scheduleMusic();
+}
+
+function resumeMusic() {
+    if (canPlayMusic()) startMusic();
+}
+
+function registerLifecycleListeners(store) {
+    if (!store || lifecycleStore === store) return;
+    lifecycleStore = store;
+    if (store.onHide) {
+        store.onHide(function () {
+            hidden = true;
+            stopMusic();
+        });
+    }
+    if (store.onShow) {
+        store.onShow(function () {
+            hidden = false;
+            resumeMusic();
+        });
+    }
+    if (store.onAudioInterruptionBegin) {
+        store.onAudioInterruptionBegin(function () {
+            interrupted = true;
+            stopMusic();
+        });
+    }
+    if (store.onAudioInterruptionEnd) {
+        store.onAudioInterruptionEnd(function () {
+            interrupted = false;
+            resumeMusic();
+        });
+    }
 }
 
 /**
@@ -35,8 +190,9 @@ function ensureCtx() {
  * @param {number} freqEnd 结束频率（滑音用）
  */
 function tone(freq, duration, type, volume, delay, freqEnd) {
-    const c = ensureCtx();
+    const c = ensureSfxCtx();
     if (!c) return;
+    resumeMusic();
     try {
         const t0 = c.currentTime + (delay || 0);
         const osc = c.createOscillator();
@@ -60,7 +216,7 @@ function tone(freq, duration, type, volume, delay, freqEnd) {
 
 /** 合成一段"噪声"（用于更丰富的声音质感） */
 function noise(duration, volume, delay) {
-    const c = ensureCtx();
+    const c = ensureSfxCtx();
     if (!c) return;
     try {
         const t0 = c.currentTime + (delay || 0);
@@ -83,7 +239,7 @@ function noise(duration, volume, delay) {
 
 /** 冰块碎裂脉冲：短促高频带通噪声（"咔嚓"感） */
 function iceCrack(delay, freq, volume, dur) {
-    const c = ensureCtx();
+    const c = ensureSfxCtx();
     if (!c) return;
     try {
         const t0 = c.currentTime + (delay || 0);
@@ -114,7 +270,7 @@ function iceCrack(delay, freq, volume, dur) {
 
 /** 水晶钟声：明亮高频 + 失谐泛音叠加 + 快速指数衰减（"叮~"的清脆感） */
 function crystalTone(freq, duration, volume, delay) {
-    const c = ensureCtx();
+    const c = ensureSfxCtx();
     if (!c) return;
     try {
         const t0 = c.currentTime + (delay || 0);
@@ -145,7 +301,51 @@ function crystalTone(freq, duration, volume, delay) {
 
 const AudioFX = {
     /** 初始化（建议在游戏启动时调用一次） */
-    init: function () { ensureCtx(); },
+    init: function () {
+        const store = getStore();
+        loadSettings(store);
+        registerLifecycleListeners(store);
+        if (musicEnabled || sfxEnabled) ensureCtx();
+    },
+
+    setMusicEnabled: function (value) {
+        musicEnabled = !!value;
+        const store = getStore();
+        writeBool(store, MUSIC_KEY, musicEnabled);
+        if (musicEnabled) resumeMusic(); else stopMusic();
+    },
+
+    isMusicEnabled: function () { return musicEnabled; },
+
+    setSfxEnabled: function (value) {
+        sfxEnabled = !!value;
+        writeBool(getStore(), SFX_KEY, sfxEnabled);
+        if (sfxEnabled) ensureCtx();
+    },
+
+    isSfxEnabled: function () { return sfxEnabled; },
+
+    /** 在用户触摸回调内调用，确保只开音乐、关闭音效时也能解锁 WebAudio。 */
+    unlock: function () {
+        if (musicEnabled || sfxEnabled) ensureCtx();
+        resumeMusic();
+    },
+
+    // 兼容旧总开关 API：只映射到音效开关。
+    setEnabled: function (value) { this.setSfxEnabled(value); },
+    isEnabled: function () { return sfxEnabled; },
+
+    setScene: function (value) {
+        const next = value === 'battle' ? 'battle' : 'calm';
+        if (scene !== next) {
+            scene = next;
+            musicStep = 0;
+            stopMusic();
+        }
+        resumeMusic();
+    },
+
+    getScene: function () { return scene; },
 
     /** 交换棋子：短促"嗖"声（上滑音） */
     swap: function () {
@@ -171,7 +371,6 @@ const AudioFX = {
             const idx = Math.min(startIdx + i, scale.length - 1);
             const f = scale[idx] * Math.pow(2, octave);
             const t = i * 0.075;
-            noise(0.02, 0.04, t);               // 轻敲击起音（灵动感）
             tone(f, 0.1, 'triangle', 0.2, t);   // 主音（triangle 比 sine 更亮）
             tone(f * 2, 0.07, 'sine', 0.06, t); // 高八度泛音（层次感）
         }

@@ -1,0 +1,133 @@
+'use strict';
+
+/** 纯 Node 合规回归：第三方 notice、项目版权边界、活跃素材与包体忽略规则。 */
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const projectRoot = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(projectRoot, '..');
+const upstreamUrl = 'https://github.com/xiaozhu188/pixi-game-match3';
+const upstreamCommit = '658679250f30ef8d01ff570eb976017c5727cbf0';
+const upstreamFile = 'src/match3/Match3Utility.ts';
+const activePaths = [
+    'res/home/moonlit-garden-bg.jpg',
+    'res/home/duel-cats.png',
+    'res/home/title-logo.png',
+    'res/home/button-primary.png',
+    'res/home/button-secondary.png',
+    'res/game-background-v2.jpg',
+    'res/level-background-v2.jpg',
+    'res/piece1-runtime.png',
+    'res/piece2-runtime.png',
+    'res/piece3-runtime.png',
+    'res/piece4-runtime.png',
+    'res/piece5-runtime.png'
+];
+const pieceSourcePaths = [
+    'res/piece1-v2.png',
+    'res/piece2-v2.png',
+    'res/piece3-v2.png',
+    'res/piece4-v2.png',
+    'res/piece5-v2.png'
+];
+
+function read(relativeTo, file) {
+    return fs.readFileSync(path.join(relativeTo, file), 'utf8');
+}
+
+function isIgnored(relative, rules) {
+    return rules.some(function (rule) {
+        const value = String(rule.value || '').replace(/\/$/, '');
+        if (rule.type === 'file') return value === relative;
+        if (rule.type === 'folder') return relative === value || relative.indexOf(value + '/') === 0;
+        return false;
+    });
+}
+
+const notices = read(projectRoot, 'THIRD_PARTY_NOTICES.txt');
+const ledger = read(repoRoot, 'docs/release/open-source-and-assets.md');
+const readme = read(projectRoot, 'README.md');
+const assets = require('../js/render/assets').ASSETS;
+const config = require('../project.config.json');
+const cloudLock = require('../cloudfunctions/battle/package-lock.json');
+const cloudSdk = require('../cloudfunctions/battle/node_modules/wx-server-sdk');
+const ignoreRules = (config.packOptions && config.packOptions.ignore) || [];
+
+assert(notices.includes(upstreamUrl), 'notice 缺少上游 URL');
+assert(notices.includes(upstreamCommit), 'notice 缺少精确上游 commit');
+assert(notices.includes(upstreamFile), 'notice 缺少采用文件');
+assert(notices.includes('MIT License'), 'notice 缺少 MIT 标题');
+assert(notices.includes('Copyright (c) 2023-PRESENT hairyf <https://github.com/hairyf>'), 'notice 缺少 MIT 版权行');
+assert(notices.includes('THE SOFTWARE IS PROVIDED "AS IS"'), 'notice 缺少 MIT 免责声明');
+assert(notices.includes('wx-server-sdk 4.0.2'), 'notice 缺少 wx-server-sdk 版本');
+assert(notices.includes('License: MIT'), 'notice 缺少 wx-server-sdk MIT 声明');
+assert.strictEqual(typeof cloudSdk.init, 'function', 'wx-server-sdk 缺少 init API');
+assert.strictEqual(typeof cloudSdk.database, 'function', 'wx-server-sdk 缺少 database API');
+assert.strictEqual(typeof cloudSdk.getWXContext, 'function', 'wx-server-sdk 缺少 getWXContext API');
+assert.strictEqual(typeof cloudSdk.DYNAMIC_CURRENT_ENV, 'symbol', 'wx-server-sdk 缺少 DYNAMIC_CURRENT_ENV');
+cloudSdk.init({ env: cloudSdk.DYNAMIC_CURRENT_ENV });
+const cloudDatabase = cloudSdk.database({ throwOnNotFound: false });
+assert.strictEqual(typeof cloudDatabase.collection, 'function', 'wx-server-sdk 数据库缺少 collection API');
+assert.strictEqual(typeof cloudDatabase.runTransaction, 'function', 'wx-server-sdk 数据库缺少 runTransaction API');
+
+const cloudPackages = cloudLock.packages || {};
+const wxSdkPackage = cloudPackages['node_modules/wx-server-sdk'];
+assert(wxSdkPackage && wxSdkPackage.version === '4.0.2', '云函数锁文件中的 wx-server-sdk 版本发生漂移');
+assert(wxSdkPackage.license === 'MIT', '云函数锁文件未声明 wx-server-sdk 为 MIT');
+const licenseCounts = {};
+const undeclared = [];
+Object.keys(cloudPackages).forEach(function (packagePath) {
+    if (!packagePath) return;
+    const license = cloudPackages[packagePath].license || 'UNDECLARED';
+    licenseCounts[license] = (licenseCounts[license] || 0) + 1;
+    if (license === 'UNDECLARED') undeclared.push(packagePath);
+});
+assert.deepStrictEqual(licenseCounts, {
+    ISC: 4,
+    MIT: 71,
+    UNDECLARED: 2,
+    'BSD-3-Clause': 13,
+    'Apache-2.0': 10,
+    'BlueOak-1.0.0': 1,
+    '0BSD': 1
+}, '云函数依赖许可证统计发生漂移，请同步复核台账');
+assert.deepStrictEqual(undeclared, [
+    'node_modules/@cloudbase/signature-nodejs',
+    'node_modules/@cloudbase/wx-cloud-client-sdk'
+], '未声明许可证依赖发生漂移');
+
+assert(!/Gem-Match3/i.test(readme), '公开小游戏 README 不得引用 Gem-Match3');
+assert(!/(?:本项目|整个项目)[^\n。]{0,30}MIT/i.test(readme), 'README 不得把整个项目声称为 MIT');
+assert(readme.includes('[' + 'pixi-game-match3](' + upstreamUrl + ')'), 'README 缺少可点击的精确上游 URL');
+assert(readme.includes('[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)'), 'README 缺少 notice 链接');
+
+assert(Object.keys(assets).length === 12, 'assets.js 活跃素材数量必须为 12');
+assert.deepStrictEqual(Object.values(assets).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
+activePaths.forEach(function (relative) {
+    assert(ledger.includes('`' + relative + '`'), '台账缺少活跃素材: ' + relative);
+    assert(fs.existsSync(path.join(projectRoot, relative)), '活跃素材不存在: ' + relative);
+    assert(!isIgnored(relative, ignoreRules), '活跃素材被 project.config 忽略: ' + relative);
+});
+
+assert(fs.existsSync(path.join(projectRoot, 'THIRD_PARTY_NOTICES.txt')), 'notice 必须留在小游戏主包');
+assert(!isIgnored('THIRD_PARTY_NOTICES.txt', ignoreRules), 'notice 不得被 project.config 忽略');
+assert(ledger.includes('不得重新启用'), '台账必须禁止重新启用旧素材');
+assert(ledger.includes('仅因包体体积被排除'), '台账必须区分可信棋子源图与来源待确认的旧素材');
+assert(ledger.includes('macOS `sips`'), '台账缺少运行时棋子派生工具');
+pieceSourcePaths.forEach(function (relative) {
+    assert(ledger.includes('`' + relative + '`'), '台账缺少棋子源图: ' + relative);
+    assert(fs.existsSync(path.join(projectRoot, relative)), '棋子源图不存在: ' + relative);
+    assert(isIgnored(relative, ignoreRules), '512x512 棋子源图必须保持包体排除: ' + relative);
+});
+assert(ledger.includes('@cloudbase/signature-nodejs@2.2.0'), '台账缺少签名包未声明依赖');
+assert(ledger.includes('@cloudbase/wx-cloud-client-sdk@1.7.1'), '台账缺少微信云客户端未声明依赖');
+assert(ledger.includes('UNDECLARED'), '台账缺少 UNDECLARED 风险');
+assert(ledger.includes('厂商依赖例外'), '台账缺少厂商依赖例外决策');
+assert(ledger.includes('接受残余商业合规风险'), '台账缺少残余风险接受记录');
+assert(ledger.includes('不提交外部澄清请求'), '台账缺少不对外问询决策');
+assert(!ledger.includes('未完成前不得发布云函数生产版本'), '已接受厂商例外不得继续写成生产发布阻断');
+assert(!/无 undeclared/i.test(ledger), '台账不得声称无 undeclared');
+
+console.log('开源与素材合规检查: 通过');

@@ -2,5 +2,11 @@
   "permissions": {
     "openapi": []
   },
-  "triggers": []
+  "triggers": [
+    {
+      "name": "cleanup-battle-rooms",
+      "type": "timer",
+      "config": "0 0 3 * * * *"
+    }
+  ]
 }

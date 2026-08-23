@@ -6,36 +6,23 @@
  */
 
 const ASSETS = {
-    // 棋子（5 种猫）
-    piece1: 'res/piece1.png',
-    piece2: 'res/piece2.png',
-    piece3: 'res/piece3.png',
-    piece4: 'res/piece4.png',
-    piece5: 'res/piece5.png',
+    // 首页（月夜花园方向，无文字背景，动态 UI 由 Canvas 绘制）
+    homeBackground: 'res/home/moonlit-garden-bg.jpg',
+    homeDuelCats: 'res/home/duel-cats.png',
+    homeTitleLogo: 'res/home/title-logo.png',
+    homeButtonPrimary: 'res/home/button-primary.png',
+    homeButtonSecondary: 'res/home/button-secondary.png',
 
-    // 关卡地图节点
-    nodeDone: 'res/nodeDone.png',         // 紫色 已通关
-    nodeCurrent: 'res/nodeCurrent.png',   // 蓝色 当前
-    nodeLocked: 'res/nodeLocked.png',     // 灰色 未解锁
+    // 游戏内场景（同一月夜花园世界，不含文字和动态 UI）
+    gameBackground: 'res/game-background-v2.jpg',
+    levelBackground: 'res/level-background-v2.jpg',
 
-    // 顶部栏（带数字素材，用作底板 + 覆盖）
-    progressBar: 'res/progressBar.png',   // 步数进度条
-    heartBar: 'res/heartBar.png',         // 体力胶囊
-    coinBar: 'res/coinBar.png',           // 金币胶囊
-    levelBadge: 'res/levelBadge.png',     // 关卡号框
-    goalBar: 'res/goalBar.png',           // 目标栏（4只猫）
-    movesBadge: 'res/movesBadge.png',     // 步数框
-
-    // 道具栏
-    toolBar: 'res/toolBar.png',           // 道具栏底板
-
-    // 按钮
-    btnStart: 'res/btnStart.png',         // 开始闯关（绿）
-    btnContinue: 'res/btnContinue.png',   // 继续游戏（蓝）
-    btnClose: 'res/btnClose.png',         // 关闭 X
-    navBar: 'res/navBar.png',             // 底部导航栏
-    btnBack: 'res/btnBack.png',           // 返回
-    btnRefresh: 'res/btnRefresh.png'      // 刷新
+    // 棋子（256×256 运行图；*-v2.png 为保留的 512×512 源图）
+    piece1: 'res/piece1-runtime.png',
+    piece2: 'res/piece2-runtime.png',
+    piece3: 'res/piece3-runtime.png',
+    piece4: 'res/piece4-runtime.png',
+    piece5: 'res/piece5-runtime.png'
 };
 
 const images = {};

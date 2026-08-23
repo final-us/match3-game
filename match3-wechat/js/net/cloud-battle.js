@@ -4,11 +4,16 @@
  */
 
 const CLOUD_ENV = 'cloud1-d9g4pv8m8457af92a'; // 云开发环境 ID
+const ROOM_ID_PATTERN = /^R[0-9a-z]{8,10}[0-9a-f]{10}$/;
+
+function isValidRoomId(value) {
+    return typeof value === 'string' && ROOM_ID_PATTERN.test(value);
+}
 
 function init() {
     if (typeof wx !== 'undefined' && wx.cloud) {
         try {
-            wx.cloud.init({ env: CLOUD_ENV, traceUser: true });
+            wx.cloud.init({ env: CLOUD_ENV });
         } catch (e) {
             // 已初始化则忽略
         }
@@ -43,6 +48,7 @@ function call(action, data) {
 
 module.exports = {
     CLOUD_ENV: CLOUD_ENV,
+    isValidRoomId: isValidRoomId,
     init: init,
     call: call
 };

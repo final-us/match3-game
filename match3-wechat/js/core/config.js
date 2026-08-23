@@ -3,7 +3,7 @@
  * 改这里的配置即可调整玩法，无需改逻辑代码
  */
 
-// 棋子类型定义（占位素材：颜色 + emoji，正式素材后续替换为图片）
+// 棋子类型定义（颜色 + emoji 作为无图片时的后备显示）
 // type 编号从 1 开始，0 保留表示空位
 // 颜色为糖果风马卡龙色系，与 theme.js 风格统一
 const PIECE_TYPES = [
@@ -25,16 +25,28 @@ const MODE_TYPES = {
 
 // 默认游戏配置
 const GAME_CONFIG = {
+    title: '猫猫开心消',
     mode: 'easy',          // 棋子种类数量
     freeMoves: false,      // 是否允许任意移动（调试用）
-    maxLevel: 3            // 当前内置关卡数
+    maxLevel: 20           // 当前内置关卡数（与 level.js 注册数量保持一致）
 };
 
-// 广告配置（上线前在微信小游戏后台创建广告位，填入 adUnitId）
+// 广告配置（未开通流量主时保持关闭和空 ID）
 const AD_CONFIG = {
-    rewardedAdUnitId: '',  // 激励视频广告位 ID（留空则跳过广告，用于开发调试）
-    reviveSteps: 5,        // 看广告复活获得的步数
-    reviveLimitPerGame: 1  // 每局复活次数上限
+    enabled: false,
+    debugMockAds: false,
+    rewardedAdUnitId: '',
+    interstitialAdUnitId: '',
+    reviveSteps: 5,
+    interstitialEveryGames: 3,
+    interstitialCooldownMs: 120000
+};
+
+// 远程上报默认完全关闭；只允许以后通过显式映射开启，不存凭证。
+const REPORTING_CONFIG = {
+    enabled: false,
+    eventIds: {},
+    monitorNames: {}
 };
 
 // 特殊棋子类型（type 编号 100+，与普通棋子区分）
@@ -83,6 +95,7 @@ module.exports = {
     PIECE_TYPES: PIECE_TYPES,
     GAME_CONFIG: GAME_CONFIG,
     AD_CONFIG: AD_CONFIG,
+    REPORTING_CONFIG: REPORTING_CONFIG,
     SPECIAL_TYPES: SPECIAL_TYPES,
     getCommonTypes: getCommonTypes,
     getPieceTypeDef: getPieceTypeDef,
