@@ -4,7 +4,8 @@ module.exports = {
     "name": "冰火考验",
     "rows": 8,
     "columns": 8,
-    "moveCount": 18,
+    "timeLimitSec": 150,
+    "moveCount": 23,
     "goals": [
         {
             "type": "jelly",
@@ -12,7 +13,7 @@ module.exports = {
         },
         {
             "type": "score",
-            "target": 3500
+            "target": 3000
         }
     ],
     "underlays": {

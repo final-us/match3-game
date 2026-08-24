@@ -4,7 +4,8 @@ module.exports = {
     "name": "果冻花园",
     "rows": 8,
     "columns": 8,
-    "moveCount": 22,
+    "timeLimitSec": 165,
+    "moveCount": 26,
     "goals": [
         {
             "type": "jelly",

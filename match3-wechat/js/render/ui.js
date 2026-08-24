@@ -7,6 +7,7 @@ const THEME = require('./theme');
 const coin = require('../core/coin');
 const config = require('../core/config');
 const assets = require('./assets');
+const typography = require('./typography');
 
 const UI = {};
 
@@ -63,14 +64,100 @@ function drawGlassPill(ctx, x, y, w, h, label, value) {
     ctx.stroke();
     ctx.restore();
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.fillStyle = '#F8D9EC';
-    ctx.font = '12px sans-serif';
-    ctx.fillText(label, x + w * 0.32, y + h / 2 + 1);
+    typography.drawFit(ctx, label, x + w * 0.32, y + h / 2 + 1, w * 0.48, {
+        size: 12, minSize: 9, align: 'center'
+    });
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(String(value), x + w * 0.72, y + h / 2 + 1);
+    typography.drawFit(ctx, String(value), x + w * 0.72, y + h / 2 + 1, w * 0.48, {
+        size: 16, minSize: 9, weight: 'bold', numbers: true, align: 'center'
+    });
+}
+
+function drawImageContain(ctx, img, x, y, w, h) {
+    if (!img || !img.width || !img.height) return false;
+    const scale = Math.min(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    return true;
+}
+
+/** 首页与棋盘共用的暖金猫咪 HUD 控件。 */
+function drawHudPill(ctx, screen, x, y, w, h, img, label, value) {
+    ctx.save();
+    if (!screen.reduceEffects) {
+        ctx.shadowColor = 'rgba(23, 12, 58, 0.38)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 3;
+    }
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, 'rgba(255, 232, 226, 0.96)');
+    g.addColorStop(1, 'rgba(202, 151, 177, 0.94)');
+    ctx.fillStyle = g;
+    roundRectPath(ctx, x, y, w, h, h / 2);
+    ctx.fill();
+    ctx.strokeStyle = '#F6D08C';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    const inset = Math.max(7, Math.floor(h * 0.14));
+    const iconSize = Math.min(h - inset * 2, w * 0.36);
+    drawImageContain(ctx, img, x + inset, y + (h - iconSize) / 2, iconSize, iconSize);
+    const valueX = x + inset + iconSize + Math.max(7, Math.floor(h * 0.14));
+    const valueW = Math.max(1, x + w - inset - valueX);
+    ctx.fillStyle = '#FFF8F2';
+    ctx.shadowColor = 'rgba(68, 35, 72, 0.55)';
+    ctx.shadowBlur = 2;
+    typography.drawFit(ctx, String(value), valueX, y + h / 2, valueW, {
+        size: Math.max(18, Math.floor(h * 0.46)), minSize: 8,
+        weight: 'bold', numbers: true, align: 'left'
+    });
+    ctx.shadowColor = 'transparent';
+    if (label) {
+        ctx.fillStyle = 'rgba(70, 43, 84, 0.78)';
+        typography.drawFit(ctx, label, valueX, y + h * 0.27, valueW, {
+            size: 11, minSize: 7, align: 'left'
+        });
+    }
+}
+
+function drawIconControl(ctx, screen, x, y, size, img, label) {
+    ctx.save();
+    if (!screen.reduceEffects) {
+        ctx.shadowColor = 'rgba(23, 12, 58, 0.36)';
+        ctx.shadowBlur = 9;
+        ctx.shadowOffsetY = 3;
+    }
+    const g = ctx.createLinearGradient(x, y, x, y + size);
+    g.addColorStop(0, 'rgba(255, 236, 228, 0.98)');
+    g.addColorStop(1, 'rgba(199, 148, 177, 0.96)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#F6D08C';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+    drawImageContain(ctx, img, x + 3, y + 3, size - 6, size - 6);
+    if (label) {
+        ctx.fillStyle = '#FFF7FC';
+        typography.drawFit(ctx, label, x + size / 2, y + size + 7, size, {
+            size: 10, minSize: 8, weight: 'bold', align: 'center', baseline: 'top'
+        });
+    }
+}
+
+function toolAssetKey(type) {
+    if (type === 'hammer') return 'uiToolHammer';
+    if (type === 'bomb') return 'uiToolBomb';
+    return 'uiToolYarn';
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
 }
 
 /** 绘制渐变圆角按钮（带底部阴影） */
@@ -90,23 +177,37 @@ function drawButton(ctx, x, y, w, h, text, colorTop, colorBottom, textColor, fon
 
     // 按钮文字
     ctx.fillStyle = textColor || THEME.textLight;
-    ctx.font = 'bold ' + (fontSize || 20) + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+    typography.drawCentered(ctx, text, x, y + 1, w, h, {
+        size: fontSize || 20, minSize: 10, weight: 'bold'
+    });
+}
+
+function drawCoinPriceButton(ctx, x, y, w, h, price, affordable) {
+    drawButton(
+        ctx, x, y, w, h, '',
+        affordable ? THEME.shopTop : THEME.btnGrayTop,
+        affordable ? THEME.shopBottom : THEME.btnGrayBottom,
+        THEME.textLight, 13
+    );
+    const iconSize = Math.min(25, h - 10);
+    drawImageContain(ctx, assets.get('uiCoin'), x + 8, y + (h - iconSize) / 2, iconSize, iconSize);
+    ctx.fillStyle = THEME.textLight;
+    const priceX = x + iconSize + 14;
+    typography.drawFit(ctx, String(price), priceX, y + h / 2 + 1, Math.max(1, w - iconSize - 22), {
+        size: 14, minSize: 8, weight: 'bold', numbers: true, align: 'left'
+    });
 }
 
 function drawAssetButton(ctx, img, x, y, w, h, text, fontSize) {
     if (!img || !img.width || !img.height) return false;
     ctx.drawImage(img, x, y, w, h);
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold ' + (fontSize || 20) + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.shadowColor = 'rgba(65, 35, 86, 0.65)';
     ctx.shadowBlur = 3;
     ctx.shadowOffsetY = 2;
-    ctx.fillText(text, x + w / 2, y + h / 2 - 1);
+    typography.drawCentered(ctx, text, x, y - 1, w, h, {
+        size: fontSize || 20, minSize: 10, weight: 'bold'
+    });
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
@@ -146,50 +247,62 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
     ctx.fillStyle = 'rgba(8, 12, 48, 0.10)';
     ctx.fillRect(0, 0, screen.width, screen.height);
 
-    const safe = Math.max(14, screen.safeTop || 14);
-    const side = Math.max(14, screen.width * 0.045);
-    const pillW = Math.min(108, (screen.width - side * 2 - 44) / 2);
-    drawGlassPill(ctx, side, safe, pillW, 38, '体力', heart.count);
-    drawGlassPill(ctx, side + pillW + 8, safe, pillW, 38, '金币', (economy && economy.coins) || 0);
-
+    const safe = Math.max(12, screen.safeTop || 12);
+    const side = Math.max(10, screen.width * 0.032);
+    const control = 48;
+    const hudHeight = 42;
+    // The simulator can report a missing menu-button rect even while drawing
+    // the capsule. Keep the enlarged HUD on the next visual row so values are
+    // never covered by the WeChat chrome.
+    const hudY = Math.max(safe + 40, Number(screen.contentTop) || 0);
+    const gap = 7;
+    const hudRight = Math.max(side + 150, Math.min(
+        screen.width * 0.47,
+        screen.width - side,
+        Number(screen.contentRight) || screen.width - side
+    ));
+    const pillW = Math.min(108, Math.max(1, (hudRight - side - gap) / 2));
     const buttons = {};
 
-    const titleTop = Math.max(safe + 54, screen.height * 0.105);
+    drawHudPill(ctx, screen, side, hudY, pillW, hudHeight, assets.get('uiHeart'), '', heart.count);
+    drawHudPill(ctx, screen, side + pillW + gap, hudY, pillW, hudHeight, assets.get('uiCoin'), '', (economy && economy.coins) || 0);
+
+    const titleTop = Math.max(hudY + hudHeight + 8, screen.height * 0.085);
     const titleLogo = assets.get('homeTitleLogo');
-    const titleW = Math.min(340, screen.width * 0.9);
+    const titleW = Math.min(374, screen.width * 0.985);
     const titleH = titleW * 0.394;
     if (titleLogo && titleLogo.width > 0) {
         ctx.drawImage(titleLogo, cx - titleW / 2, titleTop, titleW, titleH);
     } else {
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = 'bold ' + Math.min(42, screen.width * 0.105) + 'px sans-serif';
         ctx.fillStyle = '#FFD7EC';
-        ctx.fillText(config.GAME_CONFIG.title, cx, titleTop + titleH / 2);
+        typography.drawCentered(ctx, config.GAME_CONFIG.title, cx - titleW / 2, titleTop, titleW, titleH, {
+            size: Math.min(42, screen.width * 0.105), minSize: 18, weight: 'bold'
+        });
     }
 
     const hero = assets.get('homeDuelCats');
-    const heroW = Math.min(screen.width * 0.92, 390);
+    const heroW = Math.min(screen.width * 1.08, 420);
     const heroH = heroW * 0.684;
-    const heroY = titleTop + titleH - 4;
+    const heroY = titleTop + titleH - 24;
     if (hero && hero.width > 0) {
         ctx.drawImage(hero, cx - heroW / 2, heroY, heroW, heroH);
     }
 
-    const btnW = Math.min(304, screen.width - side * 2 - 20);
-    const btnH = Math.max(58, Math.min(68, screen.height * 0.078));
+    const btnW = Math.min(322, screen.width - side * 2 - 12);
+    const btnH = Math.max(58, Math.min(70, screen.height * 0.082));
     const btnX = cx - btnW / 2;
-    const battleY = Math.max(heroY + heroH - 4, screen.height * 0.59);
+    const battleY = Math.min(screen.height - 232, Math.max(heroY + heroH - 24, screen.height * 0.55));
     if (!drawAssetButton(ctx, assets.get('homeButtonPrimary'), btnX, battleY, btnW, btnH, '好友对战', 22)) {
         drawButton(ctx, btnX, battleY, btnW, btnH, '好友对战', '#FF91C2', '#E6549C', THEME.textLight, 22);
     }
     buttons.battle = { x: btnX, y: battleY, w: btnW, h: btnH };
 
-    ctx.font = '12px sans-serif';
     ctx.fillStyle = 'rgba(255, 239, 249, 0.9)';
-    ctx.fillText('60 秒实时比拼 · 邀请好友即刻开局', cx, battleY + btnH + 17);
+    typography.drawFit(ctx, '60 秒实时比拼 · 邀请好友即刻开局', cx, battleY + btnH + 17, btnW, {
+        size: 12, minSize: 9, align: 'center'
+    });
 
-    const soloY = battleY + btnH + 30;
+    const soloY = battleY + btnH + 28;
     const soloText = heart.canPlay ? '单人闯关' : '体力不足';
     if (!heart.canPlay || !drawAssetButton(ctx, assets.get('homeButtonSecondary'), btnX, soloY, btnW, btnH, soloText, 21)) {
         drawButton(
@@ -201,30 +314,32 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
     }
     buttons.start = { x: btnX, y: soloY, w: btnW, h: btnH };
 
-    const utilityY = soloY + btnH + 18;
+    const utilityY = soloY + btnH + 14;
     const showHeartAd = !heart.canPlay && !!heart.canAd;
     if (showHeartAd) {
         const adW = Math.min(196, btnW * 0.66);
         drawButton(ctx, cx - adW / 2, utilityY, adW, 42, '看广告补充体力', '#F4B86C', '#D58B47', '#FFFFFF', 15);
         buttons.addHeart = { x: cx - adW / 2, y: utilityY, w: adW, h: 42 };
     } else {
-        ctx.font = '12px sans-serif';
         ctx.fillStyle = 'rgba(255, 239, 249, 0.86)';
         const status = heart.canPlay
             ? '已解锁第 ' + unlockedLevel + ' 关 · ' + heart.timeLeftText + ' 后恢复体力'
             : '体力不足 · ' + heart.timeLeftText + ' 后恢复';
-        ctx.fillText(status, cx, utilityY + 12);
+        typography.drawFit(ctx, status, cx, utilityY + 12, screen.width - side * 2, {
+            size: 12, minSize: 8, align: 'center', numbers: true
+        });
     }
 
-    const utilityButtonY = Math.min(screen.height - 52, utilityY + (showHeartAd ? 54 : 26));
-    const utilityButtonW = 86;
-    const utilityGap = 12;
-    const utilityStartX = cx - utilityButtonW - utilityGap / 2;
-    drawButton(ctx, utilityStartX, utilityButtonY, utilityButtonW, 36, '商店', '#6C669E', '#4A4679', '#FFFFFF', 13);
-    buttons.shop = { x: utilityStartX, y: utilityButtonY, w: utilityButtonW, h: 36 };
-    const settingsX = cx + utilityGap / 2;
-    drawButton(ctx, settingsX, utilityButtonY, utilityButtonW, 36, '设置', '#6C669E', '#4A4679', '#FFFFFF', 13);
-    buttons.settings = { x: settingsX, y: utilityButtonY, w: utilityButtonW, h: 36 };
+    const utilityButtonY = Math.min(
+        screen.height - (Number(screen.safeBottom) || 0) - control - 8,
+        utilityY + (showHeartAd ? 48 : 22)
+    );
+    const shopX = cx - control - 10;
+    const settingsX = cx + 10;
+    drawIconControl(ctx, screen, shopX, utilityButtonY, control, assets.get('uiShop'), '商店');
+    drawIconControl(ctx, screen, settingsX, utilityButtonY, control, assets.get('uiSettings'), '设置');
+    buttons.shop = { x: shopX, y: utilityButtonY, w: control, h: control + 14 };
+    buttons.settings = { x: settingsX, y: utilityButtonY, w: control, h: control + 14 };
 
     return buttons;
 };
@@ -242,14 +357,14 @@ UI.drawSettings = function (ctx, screen, settings) {
     const musicEnabled = settings.musicEnabled !== false;
     const sfxEnabled = settings.sfxEnabled == null ? settings.soundEnabled !== false : settings.sfxEnabled;
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.fillStyle = THEME.textScene;
-    ctx.font = 'bold 28px sans-serif';
-    ctx.fillText('设置', cx, cardY + 48);
-    ctx.font = '14px sans-serif';
+    typography.drawFit(ctx, '设置', cx, cardY + 48, cardW - 40, {
+        size: 28, minSize: 20, weight: 'bold', align: 'center'
+    });
     ctx.fillStyle = THEME.textSceneMuted;
-    ctx.fillText('调整声音，或查看隐私说明', cx, cardY + 80);
+    typography.drawFit(ctx, '调整声音，或查看隐私说明', cx, cardY + 80, cardW - 40, {
+        size: 14, minSize: 10, align: 'center'
+    });
 
     const buttons = {};
     const btnW = cardW - 56;
@@ -290,44 +405,41 @@ UI.drawSettings = function (ctx, screen, settings) {
  * @param {{width:number,height:number}} screen
  * @param {number} coins 当前金币
  * @param {object} items 道具数量 { hammer, bomb, color }
- * @returns {object} 按钮区域 { buy_hammer, buy_bomb, buy_color, back }
+ * @param {object} rewardOptions { canReward, count, limit, pending }
+ * @returns {object} 按钮区域 { buy_*, reward_*, back }
  */
-UI.drawShop = function (ctx, screen, coins, items) {
+UI.drawShop = function (ctx, screen, coins, items, rewardOptions) {
     const cx = screen.width / 2;
+    const safe = Math.max(10, Number(screen.safeTop) || 10);
+    const headerW = Math.max(150, screen.width * 0.47);
 
     drawSceneBackground(ctx, screen, 'homeBackground', 0.38);
 
     // 标题 + 金币
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 30px sans-serif';
     ctx.fillStyle = THEME.textScene;
-    ctx.fillText('商店', cx, 52);
+    typography.drawFit(ctx, '商店', 16, safe + 16, headerW, {
+        size: 30, minSize: 20, weight: 'bold', align: 'left'
+    });
 
-    // 金币胶囊
-    ctx.textBaseline = 'middle';
-    ctx.font = 'bold 18px sans-serif';
-    const coinText = '🪙 ' + coins;
-    const coinW = ctx.measureText(coinText).width + 32;
-    const coinH = 36;
-    ctx.fillStyle = THEME.glassBgSoft;
-    roundRectPath(ctx, cx - coinW / 2, 66, coinW, coinH, coinH / 2);
-    ctx.fill();
-    ctx.strokeStyle = THEME.glassBorder;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = THEME.gold;
-    ctx.fillText(coinText, cx, 66 + coinH / 2 + 1);
+    drawHudPill(ctx, screen, 16, safe + 32, Math.min(116, headerW), 40, assets.get('uiCoin'), '', coins);
+    rewardOptions = rewardOptions || {};
+    if (rewardOptions.canReward) {
+        ctx.fillStyle = THEME.textSceneMuted;
+        typography.drawFit(ctx, '视频领取 ' + (Number(rewardOptions.count) || 0) + '/' +
+            (Number(rewardOptions.limit) || 10), 140, safe + 52, screen.width - 156, {
+            size: 12, minSize: 8, numbers: true, align: 'right'
+        });
+    }
 
     const buttons = {};
 
     // 道具卡片（竖排 3 个）
     const defs = coin.ITEM_DEFS;
     const types = ['hammer', 'bomb', 'color'];
-    const cardW = 300;
-    const cardH = 96;
-    const startY = 130;
-    const gap = 14;
+    const cardW = Math.min(300, screen.width - 24);
+    const cardH = rewardOptions.canReward ? 112 : 96;
+    const startY = Math.max(130, safe + 88);
+    const gap = rewardOptions.canReward ? 10 : 14;
 
     for (let i = 0; i < types.length; i++) {
         const type = types[i];
@@ -338,30 +450,44 @@ UI.drawShop = function (ctx, screen, coins, items) {
         drawGlassCard(ctx, screen, cardX, cardY, cardW, cardH, 18);
 
         // 图标
-        ctx.textAlign = 'left';
-        ctx.font = '34px sans-serif';
-        ctx.fillText(def.icon, cardX + 18, cardY + cardH / 2);
+        drawImageContain(ctx, assets.get(toolAssetKey(type)), cardX + 12, cardY + (cardH - 62) / 2, 62, 62);
 
         // 名称 + 说明
-        ctx.textBaseline = 'alphabetic';
+        const buyW = Math.min(88, Math.max(76, cardW * 0.29));
+        const buyH = rewardOptions.canReward ? 36 : 40;
+        const buyX = cardX + cardW - buyW - 12;
+        const textX = cardX + 78;
+        const textW = Math.max(52, buyX - textX - 8);
         ctx.fillStyle = THEME.textScene;
-        ctx.font = 'bold 17px sans-serif';
-        ctx.fillText(def.name, cardX + 66, cardY + 34);
+        typography.drawFit(ctx, def.name, textX, cardY + 28, textW, {
+            size: 17, minSize: 11, weight: 'bold'
+        });
         ctx.fillStyle = THEME.textSceneMuted;
-        ctx.font = '13px sans-serif';
-        ctx.fillText(def.desc, cardX + 66, cardY + 58);
+        typography.drawFit(ctx, def.desc, textX, cardY + 52, textW, {
+            size: 13, minSize: 9
+        });
         ctx.fillStyle = THEME.textSceneMuted;
-        ctx.font = '12px sans-serif';
-        ctx.fillText('拥有 ' + (items[type] || 0), cardX + 66, cardY + 80);
+        typography.drawFit(ctx, '拥有 ' + (items[type] || 0), textX, cardY + 76, textW, {
+            size: 12, minSize: 8, numbers: true
+        });
 
         // 购买按钮
-        const buyW = 86;
-        const buyH = 40;
-        const buyX = cardX + cardW - buyW - 12;
-        const buyY = cardY + cardH / 2 - buyH / 2;
+        const buyY = rewardOptions.canReward ? cardY + 10 : cardY + cardH / 2 - buyH / 2;
         const affordable = coins >= def.price;
-        drawButton(ctx, buyX, buyY, buyW, buyH, '🪙' + def.price, affordable ? THEME.shopTop : THEME.btnGrayTop, affordable ? THEME.shopBottom : THEME.btnGrayBottom, THEME.textLight, 14);
+        drawCoinPriceButton(ctx, buyX, buyY, buyW, buyH, def.price, affordable);
         buttons['buy_' + type] = { x: buyX, y: buyY, w: buyW, h: buyH };
+        if (rewardOptions.canReward) {
+            const rewardY = cardY + cardH - 44;
+            const atLimit = Number(rewardOptions.count) >= (Number(rewardOptions.limit) || 10);
+            const rewardText = rewardOptions.pending ? '领取中' : (atLimit ? '今日已满' : '视频 +1');
+            drawButton(
+                ctx, buyX, rewardY, buyW, 34, rewardText,
+                atLimit ? THEME.btnGrayTop : '#B9A7F4',
+                atLimit ? THEME.btnGrayBottom : THEME.successDark,
+                THEME.textLight, 12
+            );
+            buttons['reward_' + type] = { x: buyX, y: rewardY, w: buyW, h: 34 };
+        }
     }
 
     // 返回按钮
@@ -378,7 +504,7 @@ UI.drawShop = function (ctx, screen, coins, items) {
  * 结算页
  * @param {CanvasRenderingContext2D} ctx
  * @param {{width:number,height:number}} screen
- * @param {object} result { win, score, levelId, hasNext, canRevive }
+ * @param {object} result { win, score, reason, timed, levelId, hasNext, canRevive }
  * @returns {object} 按钮区域 {main, menu, revive?}
  */
 UI.drawResult = function (ctx, screen, result) {
@@ -391,52 +517,63 @@ UI.drawResult = function (ctx, screen, result) {
     // 卡片（胜利时更高：多星星行；失败且有复活按钮时更高）
     const hasRevive = !result.win && result.canRevive;
     const cardW = 310;
-    const cardH = hasRevive ? 400 : (result.win ? 370 : 330);
+    const cardH = hasRevive ? 450 : (result.win ? 420 : 380);
     const cardX = cx - cardW / 2;
     const cardY = screen.height * 0.2;
 
     drawGlassCard(ctx, screen, cardX, cardY, cardW, cardH, 24);
 
-    // 结果大图标
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '52px sans-serif';
-    ctx.fillText(result.win ? '🎉' : '💔', cx, cardY + 66);
+    // 结果猫咪：成功大笑，失败沮丧
+    const resultCat = assets.get(result.win ? 'uiResultHappyCat' : 'uiResultSadCat');
+    drawImageContain(ctx, resultCat, cx - 72, cardY + 12, 144, 132);
 
     // 结果标题
-    ctx.font = 'bold 28px sans-serif';
     ctx.fillStyle = result.win ? THEME.gold : '#FF9DB6';
-    ctx.fillText(result.win ? '通关成功' : '挑战失败', cx, cardY + 122);
+    const resultTitle = result.win ? '通关成功' : (result.reason === 'timeout' ? '时间到' : '挑战失败');
+    typography.drawFit(ctx, resultTitle, cx, cardY + 154, cardW - 32, {
+        size: 28, minSize: 18, weight: 'bold', align: 'center'
+    });
 
     // 星星（胜利时显示 ★ 亮 / ☆ 暗）
-    let nextBtnY = cardY + 192;
+    let nextBtnY = cardY + 232;
     if (result.win) {
-        ctx.font = '30px sans-serif';
         const startSX = cx - 30;
         for (let k = 1; k <= 3; k++) {
             ctx.fillStyle = k <= result.star ? '#FFC531' : '#E8E0D0';
-            ctx.fillText('★', startSX + (k - 1) * 30, cardY + 160);
+            typography.drawFit(ctx, '★', startSX + (k - 1) * 30, cardY + 190, 30, {
+                size: 30, minSize: 18, align: 'center'
+            });
         }
         // 分数（下移给星星让位）
-        ctx.font = '20px sans-serif';
         ctx.fillStyle = THEME.textScene;
-        ctx.fillText('得分：' + result.score, cx, cardY + 196);
+        typography.drawFit(ctx, '得分：' + result.score, cx, cardY + 222, cardW - 36, {
+            size: 20, minSize: 11, numbers: true, align: 'center'
+        });
 
         // 金币奖励
         if (result.coinReward > 0) {
-            ctx.font = 'bold 17px sans-serif';
+            drawImageContain(ctx, assets.get('uiCoin'), cx - 68, cardY + 232, 30, 30);
             ctx.fillStyle = THEME.gold;
-            ctx.fillText('🪙 +' + result.coinReward + ' 金币', cx, cardY + 226);
-            nextBtnY = cardY + 252;
+            typography.drawFit(ctx, '+' + result.coinReward + ' 金币', cx - 34, cardY + 247, cardW - 92, {
+                size: 17, minSize: 10, weight: 'bold', numbers: true
+            });
+            nextBtnY = cardY + 276;
         } else {
-            nextBtnY = cardY + 224;
+            nextBtnY = cardY + 250;
         }
     } else {
         // 分数
-        ctx.font = '20px sans-serif';
         ctx.fillStyle = THEME.textScene;
-        ctx.fillText('得分：' + result.score, cx, cardY + 160);
-        nextBtnY = cardY + 192;
+        typography.drawFit(ctx, '得分：' + result.score, cx, cardY + 198, cardW - 36, {
+            size: 20, minSize: 11, numbers: true, align: 'center'
+        });
+        if (result.reason === 'timeout') {
+            ctx.fillStyle = THEME.textSceneMuted;
+            typography.drawFit(ctx, '别急，下一次会走得更远', cx, cardY + 225, cardW - 36, {
+                size: 13, minSize: 9, align: 'center'
+            });
+        }
+        nextBtnY = cardY + 248;
     }
 
     // 按钮
@@ -447,7 +584,8 @@ UI.drawResult = function (ctx, screen, result) {
 
     // 复活按钮（失败且激励视频可用；同一局可重复观看）
     if (hasRevive) {
-        drawButton(ctx, btnX, nextBtnY, btnW, btnH, '看广告复活 +' + config.AD_CONFIG.reviveSteps + ' 步', '#FFDFA4', '#D89A49', THEME.textLight, 17);
+        const reviveText = '看广告复活 +' + config.AD_CONFIG.reviveSteps + ' 步' + (result.timed ? ' · +30秒' : '');
+        drawButton(ctx, btnX, nextBtnY, btnW, btnH, reviveText, '#FFDFA4', '#D89A49', THEME.textLight, result.timed ? 15 : 17);
         buttons.revive = { x: btnX, y: nextBtnY, w: btnW, h: btnH };
         nextBtnY += btnH + 14;
     }
@@ -469,155 +607,116 @@ UI.drawResult = function (ctx, screen, result) {
 };
 
 /**
- * 关卡地图（选关界面）
- * @param {CanvasRenderingContext2D} ctx
- * @param {{width:number,height:number}} screen
- * @param {number} unlockedLevel 已解锁的最大关卡
- * @param {number} coins 金币
- * @param {number} totalLevels 关卡总数
- * @param {object} stars 各关已获最高星 { levelId: 1-3 }
- * @returns {object} 按钮区域 { level_N..., back }
+ * 关卡地图：固定透视路面上的连续五关。
+ * `offset` 是 0 基准的平滑滚动位置；最大位置让最后一个预览节点不超过 unlockedLevel + 4。
  */
-UI.drawLevelSelect = function (ctx, screen, unlockedLevel, coins, totalLevels, stars) {
+UI.drawLevelSelect = function (ctx, screen, unlockedLevel, coins, stars, mapState) {
+    // 保留旧测试/调用的参数形状：(..., coins, totalLevels, stars)。totalLevels 已不再参与绘制。
+    if (typeof stars === 'number') {
+        stars = mapState || {};
+        mapState = {};
+    }
+    stars = stars && typeof stars === 'object' ? stars : {};
+    const currentLevel = Math.max(1, Math.floor(Number(unlockedLevel) || 1));
+    const maxOffset = Math.max(0, currentLevel - 1);
+    const rawOffset = Number(mapState && mapState.offset) || 0;
+    const offset = clamp(rawOffset, 0, maxOffset);
+    const baseLevel = Math.floor(offset) + 1;
+    const fraction = offset - Math.floor(offset);
     const cx = screen.width / 2;
+    const safe = Math.max(10, Number(screen.safeTop) || 10);
 
-    drawSceneBackground(ctx, screen, 'levelBackground', 0.16);
-
-    // 标题
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 30px sans-serif';
+    drawSceneBackground(ctx, screen, 'levelBackground', 0.11);
+    const titleW = Math.max(150, screen.width * 0.48);
     ctx.fillStyle = THEME.textScene;
-    ctx.fillText('选择关卡', cx, 50);
+    typography.drawFit(ctx, '沿着星光小路出发', 16, safe + 28, titleW, {
+        size: 27, minSize: 18, weight: 'bold', align: 'left'
+    });
+    ctx.fillStyle = 'rgba(255,239,249,0.82)';
+    typography.drawFit(ctx, '向下拖动小路，探索更深处', 16, safe + 53, titleW, {
+        size: 11, minSize: 8, align: 'left'
+    });
+    const buttons = { visibleLevels: [] };
+    const top = Math.max(safe + 96, screen.height * 0.19);
+    const bottom = screen.height - Math.max(120, Number(screen.safeBottom) + 110);
+    // Follow the visible center line of level-background-v2.jpg from the
+    // foreground path to the pavilion, instead of drifting onto the flowers.
+    const pathX = [0.52, 0.45, 0.56, 0.48, 0.50];
 
-    // 金币胶囊（右上）
-    ctx.textBaseline = 'middle';
-    ctx.font = 'bold 15px sans-serif';
-    const coinText = '🪙 ' + coins;
-    const coinW = ctx.measureText(coinText).width + 24;
-    const coinH = 30;
-    ctx.fillStyle = THEME.glassBgSoft;
-    roundRectPath(ctx, screen.width - coinW - 14, 14, coinW, coinH, coinH / 2);
-    ctx.fill();
-    ctx.strokeStyle = THEME.glassBorder;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = THEME.gold;
-    ctx.fillText(coinText, screen.width - coinW + 12, 14 + coinH / 2 + 1);
-
-    const buttons = {};
-
-    // 关卡节点：自适应屏幕宽度/高度换行网格
-    let nodeSize = 60;
-    let gapY = 20;
-    const gapX = 16;   // 水平间距
-    const nameH = 16;  // 关卡名高度
-    const padX = 14;   // 左右边距
-
-    // 每行能放的节点数（按屏宽）
-    const colsPerRow = Math.max(3, Math.floor((screen.width - padX * 2 + gapX) / (nodeSize + gapX)));
-    const totalRows = Math.ceil(totalLevels / colsPerRow);
-
-    // 高度不足时压缩节点/间距（防小屏溢出，浮点精确计算）
-    const availH = screen.height - 150; // 内容区高度（84 标题 + 66 返回按钮）
-    const needH = totalRows * (nodeSize + gapY + nameH);
-    if (needH > availH) {
-        const base = nodeSize + gapY;
-        const targetBase = (availH / totalRows) - nameH;
-        const scale = targetBase / base;
-        nodeSize = Math.max(42, nodeSize * scale);
-        gapY = Math.max(6, gapY * scale);
+    function pathPoint(distance) {
+        const d = Number(distance) || 0;
+        const anchor = clamp(d, 0, 4);
+        const lo = Math.floor(anchor);
+        const hi = Math.min(4, lo + 1);
+        const mix = anchor - lo;
+        let nx = pathX[lo] + (pathX[hi] - pathX[lo]) * mix;
+        if (d < 0) nx = pathX[0] + (pathX[1] - pathX[0]) * d;
+        if (d > 4) nx = pathX[4] + (pathX[4] - pathX[3]) * (d - 4);
+        const depth = d / 4;
+        return {
+            x: screen.width * nx,
+            y: bottom - (bottom - top) * depth,
+            scale: Math.max(0.58, 1 - depth * 0.34)
+        };
     }
 
-    const rowH = nodeSize + gapY + nameH;
-    const startY = 84;
+    for (let i = 0; i < 5; i++) {
+        const levelId = baseLevel + i;
+        const distance = i - fraction;
+        const point = pathPoint(distance);
+        const state = levelId < currentLevel ? 'done' : (levelId === currentLevel ? 'current' : 'locked');
+        const nodeSize = 78 * point.scale;
+        const imageKey = state === 'done' ? 'levelNodeDone' : (state === 'current' ? 'levelNodeCurrent' : 'levelNodeLocked');
+        const image = assets.get(imageKey);
 
-    // 当前行节点起始 x（居中）
-    function rowStartX(countInRow) {
-        return cx - ((countInRow - 1) * (nodeSize + gapX)) / 2;
-    }
-
-    for (let i = 1; i <= totalLevels; i++) {
-        const row = Math.floor((i - 1) / colsPerRow);
-        const col = (i - 1) % colsPerRow;
-        const countInRow = (row < totalRows - 1) ? colsPerRow : (totalLevels - row * colsPerRow);
-        const x = rowStartX(countInRow) + col * (nodeSize + gapX);
-        const y = startY + row * rowH;
-        const state = i < unlockedLevel ? 'done' : (i === unlockedLevel ? 'current' : 'locked');
-
-        // 节点圆形
         ctx.save();
-        if (state === 'current') {
-            ctx.shadowColor = 'rgba(255, 156, 200, 0.72)';
-            ctx.shadowBlur = 14;
-            ctx.fillStyle = THEME.primary;
-        } else if (state === 'done') {
-            ctx.shadowColor = 'rgba(157, 131, 232, 0.52)';
-            ctx.shadowBlur = 10;
-            ctx.fillStyle = THEME.success;
-        } else {
-            ctx.fillStyle = 'rgba(48, 45, 99, 0.82)';
+        if (!screen.reduceEffects && state === 'current') {
+            ctx.shadowColor = 'rgba(255, 156, 200, 0.88)';
+            ctx.shadowBlur = 18;
         }
-        ctx.beginPath();
-        ctx.arc(x, y, nodeSize / 2, 0, Math.PI * 2);
-        ctx.fill();
+        drawImageContain(ctx, image, point.x - nodeSize / 2, point.y - nodeSize / 2, nodeSize, nodeSize);
         ctx.restore();
 
-        // 白色内圈
-        ctx.strokeStyle = state === 'current' ? THEME.gold : THEME.glassBorder;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(x, y, nodeSize / 2 - 4, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.fillStyle = state === 'locked' ? '#D6CEE7' : '#FFFFFF';
+        typography.drawFit(ctx, String(levelId), point.x, point.y - nodeSize * 0.03, nodeSize * 0.48, {
+            size: Math.max(17, nodeSize * 0.29), minSize: 10,
+            weight: 'bold', numbers: true, align: 'center'
+        });
 
-        // 节点内容：代码绘制，避免混入旧版米黄猫头节点
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const nodeW = nodeSize * 1.05;
-        const nodeH = nodeW * 0.88;
-        ctx.fillStyle = 'rgba(255,245,252,0.18)';
-        ctx.beginPath();
-        ctx.arc(x, y - 2, nodeSize * 0.32, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 关卡号
-        ctx.font = 'bold 18px sans-serif';
-        ctx.fillStyle = state === 'locked' ? '#B6AACB' : '#FFFFFF';
-        ctx.fillText(String(i), x, y - 2);
-
-        // 星级（done 状态在节点底部）
         if (state === 'done') {
-            const s = (stars && stars[i]) || 0;
-            ctx.font = 'bold 11px sans-serif';
-            const starW = 12;
-            const startSX = x - starW;
-            for (let k = 1; k <= 3; k++) {
-                ctx.fillStyle = k <= s ? '#FFC531' : 'rgba(0,0,0,0.35)';
-                ctx.fillText('★', startSX + (k - 1) * starW, y + nodeH / 2 - 4);
+            const starCount = Math.max(0, Math.min(3, Number(stars[levelId]) || 0));
+            for (let star = 0; star < 3; star++) {
+                ctx.fillStyle = star < starCount ? '#FFE19B' : 'rgba(255,255,255,0.44)';
+                typography.drawFit(ctx, '★', point.x - nodeSize * 0.25 + star * nodeSize * 0.25,
+                    point.y + nodeSize * 0.27, nodeSize * 0.23, {
+                        size: Math.max(10, nodeSize * 0.17), minSize: 7, align: 'center'
+                    });
             }
-        } else if (state === 'locked') {
-            ctx.font = '16px sans-serif';
-            ctx.fillStyle = 'rgba(255,255,255,0.66)';
-            ctx.fillText('🔒', x, y + nodeH / 2 - 4);
+        } else {
+            ctx.fillStyle = state === 'current' ? '#FFF4FB' : '#C7BEDB';
+            typography.drawFit(ctx, state === 'current' ? '当前' : '锁定', point.x,
+                point.y + nodeSize * 0.54, nodeSize + 12, {
+                    size: Math.max(10, nodeSize * 0.16), minSize: 8, align: 'center'
+                });
         }
 
-        // 关卡名（节点下方小字）
-        ctx.font = '11px sans-serif';
-        ctx.fillStyle = THEME.textSceneMuted;
-        const lv = require('../core/level');
-        const level = lv.getLevel(i);
-        ctx.fillText(level ? level.name : '第' + i + '关', x, y + nodeSize / 2 + 9);
-
-        buttons['level_' + i] = { x: x - nodeSize / 2, y: y - nodeSize / 2, w: nodeSize, h: nodeSize };
+        const hitSize = nodeSize + 18;
+        buttons['level_' + levelId] = {
+            x: point.x - hitSize / 2,
+            y: point.y - hitSize / 2,
+            w: hitSize,
+            h: hitSize
+        };
+        buttons.visibleLevels.push(levelId);
     }
 
-    // 返回按钮（固定在底部附近，避开节点区）
-    const backW = 200;
-    const backH = 50;
-    const backY = screen.height - 66;
-    drawButton(ctx, cx - backW / 2, backY, backW, backH, '返 回', '#8C82B0', '#514A78', THEME.textLight, 17);
+    const backW = Math.min(150, screen.width - 36);
+    const backH = 46;
+    const backY = screen.height - Math.max(58, Number(screen.safeBottom) + 52);
+    drawButton(ctx, cx - backW / 2, backY, backW, backH, '返回花园', '#8C82B0', '#514A78', THEME.textLight, 15);
     buttons.back = { x: cx - backW / 2, y: backY, w: backW, h: backH };
-
+    buttons.map = { minOffset: 0, maxOffset: maxOffset, stepPx: Math.max(90, (bottom - top) / 4) };
+    buttons.offset = offset;
     return buttons;
 };
 

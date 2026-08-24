@@ -4,7 +4,8 @@ module.exports = {
     "name": "冰晶迷宫",
     "rows": 8,
     "columns": 8,
-    "moveCount": 16,
+    "timeLimitSec": 135,
+    "moveCount": 24,
     "goals": [
         {
             "type": "jelly",
@@ -12,7 +13,7 @@ module.exports = {
         },
         {
             "type": "score",
-            "target": 3500
+            "target": 3800
         }
     ],
     "underlays": {

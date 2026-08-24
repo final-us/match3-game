@@ -16,6 +16,17 @@ function shuffle(arr) {
     return arr;
 }
 
+function createRandom(seed) {
+    let state = seed >>> 0;
+    return function () {
+        state = (state + 0x6D2B79F5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
 function findValidMoves(core) {
     const grid = core.grid;
     const rows = grid.length;
@@ -25,22 +36,30 @@ function findValidMoves(core) {
         for (let c = 0; c < cols; c++) {
             if (c + 1 < cols) {
                 const from = { row: r, column: c }, to = { row: r, column: c + 1 };
-                if (core.validateMove(from, to)) moves.push([from, to]);
+                if (!core.isBlocked(from) && !core.isBlocked(to) && core.validateMove(from, to)) {
+                    moves.push([from, to]);
+                }
             }
             if (r + 1 < rows) {
                 const from = { row: r, column: c }, to = { row: r + 1, column: c };
-                if (core.validateMove(from, to)) moves.push([from, to]);
+                if (!core.isBlocked(from) && !core.isBlocked(to) && core.validateMove(from, to)) {
+                    moves.push([from, to]);
+                }
             }
         }
     }
     return moves;
 }
 
+// 固定种子使问题复现，同时让有时间限制的关卡经过虚拟时钟。
+Math.random = createRandom(0x51E3);
+
 (async function () {
     console.log('========== 三消核心逻辑模拟测试 ==========');
-    console.log('关卡总数:', levelData.getLevelCount());
+    const sampleLevels = [1, 2, 10, 11, 31, 1000];
 
-    for (let levelId = 1; levelId <= levelData.getLevelCount(); levelId++) {
+    for (let sample = 0; sample < sampleLevels.length; sample++) {
+        const levelId = sampleLevels[sample];
         const level = levelData.getLevel(levelId);
         const events = [];
 
@@ -65,6 +84,7 @@ function findValidMoves(core) {
             }
             shuffle(moves);
             await core.trySwap(moves[0][0], moves[0][1]);
+            core.updateTime(5000);
         }
 
         console.log('  最终得分:', core.score, '剩余步数:', core.movesLeft);

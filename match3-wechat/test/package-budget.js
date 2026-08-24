@@ -11,7 +11,11 @@ const resRoot = path.join(projectRoot, 'res');
 const assets = require('../js/render/assets').ASSETS;
 const config = require('../project.config.json');
 const maxActiveBytes = 3.5 * 1024 * 1024;
+const maxBgmBytes = 360 * 1024;
+const maxSfxBytes = 48 * 1024;
 const maxEstimatedMainPackageBytes = 4 * 1024 * 1024;
+const bgmPaths = ['res/audio/calm.m4a', 'res/audio/battle.m4a'];
+const sfxPath = 'res/audio/sfx-acoustic.m4a';
 const developerMetadata = new Set([
     'README.md',
     'project.config.json',
@@ -76,6 +80,23 @@ Object.keys(assets).forEach(function (key) {
     assert(!isIgnored(relative), '活跃素材被忽略: ' + relative);
 });
 
+let bgmBytes = 0;
+bgmPaths.forEach(function (relative) {
+    const file = path.join(projectRoot, relative);
+    assert(fs.existsSync(file) && fs.statSync(file).isFile(), 'BGM 文件不存在: ' + relative);
+    assert(!isIgnored(relative), 'BGM 被打包规则忽略: ' + relative);
+    assetPaths.add(relative);
+    bgmBytes += fs.statSync(file).size;
+});
+assert(bgmBytes <= maxBgmBytes, '双 BGM 总体积超过预算: ' + bgmBytes + ' > ' + maxBgmBytes);
+
+const sfxFile = path.join(projectRoot, sfxPath);
+assert(fs.existsSync(sfxFile) && fs.statSync(sfxFile).isFile(), '音效精灵不存在: ' + sfxPath);
+assert(!isIgnored(sfxPath), '音效精灵被打包规则忽略: ' + sfxPath);
+assetPaths.add(sfxPath);
+const sfxBytes = fs.statSync(sfxFile).size;
+assert(sfxBytes <= maxSfxBytes, '音效精灵超过预算: ' + sfxBytes + ' > ' + maxSfxBytes);
+
 for (let i = 1; i <= 5; i++) {
     const relative = assets['piece' + i];
     const png = readPng(path.join(projectRoot, relative));
@@ -105,5 +126,7 @@ assert(estimatedMainBytes <= maxEstimatedMainPackageBytes,
 
 console.log('包体预算: 通过');
 console.log('活跃素材: ' + activeBytes + ' bytes / ' + maxActiveBytes + ' bytes');
+console.log('双 BGM: ' + bgmBytes + ' bytes / ' + maxBgmBytes + ' bytes');
+console.log('音效精灵: ' + sfxBytes + ' bytes / ' + maxSfxBytes + ' bytes');
 console.log('静态主包估算: ' + estimatedMainBytes + ' bytes / ' + maxEstimatedMainPackageBytes + ' bytes (' + estimatedMainFiles.length + ' files)');
 console.log('未引用 res 文件: ' + unreferenced.length + ' 个，均由精确 file 规则覆盖');

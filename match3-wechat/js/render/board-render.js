@@ -12,6 +12,7 @@ const coin = require('../core/coin');
 const AudioFX = require('../audio');
 const assets = require('./assets');
 const THEME = require('./theme');
+const typography = require('./typography');
 
 function drawImageCover(ctx, img, w, h) {
     if (!img || !img.width || !img.height) return false;
@@ -22,9 +23,19 @@ function drawImageCover(ctx, img, w, h) {
     return true;
 }
 
+function drawImageContain(ctx, img, x, y, w, h) {
+    if (!img || !img.width || !img.height) return false;
+    const scale = Math.min(w / img.width, h / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    return true;
+}
+
 function specialBaseType(type) {
     if (type === config.SPECIAL_TYPES.H_ROCKET) return 2;
     if (type === config.SPECIAL_TYPES.V_ROCKET) return 3;
+    if (type === config.SPECIAL_TYPES.COLOR_BALL) return 5;
     return 4;
 }
 
@@ -45,6 +56,7 @@ class BoardRenderer {
 
         // 粒子系统（碎屑效果）
         this.particles = [];
+        this.specialEffects = [];
 
         // 触摸状态
         this.touchStartPos = null;
@@ -67,11 +79,15 @@ class BoardRenderer {
             bomb: items.bomb || 0,
             color: items.color || 0
         };
+        if (this.selectedTool && this.toolsCount[this.selectedTool] <= 0) {
+            this.selectedTool = null;
+        }
         const types = ['hammer', 'bomb', 'color'];
-        const r = 30;
-        const gap = 96;
+        const r = 35;
+        const gap = Math.min(108, (this.screen.width - 92) / 2);
         const startX = (this.screen.width - (types.length - 1) * gap) / 2;
-        const y = this.screen.height - 74;
+        const lowest = this.screen.height - (Number(this.screen.safeBottom) || 0) - r - 12;
+        const y = Math.min(lowest, this.boardY + this.boardH + 76);
         this.tools = [];
         for (let i = 0; i < types.length; i++) {
             this.tools.push({ type: types[i], x: startX + i * gap, y: y, r: r });
@@ -83,10 +99,10 @@ class BoardRenderer {
         const ctx = this.ctx;
         const defs = coin.ITEM_DEFS;
         if (this.tools.length) {
-            const left = this.tools[0].x - 44;
-            const right = this.tools[this.tools.length - 1].x + 44;
+            const left = this.tools[0].x - 48;
+            const right = this.tools[this.tools.length - 1].x + 48;
             ctx.fillStyle = THEME.glassBgSoft;
-            this.roundRect(left, this.tools[0].y - 38, right - left, 76, 28);
+            this.roundRect(left, this.tools[0].y - 44, right - left, 88, 30);
             ctx.fill();
             ctx.strokeStyle = THEME.glassBorder;
             ctx.lineWidth = 1.5;
@@ -108,10 +124,17 @@ class BoardRenderer {
             ctx.stroke();
 
             // 图标
-            ctx.font = '26px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(def.icon, t.x, t.y - 2);
+            const key = t.type === 'hammer' ? 'uiToolHammer' : (t.type === 'bomb' ? 'uiToolBomb' : 'uiToolYarn');
+            const img = assets.get(key);
+            const iconSize = t.r * 1.55;
+            if (img && img.width > 0) {
+                ctx.drawImage(img, t.x - iconSize / 2, t.y - iconSize / 2, iconSize, iconSize);
+            } else {
+                ctx.fillStyle = '#FFF4FB';
+                typography.drawFit(ctx, def.name, t.x, t.y, t.r * 1.6, {
+                    size: 12, minSize: 8, weight: 'bold', align: 'center'
+                });
+            }
 
             // 数量角标
             if (count > 0) {
@@ -120,8 +143,9 @@ class BoardRenderer {
                 ctx.arc(t.x + t.r * 0.62, t.y - t.r * 0.62, 11, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = '#FFFFFF';
-                ctx.font = 'bold 11px sans-serif';
-                ctx.fillText(String(count), t.x + t.r * 0.62, t.y - t.r * 0.62 + 1);
+                typography.drawFit(ctx, String(count), t.x + t.r * 0.62, t.y - t.r * 0.62 + 1, 18, {
+                    size: 11, minSize: 8, weight: 'bold', numbers: true, align: 'center'
+                });
             }
         }
     }
@@ -140,10 +164,10 @@ class BoardRenderer {
         const safeLeft = Number(this.screen.safeLeft) || 0;
         const safeRight = Number(this.screen.safeRight) || 0;
         const safeWidth = Math.max(0, this.screen.width - safeLeft - safeRight);
-        const margin = this.battleMode ? 8 : 6;
+        const margin = this.battleMode ? 6 : 2;
         const widthTileSize = Math.floor((safeWidth - margin * 2) / cols);
         if (this.battleMode) {
-            const top = (Number(this.screen.safeTop) || 0) + 64;
+            const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 64;
             const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 88;
             const availableHeight = Math.max(rows, bottom - top);
             this.tileSize = Math.max(1, Math.min(widthTileSize, Math.floor(availableHeight / rows)));
@@ -158,9 +182,8 @@ class BoardRenderer {
         this.boardW = this.tileSize * cols;
         this.boardH = this.tileSize * rows;
         this.boardX = Math.floor(safeLeft + (safeWidth - this.boardW) / 2);
-        const top = (Number(this.screen.safeTop) || 0) + 92;
-        const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 108;
-        this.boardY = Math.max(top, Math.floor(top + Math.max(0, bottom - top - this.boardH) / 2));
+        const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 118;
+        this.boardY = Math.floor(top);
     }
 
     /** 从逻辑 grid 一次性建立视觉棋子（初始状态，无动画） */
@@ -199,7 +222,9 @@ class BoardRenderer {
             scale: 1, targetScale: 1,
             alpha: 1,
             dying: false,
-            baseType: config.isSpecialType(type) ? specialBaseType(type) : type
+            baseType: config.isSpecialType(type)
+                ? ((this.core && this.core.getSpecialBaseType({ row: row, column: col })) || specialBaseType(type))
+                : type
         };
     }
 
@@ -314,6 +339,10 @@ class BoardRenderer {
         }
     }
 
+    spawnSpecialEffect(type, x, y) {
+        this.specialEffects.push({ type: type, x: x, y: y, life: 0, maxLife: this.screen.reduceEffects ? 180 : 420 });
+    }
+
     /** 消除动画：棋子缩小消失 + 碎屑粒子 + 障碍反馈 + 特殊棋子生成（含连消触发的消除） */
     animateMatch(data) {
         const removed = data.removed;
@@ -324,6 +353,11 @@ class BoardRenderer {
         for (let i = 0; i < removed.length; i++) {
             const p = this.findPiece(removed[i].row, removed[i].column);
             if (p) {
+                const logicalType = this.core.grid[removed[i].row][removed[i].column];
+                if (config.isSpecialType(logicalType) && p.type !== logicalType) {
+                    p.type = logicalType;
+                    p.baseType = this.core.getSpecialBaseType(removed[i]) || specialBaseType(logicalType);
+                }
                 p.targetScale = 0;
                 p.dying = true;
                 targets.push(p);
@@ -334,6 +368,7 @@ class BoardRenderer {
                 if (special) {
                     // 特殊棋子被触发：爆大粒子（特效感）
                     this.spawnBurst(center.x, center.y, [special.color, '#FFFFFF'], 22);
+                    this.spawnSpecialEffect(p.type, center.x, center.y);
                 } else {
                     const def = config.getPieceTypeDef(p.type);
                     this.spawnBurst(center.x, center.y, def ? [def.color] : ['#888888'], 10);
@@ -443,6 +478,8 @@ class BoardRenderer {
             p.vy += 260 * dtSec; // 重力下落
         }
         this.particles = this.particles.filter(function (p) { return p.life < p.maxLife; });
+        for (let i = 0; i < this.specialEffects.length; i++) this.specialEffects[i].life += dt;
+        this.specialEffects = this.specialEffects.filter(function (effect) { return effect.life < effect.maxLife; });
     }
 
     // ===== 绘制 =====
@@ -477,59 +514,93 @@ class BoardRenderer {
     drawTopBar() {
         const ctx = this.ctx;
         const w = this.screen.width;
-        const x = 8;
-        const y = (Number(this.screen.safeTop) || 0) + 8;
-        const panelW = w - 16;
-        const panelH = 72;
-        ctx.save();
-        if (!this.screen.reduceEffects) {
-            ctx.shadowColor = THEME.cardShadow;
-            ctx.shadowBlur = 12;
-            ctx.shadowOffsetY = 3;
-        }
-        ctx.fillStyle = THEME.glassBg;
-        this.roundRect(x, y, panelW, panelH, 20);
-        ctx.fill();
-        ctx.strokeStyle = THEME.glassBorder;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.restore();
+        const y = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 6;
+        const self = this;
 
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = THEME.textSceneMuted;
-        ctx.font = '11px sans-serif';
-        ctx.fillText('关卡', x + 38, y + 20);
-        ctx.fillText('剩余步数', x + panelW - 43, y + 20);
-        ctx.fillStyle = THEME.textScene;
-        ctx.font = 'bold 23px sans-serif';
-        ctx.fillText(String(this.core.level.id), x + 38, y + 43);
-        ctx.fillStyle = THEME.gold;
-        ctx.fillText(String(this.core.movesLeft), x + panelW - 43, y + 43);
+        function pill(x, py, pw, ph, image, label, value, warning) {
+            ctx.save();
+            if (!self.screen.reduceEffects) {
+                ctx.shadowColor = 'rgba(23, 12, 58, 0.34)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetY = 2;
+            }
+            const g = ctx.createLinearGradient(x, py, x, py + ph);
+            g.addColorStop(0, 'rgba(255, 232, 226, 0.96)');
+            g.addColorStop(1, 'rgba(196, 145, 177, 0.95)');
+            ctx.fillStyle = g;
+            self.roundRect(x, py, pw, ph, ph / 2);
+            ctx.fill();
+            ctx.strokeStyle = warning ? '#FF7F9F' : '#F5D08C';
+            ctx.lineWidth = warning ? 3 : 2;
+            ctx.stroke();
+            ctx.restore();
+            let textX = x + pw / 2;
+            let textW = pw - 10;
+            if (image) {
+                const iconBox = Math.min(ph + 4, pw * 0.34);
+                drawImageContain(ctx, image, x - 1, py - 2, iconBox, ph + 4);
+                textX = x + iconBox + (pw - iconBox) / 2;
+                textW = pw - iconBox - 8;
+            }
+            ctx.fillStyle = warning ? '#A92D52' : '#FFF8F2';
+            ctx.shadowColor = 'rgba(65, 33, 75, 0.48)';
+            ctx.shadowBlur = 2;
+            typography.drawFit(ctx, String(value), textX, py + ph * 0.58, textW, {
+                size: Math.max(15, Math.floor(ph * 0.42)), minSize: 8,
+                weight: 'bold', numbers: true, align: 'center'
+            });
+            ctx.shadowColor = 'transparent';
+            if (label) {
+                ctx.fillStyle = 'rgba(70,43,84,0.78)';
+                typography.drawFit(ctx, label, textX, py + 9, textW, {
+                    size: 9, minSize: 7, align: 'center'
+                });
+            }
+        }
+
+        pill(8, y, 74, 44, null, '关卡', this.core.level.id, false);
+        pill(w / 2 - 66, y, 132, 44, null, '当前得分', this.core.score, false);
+        pill(w - 108, y, 100, 44, assets.get('uiMoves'), '', this.core.movesLeft, false);
 
         const goals = this.core.level.goals || [];
         const goalText = [];
         for (let i = 0; i < goals.length; i++) {
-            if (goals[i].type === 'jelly') goalText.push('果冻 ' + this.core.getJellyLeft());
-            if (goals[i].type === 'score') goalText.push('分数 ' + this.core.score + '/' + goals[i].target);
+            if (goals[i].type === 'jelly') goalText.push('果冻剩余 ' + this.core.getJellyLeft());
+            if (goals[i].type === 'score') goalText.push('目标分 ' + goals[i].target);
         }
-        ctx.fillStyle = THEME.textSceneMuted;
-        ctx.font = '11px sans-serif';
-        ctx.fillText('本关目标', w / 2, y + 19);
-        ctx.fillStyle = THEME.textScene;
-        ctx.font = 'bold 13px sans-serif';
-        ctx.fillText(goalText.join(' · ') || '完成挑战', w / 2, y + 42);
+        const timed = Number(this.core.timeLimitMs) > 0;
+        const goalX = 8;
+        const goalY = y + 52;
+        const goalW = w - 16;
+        const goalH = 50;
+        ctx.fillStyle = 'rgba(35, 31, 88, 0.82)';
+        this.roundRect(goalX, goalY, goalW, goalH, 18);
+        ctx.fill();
+        ctx.strokeStyle = THEME.glassBorder;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-        const total = this.core.level.moveCount || 20;
-        const ratio = Math.max(0, Math.min(1, this.core.movesLeft / total));
-        const barX = x + 76;
-        const barW = panelW - 152;
-        ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        this.roundRect(barX, y + 58, barW, 5, 3);
-        ctx.fill();
-        ctx.fillStyle = THEME.primaryLight;
-        this.roundRect(barX, y + 58, barW * ratio, 5, 3);
-        ctx.fill();
+        if (timed) {
+            const warning = Number(this.core.timeLeftMs) <= 10000;
+            const timerW = Math.min(124, Math.max(112, goalW * 0.34));
+            const timerX = goalX + goalW - timerW;
+            ctx.fillStyle = THEME.textScene;
+            typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', goalX + 10, goalY + goalH / 2, goalW - timerW - 18, {
+                size: 15, minSize: 9, weight: 'bold', align: 'left', numbers: true
+            });
+            ctx.fillStyle = warning ? '#A92D52' : THEME.textScene;
+            typography.drawFit(ctx, '时间', timerX + timerW / 2, goalY + 15, timerW - 8, {
+                size: 12, minSize: 8, weight: 'bold', align: 'center'
+            });
+            typography.drawFit(ctx, formatTimer(this.core.timeLeftMs), timerX + timerW / 2, goalY + 36, timerW - 8, {
+                size: 23, minSize: 12, weight: 'bold', numbers: true, align: 'center'
+            });
+        } else {
+            ctx.fillStyle = THEME.textScene;
+            typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', goalX + goalW / 2, goalY + goalH / 2, goalW - 16, {
+                size: 15, minSize: 9, weight: 'bold', align: 'center', numbers: true
+            });
+        }
     }
 
     /** 画棋盘底板 + 棋子 + 果冻罩 + 冰块罩 + 粒子 */
@@ -576,6 +647,7 @@ class BoardRenderer {
 
         // 粒子（碎屑效果，绘制在最上层）
         this.drawParticles();
+        this.drawSpecialEffects();
 
         // 按住高亮
         if (this.pressGrid) {
@@ -599,6 +671,52 @@ class BoardRenderer {
             ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
         }
         ctx.globalAlpha = 1;
+    }
+
+    drawSpecialEffects() {
+        const ctx = this.ctx;
+        const beam = assets.get('uiSpecialRowBeam');
+        for (let i = 0; i < this.specialEffects.length; i++) {
+            const effect = this.specialEffects[i];
+            const progress = Math.min(1, effect.life / effect.maxLife);
+            const alpha = Math.sin(progress * Math.PI) * 0.92;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(this.boardX, this.boardY, this.boardW, this.boardH);
+            ctx.clip();
+            ctx.globalAlpha = alpha;
+            if (!this.screen.reduceEffects) ctx.globalCompositeOperation = 'lighter';
+
+            if (effect.type === config.SPECIAL_TYPES.H_ROCKET || effect.type === config.SPECIAL_TYPES.V_ROCKET) {
+                ctx.translate(effect.x, effect.y);
+                if (effect.type === config.SPECIAL_TYPES.V_ROCKET) ctx.rotate(Math.PI / 2);
+                const width = this.boardW * (0.55 + progress * 0.62);
+                const height = this.tileSize * (0.72 + progress * 0.65);
+                if (beam && beam.width > 0) {
+                    ctx.drawImage(beam, -width / 2, -height / 2, width, height);
+                } else {
+                    const g = ctx.createLinearGradient(-width / 2, 0, width / 2, 0);
+                    g.addColorStop(0, 'rgba(255,255,255,0)');
+                    g.addColorStop(0.5, '#FFD1F0');
+                    g.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = g;
+                    ctx.fillRect(-width / 2, -height / 5, width, height * 0.4);
+                }
+            } else {
+                const radius = this.tileSize * (0.45 + progress * 2.15);
+                ctx.strokeStyle = '#FFD4F0';
+                ctx.lineWidth = Math.max(2, this.tileSize * (0.13 - progress * 0.08));
+                ctx.beginPath();
+                ctx.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.strokeStyle = '#FFE6A8';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(effect.x, effect.y, radius * 0.62, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
     }
 
     /**
@@ -674,11 +792,10 @@ class BoardRenderer {
                 ctx.stroke();
 
                 // 雪花符号（一眼识别是冰块）
-                ctx.font = Math.floor(this.tileSize * 0.42) + 'px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
                 ctx.fillStyle = '#FFFFFF';
-                ctx.fillText('❄', x + this.tileSize / 2, y + this.tileSize / 2 + 1);
+                typography.drawFit(ctx, '❄', x + this.tileSize / 2, y + this.tileSize / 2 + 1, this.tileSize * 0.7, {
+                    size: Math.floor(this.tileSize * 0.42), minSize: 8, align: 'center'
+                });
 
                 // 冰晶光泽（右上角）
                 ctx.fillStyle = 'rgba(255,255,255,0.5)';
@@ -693,7 +810,7 @@ class BoardRenderer {
     drawPiece(piece) {
         const ctx = this.ctx;
 
-        // 特殊棋子：保留猫咪底图，叠加统一的月光标记
+        // 特殊棋子：保留猫咪底图，叠加会呼吸的猫爪光束/魔法炸弹。
         const special = config.getSpecialDef(piece.type);
         if (special) {
             const size = this.tileSize * piece.scale;
@@ -706,24 +823,55 @@ class BoardRenderer {
             const s = Math.min(this.tileSize - 2, this.tileSize * 0.94);
             const img = assets.get('piece' + (piece.baseType || specialBaseType(piece.type)));
             if (img && img.width > 0) ctx.drawImage(img, -s / 2, -s / 2, s, s);
+            const pulse = this.screen.reduceEffects ? 1 : 1 + Math.sin(Date.now() / 150 + piece.id) * 0.07;
             const half = this.tileSize / 2 - 3;
-            ctx.fillStyle = 'rgba(28, 21, 75, 0.28)';
+            ctx.fillStyle = 'rgba(44, 28, 91, 0.20)';
             ctx.beginPath();
             ctx.arc(0, 0, half, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = piece.type === config.SPECIAL_TYPES.BOMB ? THEME.primaryLight : THEME.gold;
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = piece.type === config.SPECIAL_TYPES.BOMB ? '#FF9ED2' : '#FFE09B';
+            ctx.lineWidth = 2.5;
             ctx.beginPath();
-            ctx.arc(0, 0, half - 1, 0, Math.PI * 2);
+            ctx.arc(0, 0, (half - 1) * pulse, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.font = 'bold ' + Math.floor(this.tileSize * 0.44) + 'px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#FFFFFF';
-            ctx.strokeStyle = 'rgba(39, 23, 77, 0.8)';
-            ctx.lineWidth = 4;
-            ctx.strokeText(special.label, 0, 1);
-            ctx.fillText(special.label, 0, 1);
+
+            if (piece.type === config.SPECIAL_TYPES.BOMB) {
+                const bomb = assets.get('uiToolBomb');
+                const bombSize = this.tileSize * 0.66 * pulse;
+                drawImageContain(ctx, bomb, -bombSize / 2, -bombSize / 2, bombSize, bombSize);
+            } else if (piece.type === config.SPECIAL_TYPES.COLOR_BALL) {
+                const orb = ctx.createRadialGradient(-half * 0.25, -half * 0.28, 1, 0, 0, half * 0.82);
+                orb.addColorStop(0, '#FFF8C7');
+                orb.addColorStop(0.45, '#FFB5E8');
+                orb.addColorStop(1, '#7C5CE7');
+                ctx.fillStyle = orb;
+                ctx.beginPath();
+                ctx.arc(0, 0, half * 0.72 * pulse, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFFFFF';
+                typography.drawFit(ctx, '🐾', 0, 1, this.tileSize * 0.62, {
+                    size: Math.floor(this.tileSize * 0.42), minSize: 8, align: 'center'
+                });
+            } else {
+                const beam = assets.get('uiSpecialRowBeam');
+                ctx.save();
+                if (piece.type === config.SPECIAL_TYPES.V_ROCKET) ctx.rotate(Math.PI / 2);
+                const beamW = this.tileSize * 0.94 * pulse;
+                const beamH = this.tileSize * 0.36 * pulse;
+                if (beam && beam.width > 0) ctx.drawImage(beam, -beamW / 2, -beamH / 2, beamW, beamH);
+                ctx.restore();
+            }
+
+            if (!this.screen.reduceEffects) {
+                const sparkleAngle = Date.now() / 420 + piece.id;
+                ctx.fillStyle = '#FFF3B0';
+                for (let k = 0; k < 3; k++) {
+                    const angle = sparkleAngle + k * Math.PI * 2 / 3;
+                    ctx.beginPath();
+                    ctx.arc(Math.cos(angle) * half * 0.75, Math.sin(angle) * half * 0.75, 1.8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
 
             ctx.restore();
             return;
@@ -754,10 +902,9 @@ class BoardRenderer {
             ctx.fillStyle = grad;
             this.roundRect(-half, -half, half * 2, half * 2, 9);
             ctx.fill();
-            ctx.font = Math.floor(this.tileSize * 0.5) + 'px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(def.label, 0, 1);
+            typography.drawFit(ctx, def.label, 0, 1, this.tileSize * 0.8, {
+                size: Math.floor(this.tileSize * 0.5), minSize: 8, align: 'center'
+            });
         }
 
         ctx.restore();
@@ -786,8 +933,19 @@ class BoardRenderer {
             if (grid) {
                 const tool = this.selectedTool;
                 this.selectedTool = null;
-                this.core.useTool(tool, grid);
-                if (this.onToolUsed) this.onToolUsed(tool);
+                if (this.toolsCount[tool] <= 0) {
+                    AudioFX.invalid();
+                    return;
+                }
+                Promise.resolve(this.core.useTool(tool, grid)).then((success) => {
+                    if (success) {
+                        if (this.onToolUsed) this.onToolUsed(tool);
+                    } else {
+                        AudioFX.invalid();
+                    }
+                }).catch(function () {
+                    AudioFX.invalid();
+                });
             }
             return;
         }
@@ -838,8 +996,8 @@ class BoardRenderer {
 
     /** 屏幕坐标 → 格子坐标 */
     pointToGrid(x, y) {
-        if (x < this.boardX || x > this.boardX + this.boardW) return null;
-        if (y < this.boardY || y > this.boardY + this.boardH) return null;
+        if (x < this.boardX || x >= this.boardX + this.boardW) return null;
+        if (y < this.boardY || y >= this.boardY + this.boardH) return null;
         const column = Math.floor((x - this.boardX) / this.tileSize);
         const row = Math.floor((y - this.boardY) / this.tileSize);
         return { row: row, column: column };
@@ -861,6 +1019,13 @@ class BoardRenderer {
         ctx.quadraticCurveTo(x, y, x + r, y);
         ctx.closePath();
     }
+}
+
+function formatTimer(ms) {
+    const totalSeconds = Math.max(0, Math.ceil(Number(ms) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return (minutes < 10 ? '0' : '') + minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
 }
 
 /** 颜色变亮（用于棋子渐变高光） */

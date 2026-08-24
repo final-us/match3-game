@@ -4,6 +4,9 @@ THIRD-PARTY NOTICES
 This file is shipped in the match3-wechat main package. It records third-party
 material used by the project; it does not license the project as a whole.
 
+The CC0 notices below are retained for source traceability even though CC0
+does not require attribution.
+
 1. pixi-game-match3
 -------------------
 
@@ -73,3 +76,89 @@ commercial-compliance risk. The product owner chose to continue with Tencent's
 official dependency chain and not submit an external clarification request.
 These packages are used only by the cloud function and are not included in the
 client main package.
+
+3. PLAYFUL PIANO
+----------------
+
+Title: PLAYFUL PIANO
+Creator: Dylann Taylor
+Source: https://dylanntaylor.itch.io/playful-piano
+License: CC0 1.0 Universal (public-domain dedication)
+
+Adopted source files:
+
+- PlayfulPiano_Atmos_Loop.ogg
+- PlayfulPiano_JazzTrio_Loop.ogg
+
+The project converts the complete loops to mono AAC/M4A for
+res/audio/calm.m4a and res/audio/battle.m4a. CC0 applies only to this music and
+does not license the project as a whole.
+
+4. UI Sound Effects
+-------------------
+
+Title: UI Sound Effects (Button Clicks, User Feedback, Notifications)
+Publisher: Robin Lamb
+Source:
+https://opengameart.org/content/ui-sound-effects-button-clicks-user-feedback-notifications
+License: CC0 1.0 Universal (public-domain dedication)
+
+The project adopts nine click, chime, feedback, and notification OGG samples.
+The source page states that the recordings originate from the VCSL and VSCO 2
+CE public-domain sample libraries.
+
+5. Kenney Interface Sounds
+--------------------------
+
+Title: Interface Sounds 1.0
+Creator: Kenney
+Source: https://kenney.nl/assets/interface-sounds
+License: CC0 1.0 Universal (public-domain dedication)
+
+The project adopts four switch, drop, glass, and confirmation OGG samples.
+
+6. Kenney Impact Sounds
+-----------------------
+
+Title: Impact Sounds 1.0
+Creator: Kenney
+Source: https://kenney.nl/assets/impact-sounds
+License: CC0 1.0 Universal (public-domain dedication)
+
+The project adopts seven soft-impact, wood-impact, and glass-impact OGG
+samples.
+
+7. Kenney RPG Audio
+-------------------
+
+Title: RPG Audio 1.0
+Creator: Kenney
+Source: https://kenney.nl/assets/rpg-audio
+License: CC0 1.0 Universal (public-domain dedication)
+
+The project adopts three coin-handling and cloth OGG samples.
+
+8. Freesound special-piece recordings
+-------------------------------------
+
+The following adopted recordings are published under CC0 1.0 Universal:
+
+- Firework Single Rocket #1, Kinoton:
+  https://freesound.org/people/Kinoton/sounds/347163/
+- Short Explosion.wav, animationIsaac:
+  https://freesound.org/people/animationIsaac/sounds/207322/
+- magical sound effect, reasanka:
+  https://freesound.org/people/reasanka/sounds/429525/
+- Cliche Magic Spell Sound, qubodup:
+  https://freesound.org/people/qubodup/sounds/817466/
+
+The first three recordings provide the independent rocket, bomb, and color-ball
+one-shots. The fourth provides the single music-box cue used whenever one match
+payload reports two or more triggered special pieces. Exact adopted source
+files and SHA256 values are recorded in docs/design/sfx-acoustic-runtime-v8.md.
+
+The samples in sections 4-8 are cropped, faded, filtered, gain-adjusted,
+time-compressed where documented, layered, and
+concatenated offline into res/audio/sfx-acoustic.m4a. The game ships only that
+derived 22-cue AAC/M4A sprite, not the source archives. CC0 applies only to
+these sounds and does not license the project as a whole.

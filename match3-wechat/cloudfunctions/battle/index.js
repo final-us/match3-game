@@ -20,6 +20,13 @@ function genRoomId() {
 
 function now() { return Date.now(); }
 
+function createLimitDocId(openid) {
+    return logic.CREATE_LIMIT_DOCUMENT_PREFIX + crypto.createHash('sha256')
+        .update(String(openid))
+        .digest('hex')
+        .slice(0, 24);
+}
+
 function safeNickname(value) {
     if (typeof value !== 'string') return '玩家';
     const trimmed = value.trim().slice(0, 12);
@@ -33,7 +40,8 @@ function newPlayer(openid, nickname, at) {
         score: 0,
         ready: false,
         items: { ...CONFIG.INITIAL_ITEMS },
-        usedCount: { freeze: 0, disturb: 0 },
+        itemCooldownUntil: 0,
+        activeEffectUntil: 0,
         online: true,
         lastSeen: at
     };
@@ -71,18 +79,25 @@ function buildQueryResponse(room, openid, at) {
         myReady: me ? me.ready : false,
         myScore: me ? me.score : 0,
         myItems: me ? me.items : { freeze: 0, disturb: 0 },
+        myItemCooldownUntil: me ? Number(me.itemCooldownUntil) || 0 : 0,
+        myActiveEffectUntil: me ? Number(me.activeEffectUntil) || 0 : 0,
         opp: opponent ? {
             nickname: opponent.nickname,
             score: opponent.score,
             ready: opponent.ready,
+            configuring: !opponent.ready,
             online: opponentOnline
         } : null,
         effects: logic.effectsForPlayer(room.effects, openid),
+        casts: Array.isArray(room.casts) ? room.casts.filter(function (cast) {
+            return cast && cast.fromOpenid === openid;
+        }) : [],
         result: room.result && room.result[openid] ? room.result[openid] : null
     };
 }
 
 async function cleanupExpiredRooms(at) {
+    // 建房计数器也是带 createdAt 的控制文档；它们不匹配房间 ID，永远不会进入普通房间事务。
     const res = await rooms.where({
         createdAt: db.command.lt(at - CONFIG.ROOM_RETENTION_MS)
     }).remove();
@@ -92,19 +107,28 @@ async function cleanupExpiredRooms(at) {
 
 /** 创建房间。 */
 async function create(openid, event) {
-    const roomId = genRoomId();
     const at = now();
-    const room = {
-        _id: roomId,
-        status: 'waiting',
-        startTime: 0,
-        createdAt: at,
-        players: [newPlayer(openid, event.nickname, at)],
-        effects: [],
-        result: {}
-    };
-    await rooms.add({ data: room });
-    return { ok: true, roomId: roomId };
+    return db.runTransaction(async function (transaction) {
+        const limitRef = transaction.collection('battle_rooms').doc(createLimitDocId(openid));
+        const counter = await getRoom(limitRef);
+        const allowance = logic.consumeCreateRateLimit(counter, at, CONFIG.CREATE_RATE_LIMITS);
+        if (!allowance.ok) return { ok: false, err: logic.CREATE_RATE_LIMIT_MESSAGE };
+
+        const roomId = genRoomId();
+        const roomRef = transaction.collection('battle_rooms').doc(roomId);
+        const room = {
+            status: 'waiting',
+            startTime: 0,
+            createdAt: at,
+            players: [newPlayer(openid, event.nickname, at)],
+            effects: [],
+            casts: [],
+            result: {}
+        };
+        await limitRef.set({ data: Object.assign({ kind: 'create_rate_limit' }, allowance.next) });
+        await roomRef.set({ data: room });
+        return { ok: true, roomId: roomId };
+    });
 }
 
 async function join(openid, event) {
@@ -137,6 +161,11 @@ async function ready(openid, event) {
 
         const player = room.players.find(function (candidate) { return candidate.openid === openid; });
         if (!player) return { ok: false, err: '不在房间' };
+        if (!player.ready) {
+            const validation = logic.validateItemConfig(player.items, CONFIG);
+            if (!validation.ok) return validation;
+            player.items = validation.items;
+        }
         player.ready = !player.ready;
         player.online = true;
         player.lastSeen = at;
@@ -150,7 +179,26 @@ async function ready(openid, event) {
             update.startTime = at + CONFIG.READY_COUNTDOWN_MS;
         }
         await ref.update({ data: update });
-        return { ok: true };
+        return { ok: true, ready: player.ready, items: player.items };
+    });
+}
+
+async function configureItems(openid, event) {
+    const at = now();
+    const validation = logic.validateItemConfig(event.items, CONFIG);
+    if (!validation.ok) return validation;
+    return runRoomTransaction(event.roomId, async function (room, ref) {
+        if (!room) return { ok: false, err: '房间不存在' };
+        if (logic.isWaitingRoomExpired(room, at)) return { ok: false, err: '邀请已失效' };
+        if (room.status !== 'waiting') return { ok: false, err: '对局已开始' };
+        const player = room.players.find(function (candidate) { return candidate.openid === openid; });
+        if (!player) return { ok: false, err: '不在房间' };
+        if (player.ready) return { ok: false, err: '请先取消准备' };
+        player.items = validation.items;
+        player.online = true;
+        player.lastSeen = at;
+        await ref.update({ data: { players: room.players } });
+        return { ok: true, items: player.items };
     });
 }
 
@@ -175,38 +223,45 @@ async function syncScore(openid, event) {
 async function useItem(openid, event) {
     const at = now();
     const item = event.item;
-    if (item !== 'freeze' && item !== 'disturb') return { ok: false, err: '未知道具' };
+    if (CONFIG.ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
 
     return runRoomTransaction(event.roomId, async function (room, ref) {
         if (!room) return { ok: false, err: '房间不存在' };
-        if (room.status !== 'playing' || at < room.startTime) return { ok: false, err: '对局未开始' };
-        if (at >= room.startTime + CONFIG.BATTLE_DURATION_MS) return { ok: false, err: '对局已结束' };
-
         const player = room.players.find(function (candidate) { return candidate.openid === openid; });
         if (!player) return { ok: false, err: '不在房间' };
-        if (!player.items || player.items[item] <= 0) return { ok: false, err: '道具不足' };
-        if (!player.usedCount || player.usedCount[item] >= CONFIG.ITEM_LIMIT) {
-            return { ok: false, err: '已达本局上限' };
-        }
+        const validation = logic.validateItemUse(room, player, item, at, CONFIG);
+        if (!validation.ok) return validation;
         const opponent = room.players.find(function (candidate) { return candidate.openid !== openid; });
         if (!opponent) return { ok: false, err: '对手不存在' };
 
         player.items[item]--;
-        player.usedCount[item]++;
+        const duration = item === 'freeze' ? CONFIG.FREEZE_DURATION_MS : CONFIG.DISTURB_DURATION_MS;
+        player.itemCooldownUntil = at + CONFIG.ITEM_COOLDOWN_MS;
+        player.activeEffectUntil = at + duration;
         player.online = true;
         player.lastSeen = at;
         const effects = Array.isArray(room.effects) ? room.effects : [];
-        effects.push({
+        const effect = {
             id: 'e' + at + Math.floor(Math.random() * 1000),
             item: item,
-            duration: item === 'freeze' ? CONFIG.FREEZE_DURATION_MS : CONFIG.DISTURB_DURATION_MS,
+            duration: duration,
             fromOpenid: openid,
             toOpenid: opponent.openid,
-            at: at
-        });
+            at: at,
+            until: at + duration
+        };
+        effects.push(effect);
+        const casts = Array.isArray(room.casts) ? room.casts : [];
+        casts.push({ id: effect.id, item: item, fromOpenid: openid, at: at });
 
-        await ref.update({ data: { players: room.players, effects: effects } });
-        return { ok: true, items: player.items };
+        await ref.update({ data: { players: room.players, effects: effects, casts: casts } });
+        return {
+            ok: true,
+            items: player.items,
+            itemCooldownUntil: player.itemCooldownUntil,
+            activeEffectUntil: player.activeEffectUntil,
+            effect: effect
+        };
     });
 }
 
@@ -274,6 +329,7 @@ exports.main = async function (event) {
         switch (action) {
             case 'create': return await create(openid, input);
             case 'join': return await join(openid, input);
+            case 'configureItems': return await configureItems(openid, input);
             case 'ready': return await ready(openid, input);
             case 'syncScore': return await syncScore(openid, input);
             case 'useItem': return await useItem(openid, input);

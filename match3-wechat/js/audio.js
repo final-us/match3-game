@@ -1,35 +1,50 @@
 /**
- * 音频管理器：用 WebAudio 实时合成音乐与音效（零素材文件，不增加包体）
- * 背景音乐由低频计时器驱动；首次触摸通过 unlock() 解锁移动端音频。
+ * 音频管理器：本地循环 BGM 与原声音效精灵优先，失败时回退 WebAudio 合成。
+ * 首次触摸由 unlock() 解锁；音乐和音效保持独立开关。
  */
 
+const SFX_SPRITE = require('./sfx-acoustic-map');
+
 let ctx = null;
+let sfxMaster = null;
+let sfxMasterCtx = null;
+let activeSfxVoices = 0;
+let sfxSpriteBuffer = null;
+let sfxSpriteLoading = false;
+let sfxSpriteUnavailable = false;
+let clickVariant = 0;
+let noiseSeed = 2463534242;
 let musicEnabled = true;
 let sfxEnabled = true;
 let scene = 'calm';
 let musicTimer = null;
 let musicStep = 0;
+let localMusic = null;
+let localMusicScene = '';
+let localMusicPlaying = false;
+let localMusicApiUnavailable = false;
+let localMusicDuckTimer = null;
+let unlocked = false;
 let hidden = false;
 let interrupted = false;
 let lifecycleStore = null;
 const musicSources = [];
+const localMusicFailed = { calm: false, battle: false };
 
 const AUDIO_KEY = 'match3_audio_enabled_v1';
 const MUSIC_KEY = 'match3_music_enabled_v1';
 const SFX_KEY = 'match3_sfx_enabled_v1';
+const SFX_MASTER_VOLUME = 0.48;
+const MAX_SFX_VOICES = 12;
+const LOCAL_MUSIC_VOLUME = 0.52;
+const OUTCOME_DUCK_MS = 600;
+const BGM_FILES = {
+    calm: 'res/audio/calm.m4a',
+    battle: 'res/audio/battle.m4a'
+};
 const MUSIC_SCENES = {
-    calm: {
-        interval: 1450,
-        duration: 0.42,
-        volume: 0.045,
-        notes: [523, 659, 784, 659, 587, 659, 523, 392]
-    },
-    battle: {
-        interval: 560,
-        duration: 0.24,
-        volume: 0.055,
-        notes: [392, 523, 659, 784, 659, 523, 440, 659]
-    }
+    calm: { interval: 1450, duration: 0.42, volume: 0.045, notes: [523, 659, 784, 659, 587, 659, 523, 392] },
+    battle: { interval: 560, duration: 0.24, volume: 0.055, notes: [392, 523, 659, 784, 659, 523, 440, 659] }
 };
 
 function getStore() {
@@ -38,18 +53,12 @@ function getStore() {
     return null;
 }
 
-/** 获取 WebAudio 上下文（懒创建） */
 function ensureCtx() {
     if (!ctx || ctx.state === 'closed') {
         try {
-            if (typeof wx !== 'undefined' && wx.createWebAudioContext) {
-                ctx = wx.createWebAudioContext();
-            } else if (typeof AudioContext !== 'undefined') {
-                ctx = new AudioContext();
-            }
-        } catch (e) {
-            ctx = null;
-        }
+            if (typeof wx !== 'undefined' && wx.createWebAudioContext) ctx = wx.createWebAudioContext();
+            else if (typeof AudioContext !== 'undefined') ctx = new AudioContext();
+        } catch (e) { ctx = null; }
     }
     if (ctx && ctx.resume && ctx.state === 'suspended') {
         try {
@@ -60,8 +69,68 @@ function ensureCtx() {
     return ctx;
 }
 
-function ensureSfxCtx() {
-    return sfxEnabled ? ensureCtx() : null;
+function ensureSfxOutput() {
+    if (!sfxEnabled) return null;
+    const c = ensureCtx();
+    if (!c) return null;
+    if (!sfxMaster || sfxMasterCtx !== c) {
+        try {
+            sfxMaster = c.createGain();
+            sfxMaster.gain.setValueAtTime(SFX_MASTER_VOLUME, c.currentTime);
+            sfxMaster.connect(c.destination);
+            sfxMasterCtx = c;
+        } catch (e) {
+            sfxMaster = null;
+            sfxMasterCtx = null;
+        }
+    }
+    return sfxMaster;
+}
+
+function markSfxSpriteUnavailable() {
+    sfxSpriteLoading = false;
+    sfxSpriteUnavailable = true;
+}
+
+function loadSfxSprite() {
+    if (!sfxEnabled || sfxSpriteBuffer || sfxSpriteLoading || sfxSpriteUnavailable) return;
+    const store = getStore();
+    const c = ensureCtx();
+    if (!store || typeof store.getFileSystemManager !== 'function' || !c || typeof c.decodeAudioData !== 'function') {
+        markSfxSpriteUnavailable();
+        return;
+    }
+    let fileSystem = null;
+    try { fileSystem = store.getFileSystemManager(); } catch (e) {}
+    if (!fileSystem || typeof fileSystem.readFile !== 'function') {
+        markSfxSpriteUnavailable();
+        return;
+    }
+    sfxSpriteLoading = true;
+    try {
+        fileSystem.readFile({
+            filePath: SFX_SPRITE.file,
+            success: function (result) {
+                let settled = false;
+                function accept(buffer) {
+                    if (settled) return;
+                    settled = true;
+                    sfxSpriteLoading = false;
+                    if (buffer) sfxSpriteBuffer = buffer; else markSfxSpriteUnavailable();
+                }
+                function reject() {
+                    if (settled) return;
+                    settled = true;
+                    markSfxSpriteUnavailable();
+                }
+                try {
+                    const pending = c.decodeAudioData(result.data, accept, reject);
+                    if (pending && typeof pending.then === 'function') pending.then(accept).catch(reject);
+                } catch (e) { reject(); }
+            },
+            fail: markSfxSpriteUnavailable
+        });
+    } catch (e) { markSfxSpriteUnavailable(); }
 }
 
 function readBool(store, key) {
@@ -69,9 +138,7 @@ function readBool(store, key) {
     try {
         const value = store.getStorageSync(key);
         return typeof value === 'boolean' ? value : undefined;
-    } catch (e) {
-        return undefined;
-    }
+    } catch (e) { return undefined; }
 }
 
 function writeBool(store, key, value) {
@@ -85,8 +152,6 @@ function loadSettings(store) {
     const savedSfx = readBool(store, SFX_KEY);
     musicEnabled = savedMusic == null ? (oldValue == null ? true : oldValue) : savedMusic;
     sfxEnabled = savedSfx == null ? (oldValue == null ? true : oldValue) : savedSfx;
-
-    // 旧总开关为关闭时，迁移出的独立开关也必须保持关闭。
     if (oldValue != null) {
         if (savedMusic == null) writeBool(store, MUSIC_KEY, musicEnabled);
         if (savedSfx == null) writeBool(store, SFX_KEY, sfxEnabled);
@@ -94,10 +159,10 @@ function loadSettings(store) {
 }
 
 function canPlayMusic() {
-    return musicEnabled && !hidden && !interrupted;
+    return unlocked && musicEnabled && !hidden && !interrupted;
 }
 
-function stopMusic() {
+function stopProceduralMusic() {
     if (musicTimer !== null) {
         clearTimeout(musicTimer);
         musicTimer = null;
@@ -106,6 +171,40 @@ function stopMusic() {
         try { musicSources[i].stop(); } catch (e) {}
     }
     musicSources.length = 0;
+}
+
+function restoreLocalMusicVolume() {
+    if (localMusicDuckTimer !== null) {
+        clearTimeout(localMusicDuckTimer);
+        localMusicDuckTimer = null;
+    }
+    if (localMusic) {
+        try { localMusic.volume = LOCAL_MUSIC_VOLUME; } catch (e) {}
+    }
+}
+
+function pauseLocalMusic() {
+    if (!localMusic || !localMusicPlaying) return;
+    restoreLocalMusicVolume();
+    try { localMusic.pause(); } catch (e) {}
+    localMusicPlaying = false;
+}
+
+function stopMusic() {
+    stopProceduralMusic();
+    pauseLocalMusic();
+}
+
+function duckLocalMusic() {
+    if (!sfxEnabled || !canPlayMusic() || !localMusic || !localMusicPlaying) return;
+    try { localMusic.volume = LOCAL_MUSIC_VOLUME * 0.85; } catch (e) { return; }
+    if (localMusicDuckTimer !== null) clearTimeout(localMusicDuckTimer);
+    localMusicDuckTimer = setTimeout(function () {
+        localMusicDuckTimer = null;
+        if (localMusic) {
+            try { localMusic.volume = LOCAL_MUSIC_VOLUME; } catch (e) {}
+        }
+    }, OUTCOME_DUCK_MS);
 }
 
 function playMusicNote(freq, duration, volume) {
@@ -132,303 +231,388 @@ function playMusicNote(freq, duration, volume) {
     } catch (e) {}
 }
 
-function scheduleMusic() {
+function scheduleProceduralMusic() {
     musicTimer = null;
-    if (!canPlayMusic()) return;
+    if (!canPlayMusic() || localMusicPlaying) return;
     const config = MUSIC_SCENES[scene];
     playMusicNote(config.notes[musicStep % config.notes.length], config.duration, config.volume);
     musicStep++;
-    if (canPlayMusic()) musicTimer = setTimeout(scheduleMusic, config.interval);
+    if (canPlayMusic() && !localMusicPlaying) musicTimer = setTimeout(scheduleProceduralMusic, config.interval);
 }
 
-function startMusic() {
-    if (!canPlayMusic() || musicTimer !== null) return;
-    if (!ensureCtx()) return;
-    scheduleMusic();
+function startProceduralMusic() {
+    if (!canPlayMusic() || musicTimer !== null || localMusicPlaying || !ensureCtx()) return;
+    scheduleProceduralMusic();
+}
+
+function markLocalMusicFailed(failedScene) {
+    localMusicFailed[failedScene || scene] = true;
+    pauseLocalMusic();
+    if (canPlayMusic()) startProceduralMusic();
+}
+
+function ensureLocalMusic() {
+    if (localMusic || localMusicApiUnavailable) return localMusic;
+    const store = getStore();
+    if (!store || typeof store.createInnerAudioContext !== 'function') {
+        localMusicApiUnavailable = true;
+        return null;
+    }
+    try {
+        localMusic = store.createInnerAudioContext();
+        localMusic.loop = true;
+        localMusic.autoplay = false;
+        localMusic.volume = LOCAL_MUSIC_VOLUME;
+        localMusic.obeyMuteSwitch = true;
+        if (localMusic.onError) localMusic.onError(function () { markLocalMusicFailed(localMusicScene); });
+    } catch (e) {
+        localMusic = null;
+        localMusicApiUnavailable = true;
+    }
+    return localMusic;
+}
+
+function startLocalMusic() {
+    if (!canPlayMusic() || localMusicFailed[scene]) return false;
+    const player = ensureLocalMusic();
+    if (!player) return false;
+    const nextScene = scene;
+    try {
+        if (localMusicPlaying && localMusicScene === nextScene) return true;
+        if (localMusicScene !== nextScene) {
+            pauseLocalMusic();
+            localMusicScene = nextScene;
+            player.src = BGM_FILES[nextScene];
+        }
+        stopProceduralMusic();
+        const result = player.play();
+        localMusicPlaying = true;
+        if (result && result.catch) result.catch(function () { markLocalMusicFailed(nextScene); });
+        return true;
+    } catch (e) {
+        markLocalMusicFailed(nextScene);
+        return false;
+    }
 }
 
 function resumeMusic() {
-    if (canPlayMusic()) startMusic();
+    if (!canPlayMusic()) return;
+    if (!startLocalMusic()) startProceduralMusic();
 }
 
 function registerLifecycleListeners(store) {
     if (!store || lifecycleStore === store) return;
     lifecycleStore = store;
-    if (store.onHide) {
-        store.onHide(function () {
-            hidden = true;
-            stopMusic();
-        });
+    if (store.onHide) store.onHide(function () { hidden = true; stopMusic(); });
+    if (store.onShow) store.onShow(function () { hidden = false; resumeMusic(); });
+    if (store.onAudioInterruptionBegin) store.onAudioInterruptionBegin(function () { interrupted = true; stopMusic(); });
+    if (store.onAudioInterruptionEnd) store.onAudioInterruptionEnd(function () { interrupted = false; resumeMusic(); });
+}
+
+function claimVoice(node) {
+    if (activeSfxVoices >= MAX_SFX_VOICES) return false;
+    activeSfxVoices++;
+    node.onended = function () { activeSfxVoices = Math.max(0, activeSfxVoices - 1); };
+    return true;
+}
+
+function playSprite(name, gain, delay) {
+    if (!sfxEnabled) return true;
+    const cue = SFX_SPRITE.cues[name];
+    if (!cue) return false;
+    if (!sfxSpriteBuffer) {
+        loadSfxSprite();
+        return false;
     }
-    if (store.onShow) {
-        store.onShow(function () {
-            hidden = false;
-            resumeMusic();
-        });
-    }
-    if (store.onAudioInterruptionBegin) {
-        store.onAudioInterruptionBegin(function () {
-            interrupted = true;
-            stopMusic();
-        });
-    }
-    if (store.onAudioInterruptionEnd) {
-        store.onAudioInterruptionEnd(function () {
-            interrupted = false;
-            resumeMusic();
-        });
+    const output = ensureSfxOutput();
+    const c = ctx;
+    if (!output || !c || typeof c.createBufferSource !== 'function') return false;
+    gain = gain == null ? 1 : gain;
+    const startTime = c.currentTime + (delay || 0);
+    let claimed = false;
+    try {
+        const source = c.createBufferSource();
+        if (!claimVoice(source)) return true;
+        claimed = true;
+        source.buffer = sfxSpriteBuffer;
+        if (gain !== 1) {
+            const localGain = c.createGain();
+            localGain.gain.setValueAtTime(gain, startTime);
+            source.connect(localGain);
+            localGain.connect(output);
+        } else {
+            source.connect(output);
+        }
+        source.start(startTime, cue.offset, cue.duration);
+        return true;
+    } catch (e) {
+        if (claimed) activeSfxVoices = Math.max(0, activeSfxVoices - 1);
+        return false;
     }
 }
 
-/**
- * 播放一个合成音
- * @param {number} freq 起始频率 Hz
- * @param {number} duration 时长 秒
- * @param {string} type 波形: sine/square/triangle/sawtooth
- * @param {number} volume 音量 0-1
- * @param {number} delay 延迟 秒
- * @param {number} freqEnd 结束频率（滑音用）
- */
 function tone(freq, duration, type, volume, delay, freqEnd) {
-    const c = ensureSfxCtx();
-    if (!c) return;
-    resumeMusic();
+    const output = ensureSfxOutput();
+    const c = ctx;
+    if (!output || !c) return;
+    let claimed = false;
     try {
-        const t0 = c.currentTime + (delay || 0);
         const osc = c.createOscillator();
+        if (!claimVoice(osc)) return;
+        claimed = true;
+        const t0 = c.currentTime + (delay || 0);
         const gain = c.createGain();
-
         osc.type = type || 'sine';
         osc.frequency.setValueAtTime(freq, t0);
-        if (freqEnd) {
-            osc.frequency.exponentialRampToValueAtTime(freqEnd, t0 + duration);
-        }
-
-        gain.gain.setValueAtTime(volume || 0.25, t0);
-        gain.gain.linearRampToValueAtTime(0.001, t0 + duration);
-
+        if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, t0 + duration);
+        gain.gain.setValueAtTime(volume == null ? 0.20 : volume, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
         osc.connect(gain);
-        gain.connect(c.destination);
+        gain.connect(output);
         osc.start(t0);
-        osc.stop(t0 + duration + 0.05);
-    } catch (e) {}
+        osc.stop(t0 + duration + 0.03);
+    } catch (e) {
+        if (claimed) activeSfxVoices = Math.max(0, activeSfxVoices - 1);
+    }
 }
 
-/** 合成一段"噪声"（用于更丰富的声音质感） */
-function noise(duration, volume, delay) {
-    const c = ensureSfxCtx();
-    if (!c) return;
+function noise(duration, volume, delay, filterFrequency) {
+    const output = ensureSfxOutput();
+    const c = ctx;
+    if (!output || !c || !c.createBuffer || !c.createBufferSource) return;
+    let claimed = false;
     try {
-        const t0 = c.currentTime + (delay || 0);
-        const bufferSize = Math.floor(c.sampleRate * duration);
-        const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+        const count = Math.max(1, Math.floor(c.sampleRate * duration));
+        const buffer = c.createBuffer(1, count, c.sampleRate);
         const data = buffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+        for (let i = 0; i < count; i++) {
+            noiseSeed ^= noiseSeed << 13;
+            noiseSeed ^= noiseSeed >>> 17;
+            noiseSeed ^= noiseSeed << 5;
+            data[i] = ((noiseSeed >>> 0) / 4294967295 * 2 - 1) * (1 - i / count);
         }
-        const src = c.createBufferSource();
-        src.buffer = buffer;
+        const source = c.createBufferSource();
+        if (!claimVoice(source)) return;
+        claimed = true;
+        source.buffer = buffer;
         const gain = c.createGain();
-        gain.gain.setValueAtTime(volume || 0.2, t0);
-        gain.gain.linearRampToValueAtTime(0.001, t0 + duration);
-        src.connect(gain);
-        gain.connect(c.destination);
-        src.start(t0);
-    } catch (e) {}
+        const t0 = c.currentTime + (delay || 0);
+        gain.gain.setValueAtTime(volume == null ? 0.10 : volume, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
+        if (filterFrequency && c.createBiquadFilter) {
+            const filter = c.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(filterFrequency, t0);
+            if (filter.Q) filter.Q.value = 0.8;
+            source.connect(filter);
+            filter.connect(gain);
+        } else {
+            source.connect(gain);
+        }
+        gain.connect(output);
+        source.start(t0);
+    } catch (e) {
+        if (claimed) activeSfxVoices = Math.max(0, activeSfxVoices - 1);
+    }
 }
 
-/** 冰块碎裂脉冲：短促高频带通噪声（"咔嚓"感） */
-function iceCrack(delay, freq, volume, dur) {
-    const c = ensureSfxCtx();
-    if (!c) return;
-    try {
-        const t0 = c.currentTime + (delay || 0);
-        const d = dur || 0.08;
-        const bufferSize = Math.floor(c.sampleRate * d);
-        const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-        const data = buffer.getChannelData(0);
-        // 快速随机抖动 + 快速衰减 = 碎裂感
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.2);
-        }
-        const src = c.createBufferSource();
-        src.buffer = buffer;
-        // 带通滤波：突出中高频"咔嚓"质感
-        const filter = c.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(freq || 3500, t0);
-        filter.Q.value = 1.0;
-        const gain = c.createGain();
-        gain.gain.setValueAtTime(volume || 0.2, t0);
-        gain.gain.linearRampToValueAtTime(0.001, t0 + d);
-        src.connect(filter);
-        filter.connect(gain);
-        gain.connect(c.destination);
-        src.start(t0);
-    } catch (e) {}
+function specialKind(type) {
+    if (type === 101 || type === 'horizontal' || type === 'hRocket') return 'horizontal';
+    if (type === 102 || type === 'vertical' || type === 'vRocket') return 'vertical';
+    if (type === 103 || type === 'bomb') return 'bomb';
+    if (type === 104 || type === 'color' || type === 'colorBall') return 'color';
+    return '';
 }
 
-/** 水晶钟声：明亮高频 + 失谐泛音叠加 + 快速指数衰减（"叮~"的清脆感） */
-function crystalTone(freq, duration, volume, delay) {
-    const c = ensureSfxCtx();
-    if (!c) return;
-    try {
-        const t0 = c.currentTime + (delay || 0);
-        const d = duration || 0.16;
+function playSpecial(type, triggered) {
+    const kind = specialKind(type);
+    const sprite = kind === 'horizontal' || kind === 'vertical' ? 'rocket' : kind;
+    if (sprite && playSprite(sprite)) return;
+    const lift = triggered ? 1.08 : 1;
+    if (kind === 'horizontal') {
+        tone(560 * lift, 0.15, 'triangle', 0.14, 0, 980 * lift);
+        tone(840 * lift, 0.12, 'sine', 0.07, 0.045, 1280 * lift);
+    } else if (kind === 'vertical') {
+        tone(690 * lift, 0.17, 'triangle', 0.13, 0, 1320 * lift);
+        tone(1040 * lift, 0.10, 'sine', 0.06, 0.06, 760 * lift);
+    } else if (kind === 'bomb') {
+        tone(150, 0.18, 'sine', 0.18, 0, 72);
+        noise(0.11, 0.10, 0.015, 720);
+    } else if (kind === 'color') {
+        const notes = [659, 784, 1047, 1319];
+        for (let i = 0; i < notes.length; i++) tone(notes[i] * lift, 0.13, 'sine', 0.09, i * 0.045);
+    }
+}
 
-        // 基频 + 两个轻微失谐的泛音（2.01x / 3.02x）→ 水晶"闪亮"质感
-        const freqs = [freq, freq * 2.01, freq * 3.02];
-        const oscs = [];
-        for (let i = 0; i < freqs.length; i++) {
-            const o = c.createOscillator();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(freqs[i], t0);
-            oscs.push(o);
-        }
+function playObstacle(kind) {
+    if (playSprite(kind)) return;
+    if (kind === 'jelly') {
+        tone(260, 0.10, 'sine', 0.11, 0, 190);
+        tone(390, 0.08, 'triangle', 0.06, 0.035, 320);
+    } else if (kind === 'ice') {
+        noise(0.075, 0.09, 0, 3300);
+        tone(1320, 0.09, 'sine', 0.07, 0.015, 1850);
+    }
+}
 
-        const gain = c.createGain();
-        gain.gain.setValueAtTime(volume || 0.2, t0);
-        gain.gain.exponentialRampToValueAtTime(0.001, t0 + d);
+function playTool(type) {
+    if (playSprite(type === 'color' ? 'color' : type)) return;
+    if (type === 'hammer') {
+        tone(210, 0.075, 'triangle', 0.16, 0, 135);
+        tone(620, 0.055, 'sine', 0.05, 0.018, 470);
+    } else if (type === 'bomb') playSpecial('bomb', true);
+    else if (type === 'color') playSpecial('color', true);
+}
 
-        for (let i = 0; i < oscs.length; i++) {
-            oscs[i].connect(gain);
-            oscs[i].start(t0);
-            oscs[i].stop(t0 + d + 0.05);
-        }
-        gain.connect(c.destination);
-    } catch (e) {}
+function playPvp(item, received) {
+    const sprite = item === 'freeze'
+        ? (received ? 'freezeHit' : 'freezeCast')
+        : (item === 'disturb' ? (received ? 'disturbHit' : 'disturbCast') : '');
+    if (sprite && playSprite(sprite)) return;
+    if (item === 'freeze') {
+        tone(received ? 1180 : 760, 0.18, 'sine', 0.12, 0, received ? 520 : 1480);
+        if (received) noise(0.07, 0.07, 0.025, 3100);
+    } else if (item === 'disturb') {
+        tone(received ? 240 : 330, 0.20, 'triangle', 0.12, 0, received ? 145 : 520);
+        tone(received ? 310 : 440, 0.16, 'sine', 0.06, 0.045, received ? 190 : 620);
+    }
+}
+
+function playWinFallback() {
+    const notes = [523, 659, 784, 1047];
+    for (let i = 0; i < notes.length; i++) tone(notes[i], 0.20, 'sine', 0.16, i * 0.12);
+}
+
+function playLoseFallback() {
+    const notes = [392, 330, 262, 196];
+    for (let i = 0; i < notes.length; i++) tone(notes[i], 0.22, 'sine', 0.13, i * 0.14);
 }
 
 const AudioFX = {
-    /** 初始化（建议在游戏启动时调用一次） */
     init: function () {
         const store = getStore();
         loadSettings(store);
         registerLifecycleListeners(store);
-        if (musicEnabled || sfxEnabled) ensureCtx();
+        if (sfxEnabled) { ensureCtx(); loadSfxSprite(); }
     },
 
     setMusicEnabled: function (value) {
         musicEnabled = !!value;
-        const store = getStore();
-        writeBool(store, MUSIC_KEY, musicEnabled);
+        writeBool(getStore(), MUSIC_KEY, musicEnabled);
         if (musicEnabled) resumeMusic(); else stopMusic();
     },
-
     isMusicEnabled: function () { return musicEnabled; },
 
     setSfxEnabled: function (value) {
         sfxEnabled = !!value;
         writeBool(getStore(), SFX_KEY, sfxEnabled);
-        if (sfxEnabled) ensureCtx();
+        if (sfxEnabled) { ensureSfxOutput(); loadSfxSprite(); }
     },
-
     isSfxEnabled: function () { return sfxEnabled; },
 
-    /** 在用户触摸回调内调用，确保只开音乐、关闭音效时也能解锁 WebAudio。 */
     unlock: function () {
-        if (musicEnabled || sfxEnabled) ensureCtx();
+        unlocked = true;
+        if (sfxEnabled) { ensureSfxOutput(); loadSfxSprite(); }
         resumeMusic();
     },
 
-    // 兼容旧总开关 API：只映射到音效开关。
     setEnabled: function (value) { this.setSfxEnabled(value); },
     isEnabled: function () { return sfxEnabled; },
 
     setScene: function (value) {
         const next = value === 'battle' ? 'battle' : 'calm';
         if (scene !== next) {
+            stopMusic();
             scene = next;
             musicStep = 0;
-            stopMusic();
         }
         resumeMusic();
     },
-
     getScene: function () { return scene; },
 
-    /** 交换棋子：短促"嗖"声（上滑音） */
     swap: function () {
-        tone(500, 0.09, 'triangle', 0.14, 0, 900);
+        if (playSprite('swap')) return;
+        tone(430, 0.10, 'sine', 0.12, 0, 690);
+        tone(620, 0.07, 'triangle', 0.05, 0.025, 790);
     },
 
-    /** 无效交换（撞墙）：低沉"咚、咚"两下 */
     invalid: function () {
-        tone(200, 0.1, 'square', 0.1, 0, 130);
-        tone(160, 0.09, 'square', 0.09, 0.1, 110);
+        if (playSprite('invalid')) return;
+        tone(205, 0.10, 'sine', 0.13, 0, 145);
+        noise(0.045, 0.045, 0.01, 650);
     },
 
-    /** 消除：活泼可爱的五声音阶琶音，连消越高音符越多、音阶越高（当前选定版） */
-    match: function (combo) {
-        const c = Math.min(combo || 1, 6);
-        // C 大调五声音阶（C D E G A），可爱风格
-        const scale = [523, 587, 659, 784, 880];
-        const octave = Math.floor((c - 1) / 3);       // 每 3 连消升一个八度
-        const startIdx = (c - 1) % 3;
-        const noteCount = Math.min(2 + Math.floor((c - 1) / 2), 4); // 连消越高音符越多
-
-        for (let i = 0; i < noteCount; i++) {
-            const idx = Math.min(startIdx + i, scale.length - 1);
-            const f = scale[idx] * Math.pow(2, octave);
-            const t = i * 0.075;
-            tone(f, 0.1, 'triangle', 0.2, t);   // 主音（triangle 比 sine 更亮）
-            tone(f * 2, 0.07, 'sine', 0.06, t); // 高八度泛音（层次感）
+    /** data 可为旧版 numeric combo，也可为完整 onMatch payload。 */
+    match: function (data) {
+        const payload = typeof data === 'number' ? { combo: data } : (data || {});
+        const triggered = payload.triggeredSpecials || [];
+        if (triggered.length >= 2) {
+            if (!playSprite('specialCombo')) tone(784, 0.14, 'sine', 0.11);
+            return;
+        }
+        const combo = Math.max(1, Math.min(Number(payload.combo) || 1, 6));
+        const sampled = combo === 1 ? playSprite('clear') : playSprite('combo', 0.80 + combo * 0.06);
+        if (sampled && combo > 1) {
+            for (let layer = 1; layer < combo; layer++) playSprite('clear', 0.08, layer * 0.055);
+        } else if (!sampled) {
+            const scale = [523, 587, 659, 784, 880];
+            const noteCount = Math.min(2 + Math.floor((combo - 1) / 2), 4);
+            const octave = combo >= 4 ? 2 : 1;
+            for (let i = 0; i < noteCount; i++) {
+                const frequency = scale[Math.min(i + (combo - 1) % 3, scale.length - 1)] * octave;
+                tone(frequency, 0.10, 'triangle', 0.12, i * 0.065);
+                tone(frequency * 2, 0.065, 'sine', 0.035, i * 0.065);
+            }
         }
 
-        // 上滑尾音（灵动收尾）
-        const tailIdx = Math.min(startIdx + noteCount, scale.length - 1);
-        const tailF = scale[tailIdx] * Math.pow(2, octave);
-        tone(tailF, 0.14, 'triangle', 0.14, noteCount * 0.075, tailF * 1.8);
-    },
-
-    // 备用：冰块碎裂版 / 水晶碰撞版（换回时把 match 换成对应实现，iceCrack/crystalTone 函数都在下方保留）
-    matchIce: function (combo) {
-        const c = Math.min(combo || 1, 5);
-        const pulseCount = Math.min(1 + Math.floor((c + 1) / 2), 4);
-        const baseFreq = 3000 + c * 200;
-        for (let i = 0; i < pulseCount; i++) {
-            iceCrack(i * 0.022, baseFreq + Math.random() * 800, 0.18 - i * 0.03, 0.08);
+        const generated = payload.generated || [];
+        const seenGenerated = {};
+        const seenTriggered = {};
+        for (let i = 0; i < generated.length && i < 8; i++) {
+            const type = generated[i].type;
+            if (!seenGenerated[type]) { seenGenerated[type] = true; playSpecial(type, false); }
         }
-        tone(baseFreq * 0.9, 0.04, 'square', 0.04, pulseCount * 0.022, baseFreq * 0.6);
-    },
-
-    matchCrystal: function (combo) {
-        const c = Math.min(combo || 1, 6);
-        const base = 1100 + Math.min(c, 4) * 130;
-        const noteCount = Math.min(1 + Math.floor((c - 1) / 2), 4);
-        for (let i = 0; i < noteCount; i++) {
-            const f = base * Math.pow(1.12, i);
-            const t = i * 0.07;
-            noise(0.015, 0.03, t);
-            crystalTone(f, 0.16, 0.2, t);
+        for (let i = 0; i < triggered.length && i < 12; i++) {
+            const type = triggered[i].type;
+            if (!seenTriggered[type]) { seenTriggered[type] = true; playSpecial(type, true); }
         }
-        crystalTone(base * Math.pow(1.12, noteCount) * 1.25, 0.22, 0.12, noteCount * 0.07);
+        if (payload.jellyHits && payload.jellyHits.length) playObstacle('jelly');
+        if (payload.iceHits && payload.iceHits.length) playObstacle('ice');
     },
 
-    /** 新棋子掉落：轻微"啵"声 */
+    matchIce: function (combo) { this.match(combo); playObstacle('ice'); },
+    matchCrystal: function (combo) { this.match(combo); playObstacle('ice'); },
+    specialGenerated: function (type) { playSpecial(type, false); },
+    specialTriggered: function (type) { playSpecial(type, true); },
+    obstacleHit: function (kind) { playObstacle(kind); },
+    tool: function (type) { playTool(type); },
+    pvpCast: function (item) { playPvp(item, false); },
+    pvpHit: function (item) { playPvp(item, true); },
+
     drop: function () {
-        tone(320, 0.05, 'triangle', 0.08, 0, 200);
+        if (!playSprite('drop')) tone(310, 0.05, 'triangle', 0.055, 0, 230);
     },
 
-    /** 胜利：上行琶音 */
     win: function () {
-        const notes = [523, 659, 784, 1047];
-        for (let i = 0; i < notes.length; i++) {
-            tone(notes[i], 0.2, 'sine', 0.22, i * 0.12);
-        }
+        if (!playSprite('win')) playWinFallback();
+        duckLocalMusic();
     },
 
-    /** 失败：下行音 */
     lose: function () {
-        const notes = [392, 330, 262, 196];
-        for (let i = 0; i < notes.length; i++) {
-            tone(notes[i], 0.22, 'sine', 0.18, i * 0.14);
-        }
+        if (!playSprite('lose')) playLoseFallback();
+        duckLocalMusic();
     },
 
-    /** 按钮点击：轻"滴" */
+    reward: function () {
+        if (!playSprite('purchase')) playWinFallback();
+    },
+
     click: function () {
-        tone(900, 0.06, 'triangle', 0.16, 0);
+        const sprite = 'click' + (clickVariant + 1);
+        clickVariant = (clickVariant + 1) % 3;
+        if (playSprite(sprite)) return;
+        tone(520, 0.055, 'triangle', 0.11, 0, 390);
+        tone(1040, 0.075, 'sine', 0.055, 0.025, 920);
     }
 };
 

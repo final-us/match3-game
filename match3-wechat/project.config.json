@@ -60,6 +60,10 @@
         "value": "tools"
       },
       {
+        "type": "folder",
+        "value": "levels"
+      },
+      {
         "type": "file",
         "value": "res/piece1-v2.png"
       },
@@ -78,6 +82,14 @@
       {
         "type": "file",
         "value": "res/piece5-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/game-icon-144.png"
+      },
+      {
+        "type": "file",
+        "value": "res/game-icon-source.png"
       },
       {
         "type": "file",

@@ -4,16 +4,16 @@ module.exports = {
     name: '小试牛刀',
     rows: 8,
     columns: 8,
-    moveCount: 22,
+    timeLimitSec: 180,
+    moveCount: 28,
     // 目标：清完所有果冻（自动按 underlays 层数总和计算，target 仅用于显示）
     goals: [
-        { type: 'jelly', target: 12 }
+        { type: 'jelly', target: 6 }
     ],
     // 果冻：'行:列' -> 层数（当前统一 1 层，消除即消失）
     underlays: {
-        '2:2': 1, '2:3': 1, '2:4': 1, '2:5': 1,
         '3:3': 1, '3:4': 1,
         '4:3': 1, '4:4': 1,
-        '5:2': 1, '5:3': 1, '5:4': 1, '5:5': 1
+        '5:3': 1, '5:4': 1
     }
 };

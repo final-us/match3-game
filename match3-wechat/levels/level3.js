@@ -4,20 +4,15 @@ module.exports = {
     name: '渐入佳境',
     rows: 8,
     columns: 8,
-    moveCount: 22,
-    // 双目标：清果冻 + 达分数
+    timeLimitSec: 180,
+    moveCount: 28,
+    // 目标：清完所有果冻
     goals: [
-        { type: 'jelly', target: 8 },
-        { type: 'score', target: 6000 }
+        { type: 'jelly', target: 8 }
     ],
     // 果冻层（统一 1 层，消除即消失）
     underlays: {
         '3:3': 1, '3:4': 1, '4:3': 1, '4:4': 1,
         '2:3': 1, '2:4': 1, '5:3': 1, '5:4': 1
-    },
-    // 冰块：'行:列' -> 1（棋子被冻住不能移动，只能被相邻消除波及，消除时冰碎棋消）
-    obstacles: {
-        '2:2': 1, '2:5': 1,
-        '5:2': 1, '5:5': 1
     }
 };

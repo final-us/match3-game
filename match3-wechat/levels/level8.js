@@ -4,7 +4,8 @@ module.exports = {
     "name": "冰镇果冻",
     "rows": 8,
     "columns": 8,
-    "moveCount": 20,
+    "timeLimitSec": 165,
+    "moveCount": 26,
     "goals": [
         {
             "type": "jelly",
@@ -12,7 +13,7 @@ module.exports = {
         },
         {
             "type": "score",
-            "target": 4000
+            "target": 2500
         }
     ],
     "underlays": {
@@ -27,8 +28,6 @@ module.exports = {
     },
     "obstacles": {
         "2:2": 1,
-        "2:5": 1,
-        "5:2": 1,
         "5:5": 1
     }
 };

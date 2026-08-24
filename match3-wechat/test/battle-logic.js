@@ -9,8 +9,9 @@ function player(openid, score, lastSeen) {
         openid: openid,
         score: score || 0,
         lastSeen: lastSeen || 0,
-        items: { freeze: 1, disturb: 1 },
-        usedCount: { freeze: 0, disturb: 0 }
+        items: { freeze: 1, disturb: 2 },
+        itemCooldownUntil: 0,
+        activeEffectUntil: 0
     };
 }
 
@@ -26,6 +27,33 @@ function room(status, startTime, players) {
 
 (function run() {
     const config = logic.CONFIG;
+    assert.deepStrictEqual(config.INITIAL_ITEMS, { freeze: 1, disturb: 2 });
+    assert.strictEqual(config.ITEM_BUDGET, 3);
+    assert.strictEqual(config.ITEM_COOLDOWN_MS, 10000);
+    assert.deepStrictEqual(config.CREATE_RATE_LIMITS, { perMinute: 5, perUtcDay: 60 });
+    let counter = null;
+    const minuteAt = Date.UTC(2026, 0, 1, 12, 0, 0);
+    for (let i = 0; i < 5; i++) {
+        const allowed = logic.consumeCreateRateLimit(counter, minuteAt, config.CREATE_RATE_LIMITS);
+        assert.strictEqual(allowed.ok, true);
+        counter = allowed.next;
+    }
+    assert.strictEqual(logic.consumeCreateRateLimit(counter, minuteAt, config.CREATE_RATE_LIMITS).ok, false);
+    const dayEnd = Date.UTC(2026, 0, 1, 23, 59, 59, 999);
+    const dayCounter = {
+        minuteKey: logic.utcMinuteKey(dayEnd), minuteCount: 0,
+        dayKey: logic.utcDayKey(dayEnd), dayCount: 59
+    };
+    assert.strictEqual(logic.consumeCreateRateLimit(dayCounter, dayEnd, config.CREATE_RATE_LIMITS).ok, true);
+    assert.strictEqual(logic.consumeCreateRateLimit(
+        logic.consumeCreateRateLimit(dayCounter, dayEnd, config.CREATE_RATE_LIMITS).next,
+        dayEnd + 1, config.CREATE_RATE_LIMITS
+    ).next.dayCount, 1);
+    assert.strictEqual(logic.consumeCreateRateLimit(Object.assign({}, dayCounter, { dayCount: 60 }), dayEnd, config.CREATE_RATE_LIMITS).err,
+        logic.CREATE_RATE_LIMIT_MESSAGE);
+    assert.strictEqual(logic.validateItemConfig({ freeze: 1, disturb: 2 }, config).ok, true);
+    assert.strictEqual(logic.validateItemConfig({ freeze: 2, disturb: 2 }, config).ok, false);
+    assert.strictEqual(logic.validateItemConfig({ freeze: 1, disturb: 2, hammer: 1 }, config).ok, false);
     const validRoomId = 'R' + Date.now().toString(36) + 'a1b2c3d4e5';
     assert.strictEqual(logic.isValidRoomId(validRoomId), true);
     assert.strictEqual(cloudBattle.isValidRoomId(validRoomId), true);
@@ -56,6 +84,15 @@ function room(status, startTime, players) {
     const me = player('me', 200, start);
     const opponent = player('opponent', 100, start);
     const active = room('playing', start, [me, opponent]);
+
+    assert.strictEqual(logic.validateItemUse(active, me, 'freeze', start + 1, config).ok, true);
+    me.itemCooldownUntil = start + 10001;
+    assert.strictEqual(logic.validateItemUse(active, me, 'disturb', start + 1, config).ok, false);
+    me.itemCooldownUntil = 0;
+    me.activeEffectUntil = start + 5000;
+    assert.strictEqual(logic.validateItemUse(active, me, 'disturb', start + 1, config).ok, false);
+    me.activeEffectUntil = 0;
+    assert.strictEqual(logic.validateItemUse(active, me, 'hammer', start + 1, config).ok, false);
 
     assert.strictEqual(logic.validateScoreSync(active, me, 300, start + 1000, config).ok, true);
     assert.strictEqual(logic.validateScoreSync(active, me, 199, start + 1000, config).ok, false);

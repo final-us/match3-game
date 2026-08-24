@@ -4,11 +4,12 @@ module.exports = {
     "name": "极限冲刺",
     "rows": 8,
     "columns": 8,
-    "moveCount": 16,
+    "timeLimitSec": 150,
+    "moveCount": 24,
     "goals": [
         {
             "type": "score",
-            "target": 4000
+            "target": 4500
         }
     ]
 };

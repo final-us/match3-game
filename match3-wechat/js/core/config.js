@@ -27,8 +27,7 @@ const MODE_TYPES = {
 const GAME_CONFIG = {
     title: '猫猫开心消',
     mode: 'easy',          // 棋子种类数量
-    freeMoves: false,      // 是否允许任意移动（调试用）
-    maxLevel: 20           // 当前内置关卡数（与 level.js 注册数量保持一致）
+    freeMoves: false       // 是否允许任意移动（调试用）
 };
 
 // 广告配置（未开通流量主时保持关闭和空 ID）
@@ -53,19 +52,22 @@ const REPORTING_CONFIG = {
 const SPECIAL_TYPES = {
     H_ROCKET: 101, // 横消火箭：消除时炸整行
     V_ROCKET: 102, // 竖消火箭：消除时炸整列
-    BOMB: 103      // 炸弹：消除时炸 3x3
+    BOMB: 103,     // 炸弹：消除时炸 3x3
+    COLOR_BALL: 104 // 猫爪彩球：消除一种颜色或参与特殊组合
 };
 
 /** 特殊棋子显示定义 */
 const SPECIAL_DEFS = {
     101: { label: '↔', color: '#E17055', name: '横火箭' },
     102: { label: '↕', color: '#00B894', name: '竖火箭' },
-    103: { label: '💣', color: '#6C5CE7', name: '炸弹' }
+    103: { label: '💣', color: '#6C5CE7', name: '炸弹' },
+    104: { label: '🐾', color: '#F7B731', name: '猫爪彩球' }
 };
 
 /** 判断是否为特殊棋子 */
 function isSpecialType(t) {
-    return t === SPECIAL_TYPES.H_ROCKET || t === SPECIAL_TYPES.V_ROCKET || t === SPECIAL_TYPES.BOMB;
+    return t === SPECIAL_TYPES.H_ROCKET || t === SPECIAL_TYPES.V_ROCKET ||
+        t === SPECIAL_TYPES.BOMB || t === SPECIAL_TYPES.COLOR_BALL;
 }
 
 /** 获取特殊棋子显示定义 */

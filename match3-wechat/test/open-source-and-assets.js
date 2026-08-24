@@ -3,6 +3,7 @@
 /** 纯 Node 合规回归：第三方 notice、项目版权边界、活跃素材与包体忽略规则。 */
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -11,6 +12,19 @@ const repoRoot = path.resolve(projectRoot, '..');
 const upstreamUrl = 'https://github.com/xiaozhu188/pixi-game-match3';
 const upstreamCommit = '658679250f30ef8d01ff570eb976017c5727cbf0';
 const upstreamFile = 'src/match3/Match3Utility.ts';
+const musicUrl = 'https://dylanntaylor.itch.io/playful-piano';
+const sfxPath = 'res/audio/sfx-acoustic.m4a';
+const sfxSha256 = 'c199ca1193150ea0c950abfde37cd3094a70029e2ff74692a2e7397b4049915c';
+const sfxSources = [
+    'https://opengameart.org/content/ui-sound-effects-button-clicks-user-feedback-notifications',
+    'https://kenney.nl/assets/interface-sounds',
+    'https://kenney.nl/assets/impact-sounds',
+    'https://kenney.nl/assets/rpg-audio',
+    'https://freesound.org/people/Kinoton/sounds/347163/',
+    'https://freesound.org/people/animationIsaac/sounds/207322/',
+    'https://freesound.org/people/reasanka/sounds/429525/',
+    'https://freesound.org/people/qubodup/sounds/817466/'
+];
 const activePaths = [
     'res/home/moonlit-garden-bg.jpg',
     'res/home/duel-cats.png',
@@ -19,6 +33,21 @@ const activePaths = [
     'res/home/button-secondary.png',
     'res/game-background-v2.jpg',
     'res/level-background-v2.jpg',
+    'res/ui/level-node-current-v2.png',
+    'res/ui/level-node-done-v2.png',
+    'res/ui/level-node-locked-v2.png',
+    'res/ui/coin.png',
+    'res/ui/heart.png',
+    'res/ui/moves-paw.png',
+    'res/ui/settings.png',
+    'res/ui/shop.png',
+    'res/ui/special-row-beam.png',
+    'res/ui/timer.png',
+    'res/ui/tool-bomb.png',
+    'res/ui/tool-hammer.png',
+    'res/ui/tool-yarn.png',
+    'res/ui/result-happy-cat.png',
+    'res/ui/result-sad-cat.png',
     'res/piece1-runtime.png',
     'res/piece2-runtime.png',
     'res/piece3-runtime.png',
@@ -63,6 +92,24 @@ assert(notices.includes('Copyright (c) 2023-PRESENT hairyf <https://github.com/h
 assert(notices.includes('THE SOFTWARE IS PROVIDED "AS IS"'), 'notice 缺少 MIT 免责声明');
 assert(notices.includes('wx-server-sdk 4.0.2'), 'notice 缺少 wx-server-sdk 版本');
 assert(notices.includes('License: MIT'), 'notice 缺少 wx-server-sdk MIT 声明');
+assert(notices.includes(musicUrl), 'notice 缺少 PLAYFUL PIANO 来源');
+assert(notices.includes('Dylann Taylor'), 'notice 缺少 PLAYFUL PIANO 作者');
+assert(notices.includes('CC0 1.0 Universal'), 'notice 缺少 PLAYFUL PIANO CC0 声明');
+assert(notices.includes('PlayfulPiano_Atmos_Loop.ogg'), 'notice 缺少 calm 源音乐记录');
+assert(notices.includes('PlayfulPiano_JazzTrio_Loop.ogg'), 'notice 缺少 battle 源音乐记录');
+sfxSources.forEach(function (url) {
+    assert(notices.includes(url), 'notice 缺少音效来源: ' + url);
+    assert(ledger.includes(url), '台账缺少音效来源: ' + url);
+});
+assert(notices.includes('derived 22-cue AAC/M4A sprite'), 'notice 缺少音效精灵派生范围');
+assert(ledger.includes('`' + sfxPath + '`'), '台账缺少正式音效精灵');
+assert(ledger.includes(sfxSha256), '台账缺少正式音效精灵 SHA256');
+const sfxFile = path.join(projectRoot, sfxPath);
+assert(fs.existsSync(sfxFile), '正式音效精灵不存在');
+assert(!isIgnored(sfxPath, ignoreRules), '正式音效精灵不得被包体忽略');
+assert.strictEqual(fs.statSync(sfxFile).size, 42325, '正式音效精灵字节数发生漂移');
+assert.strictEqual(crypto.createHash('sha256').update(fs.readFileSync(sfxFile)).digest('hex'), sfxSha256,
+    '正式音效精灵 SHA256 发生漂移');
 assert.strictEqual(typeof cloudSdk.init, 'function', 'wx-server-sdk 缺少 init API');
 assert.strictEqual(typeof cloudSdk.database, 'function', 'wx-server-sdk 缺少 database API');
 assert.strictEqual(typeof cloudSdk.getWXContext, 'function', 'wx-server-sdk 缺少 getWXContext API');
@@ -103,7 +150,7 @@ assert(!/(?:本项目|整个项目)[^\n。]{0,30}MIT/i.test(readme), 'README 不
 assert(readme.includes('[' + 'pixi-game-match3](' + upstreamUrl + ')'), 'README 缺少可点击的精确上游 URL');
 assert(readme.includes('[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)'), 'README 缺少 notice 链接');
 
-assert(Object.keys(assets).length === 12, 'assets.js 活跃素材数量必须为 12');
+assert(Object.keys(assets).length === 27, 'assets.js 活跃素材数量必须为 27');
 assert.deepStrictEqual(Object.values(assets).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
 activePaths.forEach(function (relative) {
     assert(ledger.includes('`' + relative + '`'), '台账缺少活跃素材: ' + relative);

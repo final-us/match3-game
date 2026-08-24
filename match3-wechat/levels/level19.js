@@ -4,7 +4,8 @@ module.exports = {
     "name": "王者之路",
     "rows": 8,
     "columns": 8,
-    "moveCount": 15,
+    "timeLimitSec": 135,
+    "moveCount": 23,
     "goals": [
         {
             "type": "jelly",
@@ -12,7 +13,7 @@ module.exports = {
         },
         {
             "type": "score",
-            "target": 2500
+            "target": 4000
         }
     ],
     "underlays": {

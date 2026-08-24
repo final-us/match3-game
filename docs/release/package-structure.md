@@ -15,7 +15,8 @@
 | --- | --- |
 | `cloudfunctions/` | Node.js 云函数服务端代码，不应进入小游戏客户端预览或上传包。 |
 | `test/` | 本地 Node.js 测试脚本，不是运行时依赖。 |
-| `tools/` | 本地关卡生成工具，不是运行时依赖。 |
+| `tools/` | 本地关卡与历史/回退音频生成工具，不是运行时依赖；`gen-audio.py` 不生成当前正式 BGM，中间 WAV 只写系统临时目录。 |
+| `levels/` | 旧 20 关标定样本；当前运行时由 `js/core/level.js` 生成无限关卡。 |
 
 规则使用微信开发者工具支持的 `{ "type": "folder", "value": "..." }` 格式，路径相对小游戏项目根目录。`packOptions.include` 保持为空，避免其更高优先级重新包含已忽略目录。
 
@@ -27,6 +28,8 @@ res/piece2-v2.png
 res/piece3-v2.png
 res/piece4-v2.png
 res/piece5-v2.png
+res/game-icon-144.png
+res/game-icon-source.png
 res/btnBack.png
 res/btnClose.png
 res/btnContinue.png
@@ -50,17 +53,23 @@ res/progressBar.png
 res/toolBar.png
 ```
 
-当前 `js/render/assets.js` 引用的 12 张活跃素材不在忽略规则中：`res/home/` 下 5 张、`res/game-background-v2.jpg`、`res/level-background-v2.jpg`，以及 `res/piece1-runtime.png` 至 `res/piece5-runtime.png`。
+当前 `js/render/assets.js` 引用的 27 张活跃素材不在忽略规则中：`res/home/` 下 5 张、两张游戏场景、5 张运行时棋子，以及 `res/ui/` 下 15 张统一 UI 运行图（含 3 张关卡节点）。
+
+`res/audio/calm.m4a` 与 `res/audio/battle.m4a` 是运行时直接由 `wx.createInnerAudioContext` 播放的本地 BGM，不通过图片预加载器注册，也不在忽略规则中。`test/package-budget.js` 单独断言两文件均被打包且合计不超过 360 KiB；文件/API 播放失败时回退程序化 WebAudio BGM。
 
 棋子源图与运行图分离：`piece?-v2.png` 保留 512×512 透明源图，便于后续重新导出；小游戏运行时只加载由 `sips` 生成的 256×256 透明 `piece?-runtime.png`，不覆盖源图。
 
+`game-icon-source.png` 与 `game-icon-144.png` 只用于平台图标资料，不被游戏运行时加载，因此保留在仓库但通过精确规则排除出客户端代码包。
+
 ## 当前体积快照
 
-测量日期：2026-08-22。
+测量日期：2026-08-24。
 
-- 12 张活跃素材优化前为 4,240,528 字节，切换运行图后为 3,053,060 字节，减少 1,187,468 字节（约 28.0%）。
-- 活跃素材预算为 `3.5 * 1024 * 1024 = 3,670,016` 字节，当前余量 616,956 字节。
-- 按当前工作树排除 `cloudfunctions/`、`test/`、`tools/`、项目配置文件、README 和上述精确文件规则后，客户端静态文件未压缩估算为 3,258,123 字节（52 个文件，包含 `THIRD_PARTY_NOTICES.txt`），距离 4 MiB 预算尚余 936,181 字节。
+- 27 张活跃素材共 3,161,298 字节；活跃素材预算为 `3.5 * 1024 * 1024 = 3,670,016` 字节，当前余量 508,718 字节。
+- 双 BGM 实际时长均为 51.20 秒；calm 为 159,820 字节，battle 为 160,085 字节，合计 319,905 字节，低于 360 KiB 独立预算 48,735 字节。
+- 原声音效精灵为 42,325 字节，低于 48 KiB 独立预算 6,827 字节。
+- 按当前工作树排除 `cloudfunctions/`、`test/`、`tools/`、`levels/`、项目配置文件、README 和精确文件规则后，客户端静态文件未压缩估算为 3,804,413 字节（55 个文件，包含 `THIRD_PARTY_NOTICES.txt`），距离 4 MiB 预算尚余 389,891 字节。
+- 精确字节数和剩余预算由 `node test/package-budget.js` 输出；每次素材或运行时代码变更后以该测试结果覆盖本节快照。
 
 以上是文件系统静态估算，不等同于微信开发者工具最终生成的主包大小；`node test/package-budget.js` 会同时校验活跃素材预算、4 MiB 静态主包预算和忽略覆盖，最终包体仍以开发者工具“预览/上传”的包体积与包内容详情为准。
 

@@ -4,8 +4,9 @@ module.exports = {
     name: '新手入门',
     rows: 8,
     columns: 8,
-    moveCount: 25,
+    timeLimitSec: 0,
+    moveCount: 28,
     goals: [
-        { type: 'score', target: 4000 }
+        { type: 'score', target: 3600 }
     ]
 };

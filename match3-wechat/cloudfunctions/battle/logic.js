@@ -9,8 +9,11 @@ const CONFIG = Object.freeze({
     OFFLINE_GRACE_MS: 10 * 1000,
     WAITING_ROOM_TTL_MS: 10 * 60 * 1000,
     ROOM_RETENTION_MS: 7 * 24 * 60 * 60 * 1000,
-    ITEM_LIMIT: 5,
-    INITIAL_ITEMS: Object.freeze({ freeze: 1, disturb: 1 }),
+    ITEM_BUDGET: 3,
+    ITEM_ALLOWLIST: Object.freeze(['freeze', 'disturb']),
+    ITEM_COOLDOWN_MS: 10 * 1000,
+    INITIAL_ITEMS: Object.freeze({ freeze: 1, disturb: 2 }),
+    CREATE_RATE_LIMITS: Object.freeze({ perMinute: 5, perUtcDay: 60 }),
     SCORE_LIMITS: Object.freeze({
         MAX_SINGLE_INCREMENT: 10000,
         BASE_ALLOWANCE: 5000,
@@ -19,6 +22,8 @@ const CONFIG = Object.freeze({
 });
 
 const OUTCOMES = ['win', 'lose', 'draw'];
+const CREATE_RATE_LIMIT_MESSAGE = '创建太频繁，请稍后再试';
+const CREATE_LIMIT_DOCUMENT_PREFIX = 'L';
 // Current IDs are R + base36 timestamp + 10 random hex chars. Bound the
 // timestamp segment so malformed input cannot become an arbitrarily long id.
 const ROOM_ID_PATTERN = /^R[0-9a-z]{8,10}[0-9a-f]{10}$/;
@@ -40,6 +45,77 @@ function isCleanupTimerEvent(event, openid) {
 
 function finiteNonNegativeInteger(value) {
     return Number.isSafeInteger(value) && value >= 0;
+}
+
+function utcMinuteKey(at) {
+    return Math.floor(Number(at) / 60000);
+}
+
+function utcDayKey(at) {
+    return new Date(Number(at)).toISOString().slice(0, 10);
+}
+
+/** 在事务中消费一次建房额度；计数器缺失或跨窗口时从零开始。 */
+function consumeCreateRateLimit(counter, at, limits) {
+    const rules = limits || CONFIG.CREATE_RATE_LIMITS;
+    const minuteKey = utcMinuteKey(at);
+    const dayKey = utcDayKey(at);
+    const minuteCount = counter && counter.minuteKey === minuteKey && finiteNonNegativeInteger(counter.minuteCount)
+        ? counter.minuteCount : 0;
+    const dayCount = counter && counter.dayKey === dayKey && finiteNonNegativeInteger(counter.dayCount)
+        ? counter.dayCount : 0;
+    if (minuteCount >= rules.perMinute || dayCount >= rules.perUtcDay) {
+        return { ok: false, err: CREATE_RATE_LIMIT_MESSAGE, minuteKey: minuteKey, dayKey: dayKey,
+            minuteCount: minuteCount, dayCount: dayCount };
+    }
+    return {
+        ok: true,
+        next: {
+            createdAt: at,
+            minuteKey: minuteKey,
+            minuteCount: minuteCount + 1,
+            dayKey: dayKey,
+            dayCount: dayCount + 1
+        }
+    };
+}
+
+function validateItemConfig(items, config) {
+    const rules = config || CONFIG;
+    if (!items || typeof items !== 'object' || Array.isArray(items)) {
+        return { ok: false, err: '道具配置非法' };
+    }
+    const allowed = rules.ITEM_ALLOWLIST;
+    const keys = Object.keys(items);
+    for (let i = 0; i < keys.length; i++) {
+        if (allowed.indexOf(keys[i]) < 0) return { ok: false, err: '道具配置非法' };
+    }
+    const normalized = {};
+    let total = 0;
+    for (let i = 0; i < allowed.length; i++) {
+        const item = allowed[i];
+        const count = items[item];
+        if (!finiteNonNegativeInteger(count)) return { ok: false, err: '道具配置非法' };
+        normalized[item] = count;
+        total += count;
+    }
+    if (total !== rules.ITEM_BUDGET) return { ok: false, err: '道具总数必须为' + rules.ITEM_BUDGET };
+    return { ok: true, items: normalized };
+}
+
+function validateItemUse(room, player, item, at, config) {
+    const rules = config || CONFIG;
+    if (rules.ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
+    if (!room || room.status !== 'playing' || !Number.isFinite(room.startTime) || at < room.startTime) {
+        return { ok: false, err: '对局未开始' };
+    }
+    if (at >= room.startTime + rules.BATTLE_DURATION_MS) return { ok: false, err: '对局已结束' };
+    if (!player || !player.items || !finiteNonNegativeInteger(player.items[item]) || player.items[item] <= 0) {
+        return { ok: false, err: '道具不足' };
+    }
+    if (Number(player.itemCooldownUntil) > at) return { ok: false, err: '道具冷却中' };
+    if (Number(player.activeEffectUntil) > at) return { ok: false, err: '已有道具生效中' };
+    return { ok: true };
 }
 
 function scoreCeiling(startTime, at, limits) {
@@ -151,6 +227,13 @@ module.exports = {
     isWaitingRoomExpired: isWaitingRoomExpired,
     isCleanupTimerEvent: isCleanupTimerEvent,
     finiteNonNegativeInteger: finiteNonNegativeInteger,
+    CREATE_RATE_LIMIT_MESSAGE: CREATE_RATE_LIMIT_MESSAGE,
+    CREATE_LIMIT_DOCUMENT_PREFIX: CREATE_LIMIT_DOCUMENT_PREFIX,
+    utcMinuteKey: utcMinuteKey,
+    utcDayKey: utcDayKey,
+    consumeCreateRateLimit: consumeCreateRateLimit,
+    validateItemConfig: validateItemConfig,
+    validateItemUse: validateItemUse,
     scoreCeiling: scoreCeiling,
     validateScoreSync: validateScoreSync,
     isHeartbeatExpired: isHeartbeatExpired,

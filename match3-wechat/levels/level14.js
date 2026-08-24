@@ -4,7 +4,8 @@ module.exports = {
     "name": "雪山之巅",
     "rows": 8,
     "columns": 8,
-    "moveCount": 16,
+    "timeLimitSec": 150,
+    "moveCount": 23,
     "goals": [
         {
             "type": "jelly",
@@ -12,7 +13,7 @@ module.exports = {
         },
         {
             "type": "score",
-            "target": 3000
+            "target": 3200
         }
     ],
     "underlays": {

@@ -4,7 +4,8 @@ module.exports = {
     "name": "终极挑战",
     "rows": 8,
     "columns": 8,
-    "moveCount": 15,
+    "timeLimitSec": 135,
+    "moveCount": 24,
     "goals": [
         {
             "type": "jelly",
@@ -12,7 +13,7 @@ module.exports = {
         },
         {
             "type": "score",
-            "target": 2500
+            "target": 3500
         }
     ],
     "underlays": {

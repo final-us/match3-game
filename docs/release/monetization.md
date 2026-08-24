@@ -49,4 +49,6 @@ interstitialAdUnitId: ''
 - `ad_reward_granted`
 - `ad_frequency_blocked`
 
+玩法核心漏斗同时包括 `home_exposure`，单人 `solo_level_select/solo_start/solo_complete`，以及 PvP `pvp_click/pvp_create/pvp_invite_share/pvp_join/pvp_ready/pvp_start/pvp_complete/pvp_error`。这些事件仍只进入本地缓冲；上线前配置明确的微信事件 ID 并复核字段后，才可打开远端上报。
+
 禁止写入 OpenID、UnionID、昵称、头像、设备标识、手机号、邮箱、令牌或其他身份信息。

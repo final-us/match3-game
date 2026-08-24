@@ -4,11 +4,12 @@ module.exports = {
     "name": "果冻风暴",
     "rows": 8,
     "columns": 8,
-    "moveCount": 20,
+    "timeLimitSec": 165,
+    "moveCount": 26,
     "goals": [
         {
             "type": "jelly",
-            "target": 12
+            "target": 10
         }
     ],
     "underlays": {

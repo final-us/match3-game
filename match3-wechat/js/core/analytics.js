@@ -14,10 +14,15 @@ const SAFE_KEYS = {
     format: true,
     reason: true,
     category: true,
+    errorCategory: true,
     source: true,
     mode: true,
     result: true,
     status: true,
+    level: true,
+    stars: true,
+    durationBucket: true,
+    reviveCount: true,
     count: true,
     cooldownMs: true,
     completedGames: true,
@@ -29,8 +34,21 @@ const SAFE_KEYS = {
     win: true
 };
 const SENSITIVE_KEY = /openid|open_id|unionid|union_id|nickname|nick_name|device|imei|oaid|idfa|phone|mobile|email|avatar|token|session|user|account|(^|_)(id|uid|name)(_|$)/i;
+const SAFE_ENUM_KEY = {
+    placement: true,
+    format: true,
+    reason: true,
+    category: true,
+    errorCategory: true,
+    source: true,
+    mode: true,
+    result: true,
+    status: true,
+    durationBucket: true
+};
 
 let memoryEvents = [];
+let onceEvents = Object.create(null);
 
 function getStore() {
     if (typeof wx !== 'undefined') return wx;
@@ -75,7 +93,8 @@ function sanitizeProperties(properties) {
             clean[key] = value;
         } else if (typeof value === 'number' && Number.isFinite(value)) {
             clean[key] = value;
-        } else if (typeof value === 'string' && value.length <= 64) {
+        } else if (typeof value === 'string' && value.length <= 64 &&
+            (!SAFE_ENUM_KEY[key] || /^[a-z][a-z0-9_-]{0,31}$/.test(value))) {
             clean[key] = value;
         }
     });
@@ -139,6 +158,15 @@ function track(event, properties) {
     return item;
 }
 
+/** 同一运行会话内的单次事件，避免页面曝光和结算重复上报。 */
+function trackOnce(event, properties, key) {
+    const dedupeKey = typeof key === 'string' && key ? key : event;
+    if (onceEvents[dedupeKey]) return null;
+    const item = track(event, properties);
+    if (item) onceEvents[dedupeKey] = true;
+    return item;
+}
+
 function getEvents() {
     const now = Date.now();
     const events = cleanEvents(readEvents(), now);
@@ -147,6 +175,7 @@ function getEvents() {
 }
 
 function clear() {
+    onceEvents = Object.create(null);
     writeEvents([]);
 }
 
@@ -155,6 +184,7 @@ module.exports = {
     MAX_EVENTS: MAX_EVENTS,
     RETENTION_MS: RETENTION_MS,
     track: track,
+    trackOnce: trackOnce,
     reportEvent: reportEvent,
     reportMonitor: reportMonitor,
     getEvents: getEvents,

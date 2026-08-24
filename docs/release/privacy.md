@@ -14,7 +14,10 @@
 
 - `REPORTING_CONFIG.enabled` 默认是 `false`，`eventIds` 与 `monitorNames` 默认为空；未显式配置映射时不调用 `wx.reportEvent` 或 `wx.reportMonitor`，不上传数据。
 - 本地匿名事件仍按现有策略保存在本地，最多 200 条、保留 7 天；全局错误只记录类别和计数，不保存原始 message、reason、stack、用户标识或设备信息。
+- 核心漏斗覆盖首页曝光、单人选关/开局/完成，以及 PvP 点击/建房/邀请/加入/准备/开局/完成/异常；属性只接受白名单中的关卡号、结果枚举、星级、时长档位、复活次数和错误类别等低敏标量。事件不得包含房间号、OpenID、昵称、头像或原始错误文本。
 - PvP 云数据库为完成匹配、同步和结算保存双方 OpenID、固定展示名、比分、道具和房间状态。等待邀请 10 分钟后业务失效；房间记录保留 7 天，再由 `cleanup-battle-rooms` 定时触发器每日清理。
+- PvP 建房限流在服务端保存按 OpenID 生成的不可逆 SHA-256 摘要计数文档，不保存明文 OpenID，也不向客户端返回摘要或内部计数。计数文档与房间共用仅服务端访问的 `battle_rooms` 集合，并随 7 天清理任务删除。
+- PvP 等待页可由用户主动点击头像，选择使用微信头像；拒绝或接口不可用时继续使用项目内猫咪头像，不影响建房、加入、准备或开局。头像 URL 只保存在当前设备本地，不上传 `battle_rooms`、云函数或匿名埋点。上线前需在平台隐私保护指引中如实声明该可选本地用途并完成真机授权/拒绝回归。
 - 客户端云开发初始化不开启可选 `traceUser` 访问追踪；对战身份只由云函数侧的可信 OpenID 校验。
 - 设置页“隐私说明”只调用 feature detection 后的 `wx.openPrivacyContract`；接口不可用或平台未配置时提示用户，不自建协议页面。
 - `wx.getUpdateManager`、`wx.onError`、`wx.onUnhandledRejection` 及隐私接口均按平台能力检测使用。

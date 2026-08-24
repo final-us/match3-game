@@ -65,6 +65,9 @@ async function run() {
 
         config.AD_CONFIG.debugMockAds = true;
         assert.strictEqual(ad.isRewardedAvailable(), true, '显式 debug 开关应允许联调');
+        assert.strictEqual(ad.isRealRewardedAvailable(), false, 'debug mock 不得被视为真实激励广告');
+        assert.strictEqual(await ad.showRewarded('shop_item', { allowMock: false }), false,
+            '商店禁止 mock 时不得模拟完成或发奖');
         assert.strictEqual(await ad.showRewarded('revive'), true, 'debug 模拟应完成激励视频');
         ad.markRewardGranted('revive');
         assert(analytics.getEvents().some(function (item) { return item.event === 'ad_reward_granted'; }));
@@ -72,6 +75,7 @@ async function run() {
         config.AD_CONFIG.debugMockAds = false;
         config.AD_CONFIG.enabled = true;
         config.AD_CONFIG.rewardedAdUnitId = 'test-rewarded';
+        assert.strictEqual(ad.isRealRewardedAvailable(), true, '真实广告配置且运行时可创建时应可用');
         const cancelled = ad.showRewarded('revive');
         rewardedClose({ isEnded: false });
         assert.strictEqual(await cancelled, false, '提前关闭激励视频不得发奖励');

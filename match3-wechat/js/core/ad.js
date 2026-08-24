@@ -9,6 +9,7 @@ const analytics = require('./analytics');
 const INTERSTITIAL_STORAGE_KEY = 'match3_interstitial_v1';
 
 let rewardedAd = null;
+let realRewardedUnavailable = false;
 let pendingReward = null;
 let interstitialAd = null;
 let pendingInterstitial = null;
@@ -33,6 +34,13 @@ function hasRealRewarded() {
 
 function isRewardedAvailable() {
     return !!config.AD_CONFIG.debugMockAds || hasRealRewarded();
+}
+
+function isRealRewardedAvailable() {
+    if (!hasRealRewarded() || realRewardedUnavailable) return false;
+    if (!rewardedAd) rewardedAd = createRewardedAd();
+    if (!rewardedAd) realRewardedUnavailable = true;
+    return !!rewardedAd;
 }
 
 function hasRealInterstitial() {
@@ -60,6 +68,7 @@ function createRewardedAd() {
         });
         ad.onError(function (err) {
             rewardedAd = null;
+            realRewardedUnavailable = true;
             finishReward(false, err && err.errCode ? String(err.errCode) : 'runtime_error');
         });
         return ad;
@@ -69,11 +78,12 @@ function createRewardedAd() {
 }
 
 /** 完整观看返回 true；取消、失败、未配置均返回 false。 */
-function showRewarded(placement) {
+function showRewarded(placement, options) {
     placement = placement || 'unknown';
+    const allowMock = !options || options.allowMock !== false;
     track('ad_request', placement);
 
-    if (config.AD_CONFIG.debugMockAds) {
+    if (config.AD_CONFIG.debugMockAds && allowMock) {
         track('ad_show', placement, { source: 'debug_mock' });
         track('ad_complete', placement, { source: 'debug_mock' });
         return Promise.resolve(true);
@@ -218,6 +228,7 @@ function onSoloResultExit() {
 module.exports = {
     INTERSTITIAL_STORAGE_KEY: INTERSTITIAL_STORAGE_KEY,
     isRewardedAvailable: isRewardedAvailable,
+    isRealRewardedAvailable: isRealRewardedAvailable,
     showRewarded: showRewarded,
     markRewardGranted: markRewardGranted,
     onSoloResultExit: onSoloResultExit

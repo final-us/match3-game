@@ -22,7 +22,7 @@ function init() {
 
 /**
  * 调用 battle 云函数
- * @param {string} action create/join/ready/syncScore/useItem/leave/query
+ * @param {string} action create/join/configureItems/ready/syncScore/useItem/leave/query
  * @param {object} data 附加参数
  * @returns {Promise<object>} 云函数返回的 result
  */

@@ -13,7 +13,7 @@ match3-game/
 │   │   ├── core/               # 逻辑层（消除/关卡/体力/金币/道具/分享）
 │   │   ├── render/             # 渲染层（棋盘/UI/主题/素材/对战UI）
 │   │   └── net/                # 网络层（云函数对战客户端）
-│   ├── levels/                 # 关卡数据（level1-20.js）
+│   ├── levels/                 # 旧 20 关标定样本（不进入运行包）
 │   ├── res/                    # UI 素材（猫咪风格）
 │   ├── cloudfunctions/battle/  # 云函数（双人对战后端）
 │   ├── test/                   # 单元测试
@@ -25,7 +25,7 @@ match3-game/
 
 ## 功能清单
 
-- 单人闯关：20 关（果冻/冰块障碍、特殊棋子、三星评分）
+- 单人闯关：确定性代码生成的无限关卡（果冻/冰块障碍、特殊棋子、三星评分）
 - 经济系统：体力 + 金币 + 商店道具（锤子/炸弹/换色）
 - 变现：激励视频（无限次复活/补体力）+ 单人结算插屏；流量主未开通前默认关闭并隐藏入口
 - 双人对战：微信好友邀请、60 秒比分、冰冻/干扰道具（云函数 + 云数据库）
@@ -50,6 +50,7 @@ match3-game/
 cd match3-wechat
 node test/simulate.js      # 逻辑回归
 node test/winrate.js       # 关卡难度标定
+node test/infinite-levels.js # 无限关卡确定性与边界回归
 node test/audio.js         # 音乐/音效设置与生命周期
 node test/runtime.js       # 更新、错误与隐私入口
 node test/commercialization.js

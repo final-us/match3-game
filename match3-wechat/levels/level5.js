@@ -4,11 +4,12 @@ module.exports = {
     "name": "草莓奶昔",
     "rows": 8,
     "columns": 8,
-    "moveCount": 20,
+    "timeLimitSec": 180,
+    "moveCount": 26,
     "goals": [
         {
             "type": "score",
-            "target": 4500
+            "target": 4200
         }
     ]
 };

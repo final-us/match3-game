@@ -4,11 +4,12 @@ module.exports = {
     "name": "缤纷世界",
     "rows": 8,
     "columns": 8,
-    "moveCount": 20,
+    "timeLimitSec": 165,
+    "moveCount": 25,
     "goals": [
         {
             "type": "score",
-            "target": 4500
+            "target": 4300
         }
     ]
 };

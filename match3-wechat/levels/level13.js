@@ -4,11 +4,12 @@ module.exports = {
     "name": "深陷重围",
     "rows": 8,
     "columns": 8,
-    "moveCount": 18,
+    "timeLimitSec": 150,
+    "moveCount": 25,
     "goals": [
         {
             "type": "jelly",
-            "target": 12
+            "target": 10
         }
     ],
     "underlays": {

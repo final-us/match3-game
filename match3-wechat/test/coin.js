@@ -54,9 +54,24 @@ allOk = assert('锤子剩1', coin.getItems().hammer === 1) && allOk;
 allOk = assert('空道具使用失败', coin.useItem('color') === false) && allOk;
 
 // 6. 完整流程：买道具 → 消耗
-coin.addCoins(1000);
+coin.addCoins(2000);
 coin.spendCoins(coin.ITEM_DEFS.bomb.price);
-allOk = assert('买炸弹后金币', coin.getCoins() === 200 + 1000 - 300) && allOk;
+allOk = assert('固定价格为900/1100/1300', coin.ITEM_DEFS.hammer.price === 900 &&
+    coin.ITEM_DEFS.color.price === 1100 && coin.ITEM_DEFS.bomb.price === 1300) && allOk;
+allOk = assert('买炸弹后金币', coin.getCoins() === 200 + 2000 - 1300) && allOk;
+
+// 7. 激励视频道具：三种合计本地自然日最多10次，次日重置。
+const dayOne = new Date(2026, 7, 23, 12, 0, 0);
+for (let i = 0; i < 10; i++) {
+    const type = ['hammer', 'color', 'bomb'][i % 3];
+    allOk = assert('第' + (i + 1) + '次视频领取成功', coin.claimRewardedItem(type, dayOne).ok) && allOk;
+}
+const capped = coin.claimRewardedItem('hammer', dayOne);
+allOk = assert('同一自然日第11次被拒绝', capped.ok === false && capped.reason === 'limit') && allOk;
+allOk = assert('当日额度记录为10', coin.getRewardedItemState(dayOne).count === 10) && allOk;
+const dayTwo = new Date(2026, 7, 24, 0, 1, 0);
+allOk = assert('次日自然日额度重置', coin.getRewardedItemState(dayTwo).count === 0 &&
+    coin.claimRewardedItem('color', dayTwo).ok) && allOk;
 
 console.log('========================================');
 console.log('金币道具系统: ' + (allOk ? '全部通过 ✅' : '存在失败 ❌'));

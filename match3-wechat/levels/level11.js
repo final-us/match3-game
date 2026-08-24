@@ -4,7 +4,8 @@ module.exports = {
     "name": "果冻列车",
     "rows": 8,
     "columns": 8,
-    "moveCount": 20,
+    "timeLimitSec": 150,
+    "moveCount": 25,
     "goals": [
         {
             "type": "jelly",

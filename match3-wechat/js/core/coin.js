@@ -7,6 +7,8 @@
 
 const COIN_KEY = 'match3_coin_v1';
 const ITEM_KEY = 'match3_items_v1';
+const REWARDED_ITEM_KEY = 'match3_rewarded_items_v1';
+const REWARDED_ITEM_DAILY_LIMIT = 10;
 
 // 金币奖励配置（改这里调数值）
 const COIN_CONFIG = {
@@ -47,9 +49,9 @@ function calcWinCoins(stepsLeft, star) {
 
 // 道具定义（价格/图标/说明）
 const ITEM_DEFS = {
-    hammer: { name: '锤子', price: 200, icon: '🔨', desc: '消除一个棋子' },
-    bomb: { name: '炸弹', price: 300, icon: '💣', desc: '消除 3x3 区域' },
-    color: { name: '换色', price: 250, icon: '🎨', desc: '棋子变随机颜色' }
+    hammer: { name: '锤子', price: 900, icon: '🔨', desc: '消除一个棋子' },
+    bomb: { name: '炸弹', price: 1300, icon: '💣', desc: '消除 3x3 区域' },
+    color: { name: '换色', price: 1100, icon: '🎨', desc: '智能制造即时消除' }
 };
 
 function getStore() {
@@ -129,16 +131,62 @@ function useItem(type) {
     return true;
 }
 
+function localDateKey(now) {
+    const date = now instanceof Date ? now : new Date(now == null ? Date.now() : now);
+    const monthValue = date.getMonth() + 1;
+    const dayValue = date.getDate();
+    const month = (monthValue < 10 ? '0' : '') + monthValue;
+    const day = (dayValue < 10 ? '0' : '') + dayValue;
+    return date.getFullYear() + '-' + month + '-' + day;
+}
+
+function getRewardedItemState(now) {
+    const store = getStore();
+    const date = localDateKey(now);
+    let saved = null;
+    if (store && store.getStorageSync) saved = store.getStorageSync(REWARDED_ITEM_KEY);
+    const count = saved && saved.date === date && Number.isSafeInteger(saved.count) && saved.count >= 0
+        ? Math.min(REWARDED_ITEM_DAILY_LIMIT, saved.count)
+        : 0;
+    const state = { date: date, count: count, remaining: REWARDED_ITEM_DAILY_LIMIT - count };
+    if (!saved || saved.date !== date) {
+        if (store && store.setStorageSync) store.setStorageSync(REWARDED_ITEM_KEY, { date: date, count: 0 });
+    }
+    return state;
+}
+
+/** 完整广告观看后的唯一发奖入口；所有道具共享本地自然日 10 次上限。 */
+function claimRewardedItem(type, now) {
+    if (!ITEM_DEFS[type]) return { ok: false, reason: 'invalid_item' };
+    const state = getRewardedItemState(now);
+    if (state.remaining <= 0) return { ok: false, reason: 'limit', state: state };
+    const next = { date: state.date, count: state.count + 1 };
+    const store = getStore();
+    if (!store || typeof store.setStorageSync !== 'function') {
+        return { ok: false, reason: 'storage_unavailable', state: state };
+    }
+    store.setStorageSync(REWARDED_ITEM_KEY, next);
+    addItem(type, 1);
+    return {
+        ok: true,
+        state: { date: next.date, count: next.count, remaining: REWARDED_ITEM_DAILY_LIMIT - next.count }
+    };
+}
+
 module.exports = {
     COIN_CONFIG: COIN_CONFIG,
     STAR_CONFIG: STAR_CONFIG,
     ITEM_DEFS: ITEM_DEFS,
+    REWARDED_ITEM_KEY: REWARDED_ITEM_KEY,
+    REWARDED_ITEM_DAILY_LIMIT: REWARDED_ITEM_DAILY_LIMIT,
     getCoins: getCoins,
     addCoins: addCoins,
     spendCoins: spendCoins,
     getItems: getItems,
     addItem: addItem,
     useItem: useItem,
+    getRewardedItemState: getRewardedItemState,
+    claimRewardedItem: claimRewardedItem,
     calcStars: calcStars,
     calcWinCoins: calcWinCoins
 };

@@ -6,6 +6,7 @@
 
 const THEME = require('./theme');
 const assets = require('./assets');
+const typography = require('./typography');
 
 const BattleUI = {};
 
@@ -62,14 +63,40 @@ function drawButton(ctx, screen, x, y, w, h, text, top, bottom, size) {
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = THEME.textLight;
-    ctx.font = 'bold ' + (size || 18) + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+    typography.drawCentered(ctx, text, x, y + 1, w, h, {
+        size: size || 18, minSize: 10, weight: 'bold'
+    });
 }
 
-/** 画一个玩家头像（圆形 + emoji） */
-function drawAvatar(ctx, cx, cy, r, emoji) {
+function roomDisplayName(roomId) {
+    const prefixes = ['紫藤', '星灯', '月桂', '晚樱', '云朵', '蜜桃', '铃兰', '萤火'];
+    const places = ['猫眠亭', '爪爪巷', '月牙桥', '绒球庭', '星愿台', '软软坡', '花影阁', '猫语泉'];
+    let hash = 2166136261;
+    const text = String(roomId || '');
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    hash >>>= 0;
+    return prefixes[hash % prefixes.length] + places[Math.floor(hash / prefixes.length) % places.length];
+}
+
+function drawImageCoverCircle(ctx, image, cx, cy, r) {
+    if (!image || !image.width || !image.height) return false;
+    const scale = Math.max(r * 2 / image.width, r * 2 / image.height);
+    const sw = r * 2 / scale;
+    const sh = r * 2 / scale;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(image, (image.width - sw) / 2, (image.height - sh) / 2, sw, sh, cx - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+    return true;
+}
+
+/** 画一个玩家头像；无授权时使用项目内猫咪头像。 */
+function drawAvatar(ctx, cx, cy, r, image, fallbackKey) {
     ctx.fillStyle = THEME.glassBgSoft;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -77,69 +104,121 @@ function drawAvatar(ctx, cx, cy, r, emoji) {
     ctx.strokeStyle = THEME.gold;
     ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.font = Math.floor(r * 1.2) + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(emoji, cx, cy + 1);
+    if (!drawImageCoverCircle(ctx, image || assets.get(fallbackKey), cx, cy, r)) {
+        ctx.fillStyle = '#F8D9EC';
+        typography.drawFit(ctx, '猫咪', cx, cy + 1, r * 1.6, {
+            size: 15, minSize: 10, weight: 'bold', align: 'center'
+        });
+    }
 }
 
 /**
  * 房间等待页
- * @param data { roomId, myName, myReady, oppName, oppReady, oppJoined, isHost }
- * @returns { ready, cancel }
+ * @param data { roomId, myName, myReady, oppName, oppReady, oppJoined, items, isHost, myAvatar }
+ * @returns { ready, cancel, avatar }
  */
 BattleUI.drawWait = function (ctx, screen, data) {
     const cx = screen.width / 2;
+    const top = Number(screen.contentTop) || Number(screen.safeTop) || 18;
     drawBg(ctx, screen);
 
     // 标题
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.font = 'bold 26px sans-serif';
     ctx.fillStyle = THEME.textScene;
-    ctx.fillText('双人对战', cx, 60);
+    typography.drawFit(ctx, '双人对战', cx, top + 24, screen.width - 36, {
+        size: 26, minSize: 18, weight: 'bold', align: 'center'
+    });
 
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = THEME.textSceneMuted;
-    ctx.fillText('房间号 ' + data.roomId, cx, 86);
+    ctx.fillStyle = '#FFE1A7';
+    typography.drawFit(ctx, '相遇地点 · ' + roomDisplayName(data.roomId), cx, top + 54, screen.width - 36, {
+        size: 17, minSize: 10, weight: 'bold', align: 'center'
+    });
+    ctx.fillStyle = 'rgba(255,239,249,0.62)';
+    typography.drawFit(ctx, '邀请识别码 ' + String(data.roomId || '').slice(-6).toUpperCase(), cx, top + 73, screen.width - 36, {
+        size: 10, minSize: 8, align: 'center', numbers: true
+    });
 
     // 双方头像
-    const avatarY = screen.height * 0.3;
+    const avatarY = Math.max(screen.height * 0.3, top + 138);
     const r = 40;
     // 我（左）
-    drawAvatar(ctx, cx - 70, avatarY, r, '🐱');
-    ctx.font = 'bold 16px sans-serif';
+    drawAvatar(ctx, cx - 70, avatarY, r, data.myAvatar, 'piece1');
     ctx.fillStyle = THEME.textScene;
-    ctx.fillText(data.myName || '我', cx - 70, avatarY + r + 22);
-    ctx.font = '13px sans-serif';
+    typography.drawFit(ctx, data.myName || '我', cx - 70, avatarY + r + 22, 100, {
+        size: 16, minSize: 10, weight: 'bold', align: 'center'
+    });
     ctx.fillStyle = data.myReady ? THEME.gold : THEME.textSceneMuted;
-    ctx.fillText(data.myReady ? '已准备' : '等待中', cx - 70, avatarY + r + 42);
+    typography.drawFit(ctx, data.myReady ? '已准备' : '配置中', cx - 70, avatarY + r + 42, 100, {
+        size: 13, minSize: 9, align: 'center'
+    });
 
     // VS
-    ctx.font = 'bold 20px sans-serif';
     ctx.fillStyle = THEME.primaryLight;
-    ctx.fillText('VS', cx, avatarY);
+    typography.drawFit(ctx, 'VS', cx, avatarY, 50, {
+        size: 20, minSize: 12, weight: 'bold', numbers: true, align: 'center'
+    });
 
     // 对手（右）
-    drawAvatar(ctx, cx + 70, avatarY, r, data.oppJoined ? '🐶' : '❓');
-    ctx.font = 'bold 16px sans-serif';
+    drawAvatar(ctx, cx + 70, avatarY, r, null, data.oppJoined ? 'piece2' : 'piece5');
     ctx.fillStyle = THEME.textScene;
-    ctx.fillText(data.oppJoined ? (data.oppName || '对手') : '等待加入', cx + 70, avatarY + r + 22);
-    ctx.font = '13px sans-serif';
+    typography.drawFit(ctx, data.oppJoined ? (data.oppName || '对手') : '等待加入', cx + 70, avatarY + r + 22, 100, {
+        size: 16, minSize: 10, weight: 'bold', align: 'center'
+    });
     ctx.fillStyle = data.oppReady ? THEME.gold : THEME.textSceneMuted;
-    ctx.fillText(data.oppJoined ? (data.oppReady ? '已准备' : '等待中') : '', cx + 70, avatarY + r + 42);
-
-    // 提示
-    ctx.font = '13px sans-serif';
-    ctx.fillStyle = THEME.textSceneMuted;
-    ctx.fillText('双方都准备好后 3 秒自动开局', cx, screen.height * 0.55);
+    typography.drawFit(ctx, data.oppJoined ? (data.oppReady ? '已准备' : '配置中') : '', cx + 70, avatarY + r + 42, 100, {
+        size: 13, minSize: 9, align: 'center'
+    });
 
     const buttons = {};
+    buttons.avatar = { x: cx - 70 - r, y: avatarY - r, w: r * 2, h: r * 2 };
+    if (!data.myAvatar) {
+        ctx.fillStyle = '#FFE7F5';
+        typography.drawFit(ctx, '点头像可换成微信头像', cx - 70, avatarY + r + 59, 120, {
+            size: 10, minSize: 8, align: 'center'
+        });
+    }
+
+    // 自己可见的固定预算配置；准备后锁定，服务端仍做最终校验。
+    const items = data.items || { freeze: 1, disturb: 2 };
+    const configY = Math.max(avatarY + r + 88, screen.height * 0.49);
+    const total = (Number(items.freeze) || 0) + (Number(items.disturb) || 0);
+    ctx.fillStyle = THEME.textScene;
+    typography.drawFit(ctx, '对战道具 ' + total + '/3' + (data.myReady ? ' · 已锁定' : ''), cx, configY, screen.width - 36, {
+        size: 15, minSize: 10, weight: 'bold', numbers: true, align: 'center'
+    });
+    const groups = [
+        { key: 'freeze', name: '冰冻', x: cx - 76, count: Number(items.freeze) || 0 },
+        { key: 'disturb', name: '干扰', x: cx + 76, count: Number(items.disturb) || 0 }
+    ];
+    for (let i = 0; i < groups.length; i++) {
+        const group = groups[i];
+        const rowY = configY + 34;
+        ctx.fillStyle = THEME.textSceneMuted;
+        typography.drawFit(ctx, group.name, group.x, rowY - 19, 80, {
+            size: 12, minSize: 9, weight: 'bold', align: 'center'
+        });
+        ctx.fillStyle = THEME.textScene;
+        typography.drawFit(ctx, String(group.count), group.x, rowY + 1, 30, {
+            size: 20, minSize: 12, weight: 'bold', numbers: true, align: 'center'
+        });
+        if (!data.myReady) {
+            drawButton(ctx, screen, group.x - 48, rowY - 14, 28, 28, '−', THEME.btnGrayTop, THEME.btnGrayBottom, 18);
+            drawButton(ctx, screen, group.x + 20, rowY - 14, 28, 28, '+', THEME.primaryLight, THEME.primary, 18);
+            buttons[group.key + 'Minus'] = { x: group.x - 48, y: rowY - 14, w: 28, h: 28 };
+            buttons[group.key + 'Plus'] = { x: group.x + 20, y: rowY - 14, w: 28, h: 28 };
+        }
+    }
+
+    // 提示
+    ctx.fillStyle = THEME.textSceneMuted;
+    const hintY = Math.max(configY + 68, screen.height * 0.58);
+    typography.drawFit(ctx, '双方都准备好后 3 秒自动开局', cx, hintY, screen.width - 36, {
+        size: 13, minSize: 9, align: 'center', numbers: true
+    });
     // 准备按钮
     const btnW = 200;
     const btnH = 54;
     const btnX = cx - btnW / 2;
-    const btnY = screen.height * 0.62;
+    const btnY = Math.max(screen.height * 0.66, hintY + 28);
     if (data.myReady) {
         drawButton(ctx, screen, btnX, btnY, btnW, btnH, '已准备（取消准备）', '#B9A7F4', THEME.successDark, 16);
     } else {
@@ -161,7 +240,7 @@ BattleUI.drawWait = function (ctx, screen, data) {
  */
 BattleUI.drawTop = function (ctx, screen, data) {
     const cx = screen.width / 2;
-    const scoreY = (Number(screen.safeTop) || 0) + 30;
+    const scoreY = (Number(screen.contentTop) || Number(screen.safeTop) || 0) + 30;
     const urgent = data.urgent || data.timeLeft <= 10;
 
     ctx.fillStyle = THEME.glassBg;
@@ -177,30 +256,30 @@ BattleUI.drawTop = function (ctx, screen, data) {
     ctx.stroke();
 
     // 倒计时（居中醒目）
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     if (urgent) {
         ctx.fillStyle = 'rgba(255, 94, 120, 0.18)';
         ctx.beginPath();
         ctx.arc(cx, scoreY, 27, 0, Math.PI * 2);
         ctx.fill();
     }
-    ctx.font = 'bold ' + (urgent ? 38 : 30) + 'px sans-serif';
     ctx.fillStyle = urgent ? '#FF6C8A' : THEME.gold;
-    ctx.fillText(String(data.timeLeft), cx, scoreY);
+    typography.drawFit(ctx, String(data.timeLeft), cx, scoreY, 64, {
+        size: urgent ? 38 : 30, minSize: 16, weight: 'bold', numbers: true, align: 'center'
+    });
 
     // 我的分数（左）
-    ctx.textAlign = 'left';
-    ctx.font = 'bold 18px sans-serif';
     ctx.fillStyle = '#B9A7F4';
-    ctx.fillText('🐱 ' + data.myScore, 14, scoreY);
+    drawImageCoverCircle(ctx, assets.get('piece1'), 27, scoreY, 15);
+    typography.drawFit(ctx, String(data.myScore), 80, scoreY, 64, {
+        size: 18, minSize: 8, weight: 'bold', numbers: true, align: 'center'
+    });
 
     // 对手分数（右）
-    ctx.textAlign = 'right';
     ctx.fillStyle = THEME.primaryLight;
-    ctx.fillText('🐶 ' + data.oppScore, screen.width - 14, scoreY);
-
-    ctx.textAlign = 'left';
+    drawImageCoverCircle(ctx, assets.get('piece2'), screen.width - 27, scoreY, 15);
+    typography.drawFit(ctx, String(data.oppScore), screen.width - 80, scoreY, 64, {
+        size: 18, minSize: 8, weight: 'bold', numbers: true, align: 'center'
+    });
 };
 
 BattleUI.drawCountdown = function (ctx, screen, data) {
@@ -208,49 +287,45 @@ BattleUI.drawCountdown = function (ctx, screen, data) {
     ctx.fillRect(0, 0, screen.width, screen.height);
     const cx = screen.width / 2;
     const cy = screen.height * 0.46;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
     ctx.fillStyle = '#FFF4FC';
-    ctx.font = 'bold 28px sans-serif';
-    ctx.fillText('准备好了吗', cx, cy - 54);
-    ctx.font = 'bold 84px sans-serif';
+    typography.drawFit(ctx, '准备好了吗', cx, cy - 54, screen.width - 48, {
+        size: 28, minSize: 18, weight: 'bold', align: 'center'
+    });
     ctx.fillStyle = '#FF9CC8';
-    ctx.fillText(data.label || String(data.seconds), cx, cy + 18);
+    typography.drawFit(ctx, data.label || String(data.seconds), cx, cy + 18, screen.width - 48, {
+        size: 84, minSize: 30, weight: 'bold', numbers: !data.label, align: 'center'
+    });
 };
 
 BattleUI.drawWarning = function (ctx, screen) {
     const w = Math.min(screen.width - 20, 350);
     const h = 54;
     const x = (screen.width - w) / 2;
-    const y = Math.max((Number(screen.safeTop) || 0) + 72, screen.height * 0.34);
+    const y = Math.max((Number(screen.contentTop) || Number(screen.safeTop) || 0) + 72, screen.height * 0.34);
     ctx.save();
     ctx.fillStyle = 'rgba(255, 72, 106, 0.94)';
     roundRect(ctx, x, y, w, h, 16);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 30px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('还剩 30 秒！', screen.width / 2, y + h / 2 + 1);
+    typography.drawFit(ctx, '还剩 30 秒！', screen.width / 2, y + h / 2 + 1, w - 20, {
+        size: 30, minSize: 16, weight: 'bold', numbers: true, align: 'center'
+    });
     ctx.restore();
 };
 
 /**
- * 对战道具栏（5 个：锤/炸弹/换色 + 冰冻/干扰）
- * @param data { hammer, bomb, color, freeze, disturb } 各道具数量
- * @returns { hammer, bomb, color, freeze, disturb } 按钮区域
+ * 对战道具栏（仅房间配置的冰冻/干扰；单人商店道具不进入 PvP）
+ * @param data { freeze, disturb, cooldownRemaining, active }
+ * @returns { freeze, disturb } 按钮区域
  */
 BattleUI.drawItems = function (ctx, screen, data) {
     const items = [
-        { key: 'hammer', icon: '🔨', count: data.hammer },
-        { key: 'bomb', icon: '💣', count: data.bomb },
-        { key: 'color', icon: '🎨', count: data.color },
         { key: 'freeze', icon: '❄️', count: data.freeze },
         { key: 'disturb', icon: '🌀', count: data.disturb }
     ];
 
-    const r = 28;
-    const gap = 62;
+    const r = 31;
+    const gap = 104;
     const startX = (screen.width - (items.length - 1) * gap) / 2;
     const y = screen.height - (Number(screen.safeBottom) || 0) - 40;
     const buttons = {};
@@ -265,18 +340,23 @@ BattleUI.drawItems = function (ctx, screen, data) {
     for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const x = startX + i * gap;
-        ctx.fillStyle = it.count > 0 ? 'rgba(255,245,252,0.22)' : 'rgba(255,245,252,0.08)';
+        const enabled = it.count > 0 && !data.active && Number(data.cooldownRemaining) <= 0;
+        ctx.fillStyle = enabled ? 'rgba(255,245,252,0.22)' : 'rgba(255,245,252,0.08)';
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = it.count > 0 ? THEME.gold : THEME.glassBorder;
+        ctx.strokeStyle = enabled ? THEME.gold : THEME.glassBorder;
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        ctx.font = '24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(it.icon, x, y - 2);
+        if (it.asset) {
+            const itemImage = assets.get(it.asset);
+            if (itemImage && itemImage.width > 0) ctx.drawImage(itemImage, x - 22, y - 22, 44, 44);
+        } else {
+            typography.drawFit(ctx, it.icon, x, y - 2, r * 1.5, {
+                size: 24, minSize: 12, align: 'center'
+            });
+        }
 
         // 数量角标
         if (it.count > 0) {
@@ -285,10 +365,17 @@ BattleUI.drawItems = function (ctx, screen, data) {
             ctx.arc(x + r * 0.62, y - r * 0.62, 10, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 11px sans-serif';
-            ctx.fillText(String(it.count), x + r * 0.62, y - r * 0.62 + 1);
+            typography.drawFit(ctx, String(it.count), x + r * 0.62, y - r * 0.62 + 1, 18, {
+                size: 11, minSize: 8, weight: 'bold', numbers: true, align: 'center'
+            });
         }
         buttons[it.key] = { x: x - r, y: y - r, w: r * 2, h: r * 2 };
+    }
+    if (Number(data.cooldownRemaining) > 0) {
+        ctx.fillStyle = '#FFE1A7';
+        typography.drawFit(ctx, '共享冷却 ' + Math.ceil(data.cooldownRemaining / 1000) + '秒', screen.width / 2, y - r - 15, 180, {
+            size: 13, minSize: 9, weight: 'bold', numbers: true, align: 'center'
+        });
     }
     return buttons;
 };
@@ -323,26 +410,33 @@ BattleUI.drawResult = function (ctx, screen, data) {
     ctx.restore();
 
     // 结果
-    const icon = data.result === 'win' ? '🏆' : (data.result === 'draw' ? '🤝' : '😵');
     const title = data.result === 'win' ? '胜利！' : (data.result === 'draw' ? '平局' : '失败');
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = '48px sans-serif';
-    ctx.fillText(icon, cx, cardY + 56);
-    ctx.font = 'bold 26px sans-serif';
+    if (data.result === 'draw') {
+        drawAvatar(ctx, cx - 24, cardY + 55, 28, null, 'piece1');
+        drawAvatar(ctx, cx + 24, cardY + 55, 28, null, 'piece2');
+    } else {
+        const resultImage = assets.get(data.result === 'win' ? 'uiResultHappyCat' : 'uiResultSadCat');
+        if (resultImage && resultImage.width > 0) ctx.drawImage(resultImage, cx - 54, cardY + 5, 108, 108);
+    }
     ctx.fillStyle = data.result === 'win' ? THEME.gold : (data.result === 'draw' ? THEME.textScene : '#FF9DB6');
-    ctx.fillText(title, cx, cardY + 108);
+    typography.drawFit(ctx, title, cx, cardY + 108, cardW - 36, {
+        size: 26, minSize: 18, weight: 'bold', align: 'center'
+    });
 
     // 比分
-    ctx.font = '20px sans-serif';
     ctx.fillStyle = THEME.textScene;
-    ctx.fillText('你 ' + data.myScore + ' : ' + data.oppScore + ' 对手', cx, cardY + 150);
+    typography.drawFit(ctx, '你 ' + data.myScore + ' : ' + data.oppScore + ' 对手', cx, cardY + 150, cardW - 36, {
+        size: 20, minSize: 11, numbers: true, align: 'center'
+    });
 
     // 金币奖励
     if (data.coinReward > 0) {
-        ctx.font = 'bold 16px sans-serif';
+        const coinImage = assets.get('uiCoin');
+        if (coinImage && coinImage.width > 0) ctx.drawImage(coinImage, cx - 66, cardY + 166, 30, 30);
         ctx.fillStyle = THEME.gold;
-        ctx.fillText('🪙 +' + data.coinReward + ' 金币', cx, cardY + 182);
+        typography.drawFit(ctx, '+' + data.coinReward + ' 金币', cx - 32, cardY + 182, cardW - 86, {
+            size: 16, minSize: 10, weight: 'bold', numbers: true
+        });
     }
 
     const buttons = {};
@@ -369,30 +463,49 @@ function drawEffectBanner(ctx, screen, text, y, fill) {
     roundRect(ctx, x, y, w, h, 15);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, screen.width / 2, y + h / 2 + 1);
+    typography.drawFit(ctx, text, screen.width / 2, y + h / 2 + 1, w - 20, {
+        size: 22, minSize: 12, weight: 'bold', numbers: true, align: 'center'
+    });
     ctx.restore();
 }
 
 /**
  * 受击特效（冰冻 / 干扰横幅）
- * @param data { frozen, disturb, boardY } 布尔
+ * @param data { frozen, frozenRemaining, disturb, disturbRemaining, castNotice, boardX, boardY, boardW, boardH }
  */
 BattleUI.drawEffects = function (ctx, screen, data) {
     const boardY = Number(data.boardY);
     const baseY = Math.max(
-        (Number(screen.safeTop) || 0) + 72,
+        (Number(screen.contentTop) || Number(screen.safeTop) || 0) + 72,
         Number.isFinite(boardY) ? boardY - 56 : screen.height * 0.34
     );
     let y = baseY;
+    if (data.castNotice) {
+        const castName = data.castNotice === 'freeze' ? '冰冻' : '干扰';
+        drawEffectBanner(ctx, screen, '已释放' + castName, y, 'rgba(114, 91, 196, 0.96)');
+        y += 58;
+    }
+    const targetText = data.frozen
+        ? '冰冻中 · ' + Math.max(1, Math.ceil(Number(data.frozenRemaining) / 1000)) + '秒'
+        : (data.disturb ? '干扰中 · ' + Math.max(1, Math.ceil(Number(data.disturbRemaining) / 1000)) + '秒' : '');
+    if (targetText && Number.isFinite(Number(data.boardX)) && Number.isFinite(Number(data.boardY)) &&
+        Number.isFinite(Number(data.boardW)) && Number.isFinite(Number(data.boardH))) {
+        ctx.save();
+        ctx.fillStyle = data.frozen ? 'rgba(34, 126, 196, 0.38)' : 'rgba(190, 45, 120, 0.34)';
+        roundRect(ctx, Number(data.boardX), Number(data.boardY), Number(data.boardW), Number(data.boardH), 12);
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        typography.drawFit(ctx, targetText, screen.width / 2, Number(data.boardY) + Number(data.boardH) / 2, Number(data.boardW) - 24, {
+            size: 30, minSize: 18, weight: 'bold', numbers: true, align: 'center'
+        });
+        ctx.restore();
+    }
     if (data.frozen) {
-        drawEffectBanner(ctx, screen, '对手使用冰冻 · 3秒内无法操作', y, 'rgba(59, 151, 217, 0.96)');
+        drawEffectBanner(ctx, screen, '对手使用冰冻 · ' + Math.max(1, Math.ceil(Number(data.frozenRemaining) / 1000)) + '秒', y, 'rgba(59, 151, 217, 0.96)');
         y += 58;
     }
     if (data.disturb) {
-        drawEffectBanner(ctx, screen, '对手使用干扰 · 需4连消除', y, 'rgba(225, 91, 151, 0.96)');
+        drawEffectBanner(ctx, screen, '对手使用干扰 · 需4连 · ' + Math.max(1, Math.ceil(Number(data.disturbRemaining) / 1000)) + '秒', y, 'rgba(225, 91, 151, 0.96)');
     }
 };
 
@@ -400,5 +513,7 @@ BattleUI.hitTest = function (x, y, btn) {
     if (!btn) return false;
     return x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h;
 };
+
+BattleUI.roomDisplayName = roomDisplayName;
 
 module.exports = BattleUI;

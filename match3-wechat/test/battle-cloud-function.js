@@ -7,7 +7,32 @@ let currentOpenid = '';
 let removeCalls = 0;
 let transactionCalls = 0;
 let cutoff = 0;
-let addError = null;
+let setError = null;
+const documents = Object.create(null);
+let transactionTail = Promise.resolve();
+
+function documentRef(id) {
+    return {
+        get: function () {
+            return Promise.resolve({ data: documents[id] || null });
+        },
+        set: function (options) {
+            if (setError) return Promise.reject(setError);
+            assert(options && options.data && typeof options.data === 'object');
+            assert.strictEqual(Object.prototype.hasOwnProperty.call(options.data, '_id'), false,
+                '事务 set 数据不得包含 _id');
+            documents[id] = Object.assign({ _id: id }, options.data);
+            return Promise.resolve({});
+        }
+    };
+}
+
+const transaction = {
+    collection: function (name) {
+        assert.strictEqual(name, 'battle_rooms');
+        return { doc: documentRef };
+    }
+};
 
 const rooms = {
     where: function (condition) {
@@ -19,10 +44,6 @@ const rooms = {
                 return Promise.resolve({ stats: { removed: 3 } });
             }
         };
-    },
-    add: function () {
-        if (addError) return Promise.reject(addError);
-        return Promise.resolve({});
     }
 };
 
@@ -34,9 +55,11 @@ const database = {
         assert.strictEqual(name, 'battle_rooms');
         return rooms;
     },
-    runTransaction: function () {
+    runTransaction: function (handler) {
         transactionCalls++;
-        return Promise.resolve({ ok: false });
+        const result = transactionTail.then(function () { return handler(transaction); });
+        transactionTail = result.catch(function () {});
+        return result;
     }
 };
 
@@ -85,14 +108,41 @@ Module._load = originalLoad;
     assert.deepStrictEqual(invalidRoom, { ok: false, err: '房间号格式非法' });
     assert.strictEqual(transactionCalls, 0, '非法房间号不得进入事务');
 
+    for (let i = 0; i < 5; i++) {
+        const created = await battleFunction.main({ action: 'create', nickname: '玩家' });
+        assert.strictEqual(created.ok, true);
+        assert(logic.isValidRoomId(created.roomId));
+    }
+    const limited = await battleFunction.main({ action: 'create', nickname: '玩家' });
+    assert.deepStrictEqual(limited, { ok: false, err: logic.CREATE_RATE_LIMIT_MESSAGE });
+    const counterIds = Object.keys(documents).filter(function (id) {
+        return id.indexOf(logic.CREATE_LIMIT_DOCUMENT_PREFIX) === 0;
+    });
+    assert.strictEqual(counterIds.length, 1, '每个 OpenID 应只有一个哈希计数文档');
+    assert(counterIds[0].length <= 32, '限流文档 ID 过长');
+    assert.strictEqual(counterIds[0].includes(currentOpenid), false, '限流文档 ID 泄露 OpenID');
+    assert.strictEqual(JSON.stringify(documents[counterIds[0]]).includes(currentOpenid), false,
+        '限流文档内容泄露 OpenID');
+
+    currentOpenid = 'concurrent-openid';
+    const concurrent = await Promise.all(Array.from({ length: 6 }, function () {
+        return battleFunction.main({ action: 'create', nickname: '并发玩家' });
+    }));
+    assert.strictEqual(concurrent.filter(function (result) { return result.ok; }).length, 5,
+        '并发建房穿透每分钟上限');
+    assert.deepStrictEqual(concurrent.filter(function (result) { return !result.ok; })[0],
+        { ok: false, err: logic.CREATE_RATE_LIMIT_MESSAGE });
+
     const oldConsoleError = console.error;
     console.error = function () {};
-    addError = new Error('secret database detail');
+    currentOpenid = 'failing-openid';
+    setError = new Error('secret database detail');
     try {
         const failure = await battleFunction.main({ action: 'create', nickname: '玩家' });
         assert.deepStrictEqual(failure, { ok: false, err: '服务异常' });
         assert.strictEqual(JSON.stringify(failure).includes('secret'), false);
     } finally {
+        setError = null;
         console.error = oldConsoleError;
     }
 

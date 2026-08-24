@@ -4,15 +4,16 @@ module.exports = {
     "name": "绝地求生",
     "rows": 8,
     "columns": 8,
-    "moveCount": 15,
+    "timeLimitSec": 135,
+    "moveCount": 23,
     "goals": [
         {
             "type": "jelly",
-            "target": 12
+            "target": 10
         },
         {
             "type": "score",
-            "target": 2500
+            "target": 3200
         }
     ],
     "underlays": {

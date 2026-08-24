@@ -16,6 +16,23 @@ const ASSETS = {
     // 游戏内场景（同一月夜花园世界，不含文字和动态 UI）
     gameBackground: 'res/game-background-v2.jpg',
     levelBackground: 'res/level-background-v2.jpg',
+    levelNodeCurrent: 'res/ui/level-node-current-v2.png',
+    levelNodeDone: 'res/ui/level-node-done-v2.png',
+    levelNodeLocked: 'res/ui/level-node-locked-v2.png',
+
+    // 统一月夜猫咪 UI（运行图均已压缩为小尺寸透明 PNG）
+    uiCoin: 'res/ui/coin.png',
+    uiHeart: 'res/ui/heart.png',
+    uiShop: 'res/ui/shop.png',
+    uiSettings: 'res/ui/settings.png',
+    uiTimer: 'res/ui/timer.png',
+    uiMoves: 'res/ui/moves-paw.png',
+    uiToolHammer: 'res/ui/tool-hammer.png',
+    uiToolBomb: 'res/ui/tool-bomb.png',
+    uiToolYarn: 'res/ui/tool-yarn.png',
+    uiResultHappyCat: 'res/ui/result-happy-cat.png',
+    uiResultSadCat: 'res/ui/result-sad-cat.png',
+    uiSpecialRowBeam: 'res/ui/special-row-beam.png',
 
     // 棋子（256×256 运行图；*-v2.png 为保留的 512×512 源图）
     piece1: 'res/piece1-runtime.png',

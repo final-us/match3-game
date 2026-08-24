@@ -4,11 +4,12 @@ module.exports = {
     "name": "果冻深渊",
     "rows": 8,
     "columns": 8,
-    "moveCount": 16,
+    "timeLimitSec": 135,
+    "moveCount": 24,
     "goals": [
         {
             "type": "jelly",
-            "target": 12
+            "target": 10
         }
     ],
     "underlays": {

@@ -10,9 +10,22 @@
 const gridUtil = require('./grid');
 const config = require('./config');
 
+function toTimerMs(seconds) {
+    const value = Number(seconds);
+    return Number.isFinite(value) && value > 0 ? value * 1000 : 0;
+}
+
+function positionKey(pos) {
+    return pos.row + ':' + pos.column;
+}
+
+function copyPosition(pos) {
+    return { row: pos.row, column: pos.column };
+}
+
 class GameCore {
     /**
-     * @param {object} levelData 关卡数据 { rows, columns, moveCount, goals, underlays, obstacles }
+     * @param {object} levelData 关卡数据 { rows, columns, moveCount, timeLimitSec, goals, underlays, obstacles }
      *   underlays: { 'row:col': 层数 } 果冻
      *   obstacles: { 'row:col': 1 } 冰块
      * @param {object} callbacks 回调 { onSwap, onInvalidSwap, onMatch, onGravity, onFill, onLevelEnd }
@@ -26,11 +39,19 @@ class GameCore {
         this.jellyTotal = 0;
         this.score = 0;
         this.movesLeft = levelData.moveCount || 25;
+        this.timeLimitMs = toTimerMs(levelData.timeLimitSec);
+        this.timeLeftMs = this.timeLimitMs;
+        this.timerStarted = false;
+        this.timerPaused = false;
         this.processing = false;
         this.ended = false;
         this.won = false;
         this.minMatchCount = 3; // 最小消除数（默认 3 连；「干扰」道具时设为 4）
         this.pendingTriggers = []; // 玩家交换特殊棋子时待触发的列表
+        this.pendingRemovals = []; // 道具直接命中的待消除位置
+        this.pendingCombo = null; // 特殊棋子交换组合
+        this.preferredGenerationPositions = []; // 玩家操作形成特殊棋子的优先落点
+        this.specialBases = {}; // 特殊棋子的原普通颜色，随棋子一起移动
         this.initGrid();
     }
 
@@ -42,10 +63,18 @@ class GameCore {
         this.grid = gridUtil.createGrid(rows, cols, config.getCommonTypes());
         this.score = 0;
         this.movesLeft = this.level.moveCount || 25;
+        this.timeLimitMs = toTimerMs(this.level.timeLimitSec);
+        this.timeLeftMs = this.timeLimitMs;
+        this.timerStarted = false;
+        this.timerPaused = false;
         this.processing = false;
         this.ended = false;
         this.won = false;
         this.pendingTriggers = [];
+        this.pendingRemovals = [];
+        this.pendingCombo = null;
+        this.preferredGenerationPositions = [];
+        this.specialBases = {};
 
         // 果冻层
         this.jellyGrid = [];
@@ -88,6 +117,58 @@ class GameCore {
         return !this.processing && !this.ended;
     }
 
+    /** 后台或场景切换时暂停单人倒计时 */
+    pauseTimer() {
+        this.timerPaused = true;
+    }
+
+    /** 回到前台后恢复单人倒计时 */
+    resumeTimer() {
+        this.timerPaused = false;
+    }
+
+    /** 推进单人倒计时；由主循环仅在 playing 状态调用 */
+    updateTime(deltaMs) {
+        if (this.timeLimitMs <= 0 || !this.timerStarted || this.timerPaused || this.ended) return;
+        const delta = Number(deltaMs);
+        if (!Number.isFinite(delta) || delta <= 0) return;
+
+        // 动画/连消处理中只推进时钟，不抢先结算；本次操作结束后统一判定，保证目标完成优先。
+        if (!this.processing) {
+            this.checkLevelEnd();
+            if (this.ended) return;
+        }
+
+        this.timeLeftMs = Math.max(0, this.timeLeftMs - delta);
+        if (this.timeLeftMs <= 0 && !this.processing) this.checkLevelEnd('timeout');
+    }
+
+    /** 关卡扶助：只调整当前局状态，不改变关卡配置 */
+    applyAssistance(extraMoves, extraTimeMs) {
+        const moves = Number(extraMoves);
+        const time = Number(extraTimeMs);
+        if (Number.isFinite(moves) && moves > 0) this.movesLeft += Math.floor(moves);
+        if (this.timeLimitMs > 0 && Number.isFinite(time) && time > 0) this.timeLeftMs += time;
+    }
+
+    /** 复活并恢复可操作状态；时间关卡额外增加指定毫秒数 */
+    revive(extraMoves, extraTimeMs) {
+        if (!this.ended || this.won) return false;
+
+        const moves = Number(extraMoves);
+        const time = Number(extraTimeMs);
+        if (Number.isFinite(moves) && moves > 0) this.movesLeft += Math.floor(moves);
+        if (this.timeLimitMs > 0) {
+            if (Number.isFinite(time) && time > 0) this.timeLeftMs += time;
+            this.timerStarted = true;
+        }
+        this.processing = false;
+        this.ended = false;
+        this.won = false;
+        this.timerPaused = false;
+        return true;
+    }
+
     /** 剩余果冻单位数 */
     getJellyLeft() {
         let left = 0;
@@ -97,6 +178,41 @@ class GameCore {
             }
         }
         return left;
+    }
+
+    /** 特殊棋子保留的普通颜色（用于彩球组合与视觉显示） */
+    getSpecialBaseType(pos) {
+        return this.specialBases[positionKey(pos)] || 0;
+    }
+
+    setSpecialBaseType(pos, type) {
+        const key = positionKey(pos);
+        if (type && config.getPieceTypeDef(type)) this.specialBases[key] = type;
+        else delete this.specialBases[key];
+    }
+
+    swapSpecialBases(from, to) {
+        const fromKey = positionKey(from);
+        const toKey = positionKey(to);
+        const fromType = this.specialBases[fromKey] || 0;
+        const toType = this.specialBases[toKey] || 0;
+        delete this.specialBases[fromKey];
+        delete this.specialBases[toKey];
+        if (fromType) this.specialBases[toKey] = fromType;
+        if (toType) this.specialBases[fromKey] = toType;
+    }
+
+    moveSpecialBases(changes) {
+        for (let i = 0; i < changes.length; i++) {
+            const from = changes[i][0];
+            const to = changes[i][1];
+            const fromKey = positionKey(from);
+            const toKey = positionKey(to);
+            const baseType = this.specialBases[fromKey] || 0;
+            delete this.specialBases[fromKey];
+            delete this.specialBases[toKey];
+            if (baseType) this.specialBases[toKey] = baseType;
+        }
     }
 
     /** 是否有冰块障碍 */
@@ -113,44 +229,62 @@ class GameCore {
      * 玩家尝试交换两个棋子（异步）
      */
     async trySwap(from, to) {
-        if (!this.isPlaying()) return;
+        if (!this.isPlaying()) return false;
+        if (!gridUtil.isValidPosition(this.grid, from) || !gridUtil.isValidPosition(this.grid, to)) {
+            return false;
+        }
 
         // 覆盖锁定：被果冻/冰块覆盖的棋子不能主动交换（像钉住一样推不动）
         if (this.isBlocked(from) || this.isBlocked(to)) {
             if (this.callbacks.onInvalidSwap) await this.callbacks.onInvalidSwap(from, to);
-            return;
+            return false;
         }
 
         const typeA = gridUtil.getPieceType(this.grid, from);
         const typeB = gridUtil.getPieceType(this.grid, to);
-        if (!typeA || !typeB) return;
+        if (!typeA || !typeB) return false;
         const rowDiff = Math.abs(from.row - to.row);
         const colDiff = Math.abs(from.column - to.column);
-        if (rowDiff + colDiff !== 1) return;
+        if (rowDiff + colDiff !== 1) return false;
 
         const valid = this.validateMove(from, to);
         if (!valid) {
             if (this.callbacks.onInvalidSwap) await this.callbacks.onInvalidSwap(from, to);
-            return;
+            return false;
         }
 
         gridUtil.swapTypeInGrid(this.grid, from, to);
+        this.swapSpecialBases(from, to);
         this.movesLeft--;
+        this.preferredGenerationPositions = [copyPosition(to), copyPosition(from)];
 
         // 特殊棋子被玩家交换 → 标记为待触发（交换后触发特效）
         this.pendingTriggers = [];
         const typeFromNew = gridUtil.getPieceType(this.grid, from);
         const typeToNew = gridUtil.getPieceType(this.grid, to);
-        if (config.isSpecialType(typeFromNew)) {
-            this.pendingTriggers.push({ row: from.row, column: from.column });
-        }
-        if (config.isSpecialType(typeToNew)) {
-            this.pendingTriggers.push({ row: to.row, column: to.column });
+        this.pendingCombo = this.buildSpecialCombo(from, to);
+        if (!this.pendingCombo) {
+            if (config.isSpecialType(typeFromNew)) {
+                this.pendingTriggers.push(copyPosition(from));
+            }
+            if (config.isSpecialType(typeToNew)) {
+                this.pendingTriggers.push(copyPosition(to));
+            }
         }
 
         if (this.callbacks.onSwap) await this.callbacks.onSwap(from, to);
 
         await this.processGrid();
+
+        if (!this.ended && this.timerStarted && this.timeLeftMs <= 0) {
+            this.checkLevelEnd('timeout');
+        }
+
+        // 只有首个有效交换完整处理完后才开始倒计时。
+        if (this.timeLimitMs > 0 && !this.timerStarted && !this.ended) {
+            this.timerStarted = true;
+        }
+        return true;
     }
 
     /** 校验交换是否有效（特殊棋子交换视为有效，普通棋子需形成匹配） */
@@ -167,104 +301,262 @@ class GameCore {
         return matches.length >= 1;
     }
 
-    /**
-     * 收集消除位置并生成特殊棋子（4 连横→横火箭 / 4 连竖→竖火箭 / 5 连→炸弹）
-     * @param {Array} matches 匹配列表
-     * @returns {{removed: Array, generated: Array}} removed=要消除的位置，generated=[{pos, type}]
-     */
-    collectWithSpecials(matches) {
+    chooseGenerationPosition(positions, preferred, fallback) {
+        for (let i = 0; i < preferred.length; i++) {
+            if (gridUtil.includesPosition(positions, preferred[i])) return copyPosition(preferred[i]);
+        }
+        return copyPosition(fallback);
+    }
+
+    /** 收集消除位置并生成特殊棋子：四连火箭、五连彩球、T/L 炸弹。 */
+    collectWithSpecials(matches, preferred) {
+        preferred = preferred || [];
         const reserved = [];
         const generated = [];
+        const usedMatches = {};
 
+        const reserve = (pos, type) => {
+            if (gridUtil.includesPosition(reserved, pos)) return;
+            const baseType = gridUtil.getPieceType(this.grid, pos);
+            if (!config.getPieceTypeDef(baseType)) return;
+            reserved.push(copyPosition(pos));
+            generated.push({ pos: copyPosition(pos), type: type, baseType: baseType });
+        };
+
+        // 同色横竖匹配相交即为 T/L/十字，优先生成范围炸弹。
         for (let i = 0; i < matches.length; i++) {
-            const match = matches[i];
-            const len = match.length;
-            const isHoriz = match.every(function (p) { return p.row === match[0].row; });
-
-            let spType = 0;
-            if (len >= 5) spType = config.SPECIAL_TYPES.BOMB;
-            else if (len === 4 && isHoriz) spType = config.SPECIAL_TYPES.H_ROCKET;
-            else if (len === 4 && !isHoriz) spType = config.SPECIAL_TYPES.V_ROCKET;
-
-            if (spType) {
-                const mid = match[Math.floor(len / 2)];
-                // 去重：一个位置只生成一个特殊棋子（重叠匹配优先保留先生成的）
-                if (!gridUtil.includesPosition(reserved, mid)) {
-                    reserved.push({ row: mid.row, column: mid.column });
-                    generated.push({ pos: { row: mid.row, column: mid.column }, type: spType });
+            const a = matches[i];
+            const aHoriz = a.every(function (p) { return p.row === a[0].row; });
+            for (let j = i + 1; j < matches.length; j++) {
+                const b = matches[j];
+                const bHoriz = b.every(function (p) { return p.row === b[0].row; });
+                if (aHoriz === bHoriz) continue;
+                let intersection = null;
+                for (let x = 0; x < a.length && !intersection; x++) {
+                    if (gridUtil.includesPosition(b, a[x])) intersection = a[x];
                 }
+                if (!intersection) continue;
+                const union = a.concat(b);
+                const pos = this.chooseGenerationPosition(union, preferred, intersection);
+                reserve(pos, config.SPECIAL_TYPES.BOMB);
+                usedMatches[i] = true;
+                usedMatches[j] = true;
             }
         }
 
-        // 普通消除位置 = 匹配中所有位置 - 生成特殊棋子的位置
+        for (let i = 0; i < matches.length; i++) {
+            if (usedMatches[i]) continue;
+            const match = matches[i];
+            const len = match.length;
+            const isHoriz = match.every(function (p) { return p.row === match[0].row; });
+            let specialType = 0;
+            if (len >= 5) specialType = config.SPECIAL_TYPES.COLOR_BALL;
+            else if (len === 4) {
+                specialType = isHoriz ? config.SPECIAL_TYPES.H_ROCKET : config.SPECIAL_TYPES.V_ROCKET;
+            }
+            if (specialType) {
+                const fallback = match[Math.floor(len / 2)];
+                reserve(this.chooseGenerationPosition(match, preferred, fallback), specialType);
+            }
+        }
+
         const removed = [];
         for (let i = 0; i < matches.length; i++) {
             for (let j = 0; j < matches[i].length; j++) {
                 const pos = matches[i][j];
-                if (gridUtil.includesPosition(reserved, pos)) continue;
-                if (!gridUtil.includesPosition(removed, pos)) {
-                    removed.push({ row: pos.row, column: pos.column });
+                if (!gridUtil.includesPosition(reserved, pos) && !gridUtil.includesPosition(removed, pos)) {
+                    removed.push(copyPosition(pos));
                 }
             }
         }
         return { removed: removed, generated: generated };
     }
 
-    /**
-     * 特殊棋子触发连锁：removed 中的特殊棋子触发特效（炸行/列/3x3），波及的棋子并入 removed
-     * 波及到其他特殊棋子时递归触发（连锁反应）
-     */
-    expandSpecialTriggers(removed) {
+    isRocket(type) {
+        return type === config.SPECIAL_TYPES.H_ROCKET || type === config.SPECIAL_TYPES.V_ROCKET;
+    }
+
+    buildSpecialCombo(from, to) {
+        const typeFrom = gridUtil.getPieceType(this.grid, from);
+        const typeTo = gridUtil.getPieceType(this.grid, to);
+        const hasColorBall = typeFrom === config.SPECIAL_TYPES.COLOR_BALL ||
+            typeTo === config.SPECIAL_TYPES.COLOR_BALL;
+        if (!hasColorBall && !(config.isSpecialType(typeFrom) && config.isSpecialType(typeTo))) return null;
+        return {
+            first: { pos: copyPosition(from), type: typeFrom },
+            second: { pos: copyPosition(to), type: typeTo },
+            center: copyPosition(to)
+        };
+    }
+
+    addTarget(targets, pos) {
+        if (gridUtil.isValidPosition(this.grid, pos) && !gridUtil.includesPosition(targets, pos)) {
+            targets.push(copyPosition(pos));
+        }
+    }
+
+    getMostFrequentCommonType() {
+        const types = config.getCommonTypes();
+        const counts = {};
+        for (let i = 0; i < types.length; i++) counts[types[i]] = 0;
+        for (let r = 0; r < this.grid.length; r++) {
+            for (let c = 0; c < this.grid[r].length; c++) {
+                if (counts[this.grid[r][c]] !== undefined) counts[this.grid[r][c]]++;
+            }
+        }
+        let bestType = types[0] || 0;
+        for (let i = 1; i < types.length; i++) {
+            if (counts[types[i]] > counts[bestType]) bestType = types[i];
+        }
+        return bestType;
+    }
+
+    getSpecialFallbackBase(type) {
+        const types = config.getCommonTypes();
+        if (type === config.SPECIAL_TYPES.H_ROCKET) return types[1] || types[0] || 0;
+        if (type === config.SPECIAL_TYPES.V_ROCKET) return types[2] || types[0] || 0;
+        if (type === config.SPECIAL_TYPES.BOMB) return types[3] || types[0] || 0;
+        return this.getMostFrequentCommonType();
+    }
+
+    /** 计算特殊交换组合的命中范围，并把彩球目标色转换为对应特殊棋子。 */
+    applySpecialCombo(combo) {
+        const a = combo.first;
+        const b = combo.second;
+        const targets = [];
+        const suppressed = [copyPosition(a.pos), copyPosition(b.pos)];
+        const rows = this.grid.length;
+        const cols = this.grid[0].length;
+        const aBall = a.type === config.SPECIAL_TYPES.COLOR_BALL;
+        const bBall = b.type === config.SPECIAL_TYPES.COLOR_BALL;
+
+        this.addTarget(targets, a.pos);
+        this.addTarget(targets, b.pos);
+
+        if (aBall && bBall) {
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) this.addTarget(targets, { row: r, column: c });
+            }
+            return { targets: targets, suppressed: suppressed };
+        }
+
+        if (aBall || bBall) {
+            const other = aBall ? b : a;
+            let targetType = config.getPieceTypeDef(other.type) ? other.type : this.getSpecialBaseType(other.pos);
+            if (!targetType) targetType = this.getSpecialFallbackBase(other.type);
+
+            if (config.getPieceTypeDef(other.type)) {
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (this.grid[r][c] === targetType) this.addTarget(targets, { row: r, column: c });
+                    }
+                }
+                return { targets: targets, suppressed: suppressed };
+            }
+
+            let transformIndex = 0;
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (this.grid[r][c] !== targetType) continue;
+                    const pos = { row: r, column: c };
+                    const transformed = this.isRocket(other.type)
+                        ? (transformIndex++ % 2 === 0 ? config.SPECIAL_TYPES.H_ROCKET : config.SPECIAL_TYPES.V_ROCKET)
+                        : config.SPECIAL_TYPES.BOMB;
+                    gridUtil.setPieceType(this.grid, pos, transformed);
+                    this.setSpecialBaseType(pos, targetType);
+                    this.addTarget(targets, pos);
+                }
+            }
+            return { targets: targets, suppressed: suppressed };
+        }
+
+        if (this.isRocket(a.type) && this.isRocket(b.type)) {
+            for (let c = 0; c < cols; c++) this.addTarget(targets, { row: combo.center.row, column: c });
+            for (let r = 0; r < rows; r++) this.addTarget(targets, { row: r, column: combo.center.column });
+        } else if ((this.isRocket(a.type) && b.type === config.SPECIAL_TYPES.BOMB) ||
+            (this.isRocket(b.type) && a.type === config.SPECIAL_TYPES.BOMB)) {
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let c = 0; c < cols; c++) {
+                    this.addTarget(targets, { row: combo.center.row + dr, column: c });
+                }
+            }
+            for (let dc = -1; dc <= 1; dc++) {
+                for (let r = 0; r < rows; r++) {
+                    this.addTarget(targets, { row: r, column: combo.center.column + dc });
+                }
+            }
+        } else if (a.type === config.SPECIAL_TYPES.BOMB && b.type === config.SPECIAL_TYPES.BOMB) {
+            for (let dr = -2; dr <= 2; dr++) {
+                for (let dc = -2; dc <= 2; dc++) {
+                    this.addTarget(targets, { row: combo.center.row + dr, column: combo.center.column + dc });
+                }
+            }
+        }
+        return { targets: targets, suppressed: suppressed };
+    }
+
+    /** 特殊棋子触发连锁；suppressed 中的组合源不再重复触发自身默认效果。 */
+    expandSpecialTriggers(removed, suppressed) {
         const grid = this.grid;
         const rows = grid.length;
         const cols = grid[0].length;
         const queue = [];
+        const triggered = {};
+        const triggeredSpecials = [];
+        suppressed = suppressed || [];
 
-        // 初始：removed 中含特殊棋子的入队
         for (let i = 0; i < removed.length; i++) {
-            if (config.isSpecialType(grid[removed[i].row][removed[i].column])) {
-                queue.push({ row: removed[i].row, column: removed[i].column });
+            if (config.isSpecialType(grid[removed[i].row][removed[i].column]) &&
+                !gridUtil.includesPosition(suppressed, removed[i])) {
+                queue.push(copyPosition(removed[i]));
             }
         }
 
         let guard = 0;
-        while (queue.length && guard < 200) {
+        while (queue.length && guard < 300) {
             guard++;
             const pos = queue.pop();
+            const key = positionKey(pos);
+            if (triggered[key]) continue;
+            triggered[key] = true;
             const type = grid[pos.row][pos.column];
             const targets = [];
 
+            triggeredSpecials.push({ row: pos.row, column: pos.column, type: type });
+
             if (type === config.SPECIAL_TYPES.H_ROCKET) {
-                // 炸整行
                 for (let c = 0; c < cols; c++) targets.push({ row: pos.row, column: c });
             } else if (type === config.SPECIAL_TYPES.V_ROCKET) {
-                // 炸整列
                 for (let r = 0; r < rows; r++) targets.push({ row: r, column: pos.column });
             } else if (type === config.SPECIAL_TYPES.BOMB) {
-                // 炸 3x3
                 for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        targets.push({ row: pos.row + dr, column: pos.column + dc });
+                    for (let dc = -1; dc <= 1; dc++) targets.push({ row: pos.row + dr, column: pos.column + dc });
+                }
+            } else if (type === config.SPECIAL_TYPES.COLOR_BALL) {
+                const targetType = this.getMostFrequentCommonType();
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (grid[r][c] === targetType) targets.push({ row: r, column: c });
                     }
                 }
             }
 
             for (let k = 0; k < targets.length; k++) {
-                const t = targets[k];
-                if (!gridUtil.isValidPosition(grid, t)) continue;
-                if (!gridUtil.includesPosition(removed, t)) {
-                    removed.push({ row: t.row, column: t.column });
-                    // 波及到特殊棋子 → 入队连锁
-                    if (config.isSpecialType(grid[t.row][t.column])) {
-                        queue.push({ row: t.row, column: t.column });
-                    }
+                const target = targets[k];
+                if (!gridUtil.isValidPosition(grid, target)) continue;
+                if (!gridUtil.includesPosition(removed, target)) removed.push(copyPosition(target));
+                if (config.isSpecialType(grid[target.row][target.column]) &&
+                    !gridUtil.includesPosition(suppressed, target) && !triggered[positionKey(target)]) {
+                    queue.push(copyPosition(target));
                 }
             }
         }
+        return triggeredSpecials;
     }
 
     /** 判断位置是否被果冻/冰块覆盖（覆盖棋子锁定，不参与下落） */
     isBlocked(pos) {
+        if (!gridUtil.isValidPosition(this.grid, pos)) return true;
         return this.jellyGrid[pos.row][pos.column] > 0 || this.iceGrid[pos.row][pos.column] === 1;
     }
 
@@ -311,6 +603,7 @@ class GameCore {
             guard++;
             // 用"无匹配生成器"重建棋子（障碍层 jellyGrid/iceGrid 不受影响）
             this.grid = gridUtil.createGrid(this.grid.length, this.grid[0].length, types);
+            this.specialBases = {};
             if (this.hasValidMoves()) break;
         }
         if (this.callbacks.onReshuffle) {
@@ -372,24 +665,28 @@ class GameCore {
     async settleBoard() {
         // 下落 + 动画（被覆盖棋子锁定不动）
         const changes = this.applyGravityBlocked();
+        this.moveSpecialBases(changes);
         if (this.callbacks.onGravity && changes.length) {
             await this.callbacks.onGravity({ changes: changes });
         }
 
         // 斜向滑入（覆盖格下方空位由相邻列棋子填充）
         const slides = this.applySlides();
+        this.moveSpecialBases(slides);
         if (this.callbacks.onGravity && slides.length) {
             await this.callbacks.onGravity({ changes: slides });
         }
 
         // 滑走后留下的空位再次下落
         const changes2 = this.applyGravityBlocked();
+        this.moveSpecialBases(changes2);
         if (this.callbacks.onGravity && changes2.length) {
             await this.callbacks.onGravity({ changes: changes2 });
         }
 
         // 填充 + 动画
         const filled = gridUtil.fillUp(this.grid, config.getCommonTypes());
+        for (let i = 0; i < filled.length; i++) this.setSpecialBaseType(filled[i], 0);
         if (this.callbacks.onFill && filled.length) {
             await this.callbacks.onFill({ filled: filled });
         }
@@ -409,15 +706,47 @@ class GameCore {
         while (guard < 50) {
             guard++;
             const matches = gridUtil.getMatches(this.grid, null, this.minMatchCount);
-            // 有待触发特殊棋子时，即使无普通匹配也要继续处理
-            const hasPending = this.pendingTriggers.length > 0;
+            // 有道具命中或特殊组合时，即使无普通匹配也要继续处理。
+            const hasPending = this.pendingTriggers.length > 0 || this.pendingRemovals.length > 0 ||
+                !!this.pendingCombo;
             if (!matches.length && !hasPending) break;
             round++;
 
-            // 收集消除位置 + 生成特殊棋子（4连/5连）
-            const collect = this.collectWithSpecials(matches);
+            const preferred = this.preferredGenerationPositions;
+            this.preferredGenerationPositions = [];
+            const collect = this.collectWithSpecials(matches, preferred);
             const allRemoved = collect.removed.slice();
             const generated = collect.generated;
+
+            for (let i = 0; i < this.pendingRemovals.length; i++) {
+                if (!gridUtil.includesPosition(allRemoved, this.pendingRemovals[i])) {
+                    allRemoved.push(copyPosition(this.pendingRemovals[i]));
+                }
+            }
+            this.pendingRemovals = [];
+
+            let suppressed = [];
+            const triggeredSpecials = [];
+            if (this.pendingCombo) {
+                triggeredSpecials.push({
+                    row: this.pendingCombo.first.pos.row,
+                    column: this.pendingCombo.first.pos.column,
+                    type: this.pendingCombo.first.type
+                });
+                triggeredSpecials.push({
+                    row: this.pendingCombo.second.pos.row,
+                    column: this.pendingCombo.second.pos.column,
+                    type: this.pendingCombo.second.type
+                });
+                const comboResult = this.applySpecialCombo(this.pendingCombo);
+                this.pendingCombo = null;
+                suppressed = comboResult.suppressed;
+                for (let i = 0; i < comboResult.targets.length; i++) {
+                    if (!gridUtil.includesPosition(allRemoved, comboResult.targets[i])) {
+                        allRemoved.push(copyPosition(comboResult.targets[i]));
+                    }
+                }
+            }
 
             // 合并玩家交换触发的特殊棋子（待触发）
             for (let i = 0; i < this.pendingTriggers.length; i++) {
@@ -429,7 +758,8 @@ class GameCore {
             this.pendingTriggers = [];
 
             // 特殊棋子触发连锁（removed 中的特殊棋子炸行/列/3x3，波及并入）
-            this.expandSpecialTriggers(allRemoved);
+            const chainedSpecials = this.expandSpecialTriggers(allRemoved, suppressed);
+            for (let i = 0; i < chainedSpecials.length; i++) triggeredSpecials.push(chainedSpecials[i]);
 
             // 第一遍：决定哪些棋子真正消除，哪些被障碍挡住（棋子保留）
             const jellyHits = [];
@@ -504,13 +834,15 @@ class GameCore {
                     score: this.score,
                     jellyHits: jellyHits,
                     iceHits: iceHits,
-                    generated: generated
+                    generated: generated,
+                    triggeredSpecials: triggeredSpecials
                 });
             }
 
             // 置 0（只真正消除的棋子；被障碍挡住的棋子保留）
             for (let i = 0; i < removed.length; i++) {
                 gridUtil.setPieceType(this.grid, removed[i], 0);
+                this.setSpecialBaseType(removed[i], 0);
             }
 
             // 生成特殊棋子（写入 grid，作为棋盘上的新棋子；若生成位置被波及消除则放弃）
@@ -518,24 +850,24 @@ class GameCore {
                 const g = generated[i];
                 if (gridUtil.includesPosition(removed, g.pos)) continue;
                 gridUtil.setPieceType(this.grid, g.pos, g.type);
+                this.setSpecialBaseType(g.pos, g.baseType);
             }
 
             // 棋盘整理（下落+斜向滑入+填充）
             await this.settleBoard();
         }
 
-        this.processing = false;
-
         // 死局检测：无可行交换时自动重排（避免玩家卡死）
-        if (!this.hasValidMoves()) {
+        if (!this.ended && !this.hasValidMoves()) {
             await this.autoReshuffle();
         }
 
+        this.processing = false;
         this.checkLevelEnd();
     }
 
     /** 检查关卡是否结束（多目标：分数 + 果冻） */
-    checkLevelEnd() {
+    checkLevelEnd(reason) {
         if (this.ended) return;
 
         const goals = this.level.goals || [];
@@ -564,14 +896,16 @@ class GameCore {
             allGoalsDone = this.score >= 1000;
         }
 
-        if (allGoalsDone || this.movesLeft <= 0) {
+        if (allGoalsDone || reason === 'timeout' || this.movesLeft <= 0) {
             this.ended = true;
             this.won = allGoalsDone;
             if (this.callbacks.onLevelEnd) {
                 this.callbacks.onLevelEnd({
                     win: allGoalsDone,
                     score: this.score,
-                    movesLeft: this.movesLeft
+                    movesLeft: this.movesLeft,
+                    timeLeftMs: this.timeLeftMs,
+                    reason: allGoalsDone ? 'goal' : (reason || 'moves')
                 });
             }
         }
@@ -582,20 +916,55 @@ class GameCore {
      * @param {string} toolType 'hammer' | 'bomb' | 'color'
      * @param {{row:number,column:number}} pos 目标位置
      */
+    getSmartColorChoice(pos) {
+        const original = gridUtil.getPieceType(this.grid, pos);
+        const types = config.getCommonTypes();
+        let bestType = 0;
+        let bestCount = 0;
+        for (let i = 0; i < types.length; i++) {
+            const type = types[i];
+            if (type === original) continue;
+            const temp = gridUtil.cloneGrid(this.grid);
+            gridUtil.setPieceType(temp, pos, type);
+            const matches = gridUtil.getMatches(temp, [pos], this.minMatchCount);
+            const positions = [];
+            for (let j = 0; j < matches.length; j++) {
+                for (let k = 0; k < matches[j].length; k++) {
+                    if (!gridUtil.includesPosition(positions, matches[j][k])) positions.push(matches[j][k]);
+                }
+            }
+            if (positions.length > bestCount) {
+                bestType = type;
+                bestCount = positions.length;
+            }
+        }
+        return bestCount > 0 ? bestType : 0;
+    }
+
+    async finishSuccessfulToolUse() {
+        await this.processGrid();
+        if (!this.ended && this.timerStarted && this.timeLeftMs <= 0) this.checkLevelEnd('timeout');
+        if (this.timeLimitMs > 0 && !this.timerStarted && !this.ended) this.timerStarted = true;
+        return true;
+    }
+
     async useTool(toolType, pos) {
-        if (!this.isPlaying()) return;
-        if (!gridUtil.isValidPosition(this.grid, pos)) return;
+        if (!this.isPlaying()) return false;
+        if (!gridUtil.isValidPosition(this.grid, pos) || this.isBlocked(pos)) return false;
+        const currentType = gridUtil.getPieceType(this.grid, pos);
+        if (!currentType) return false;
 
         if (toolType === 'color') {
-            // 换色：棋子变随机普通类型
-            const types = config.getCommonTypes();
-            const newType = types[Math.floor(Math.random() * types.length)];
+            if (!config.getPieceTypeDef(currentType)) return false;
+            const newType = this.getSmartColorChoice(pos);
+            if (!newType) return false;
             gridUtil.setPieceType(this.grid, pos, newType);
+            this.setSpecialBaseType(pos, 0);
+            this.preferredGenerationPositions = [copyPosition(pos)];
             if (this.callbacks.onColorChange) {
                 await this.callbacks.onColorChange({ row: pos.row, column: pos.column, type: newType });
             }
-            await this.processGrid();
-            return;
+            return this.finishSuccessfulToolUse();
         }
 
         // 锤子：单格；炸弹：3x3
@@ -610,43 +979,10 @@ class GameCore {
                 }
             }
         } else {
-            return;
+            return false;
         }
-
-        // 破坏障碍 + 置 0 + 计分（道具消除有得分反馈）
-        const jellyHits = [];
-        const iceHits = [];
-        for (let i = 0; i < targets.length; i++) {
-            const p = targets[i];
-            if (this.jellyGrid[p.row][p.column] > 0) {
-                this.jellyGrid[p.row][p.column] = 0;
-                jellyHits.push({ row: p.row, column: p.column });
-            }
-            if (this.iceGrid[p.row][p.column]) {
-                this.iceGrid[p.row][p.column] = 0;
-                iceHits.push({ row: p.row, column: p.column });
-            }
-            gridUtil.setPieceType(this.grid, p, 0);
-        }
-        this.score += targets.length * 10 + jellyHits.length * 30 + iceHits.length * 50;
-
-        // 消除动画（复用 onMatch 动画回调）
-        if (this.callbacks.onMatch) {
-            await this.callbacks.onMatch({
-                removed: targets,
-                combo: 1,
-                score: this.score,
-                jellyHits: jellyHits,
-                iceHits: iceHits,
-                generated: []
-            });
-        }
-
-        // 整理棋盘（道具消除后即使无匹配也要下落补位）
-        await this.settleBoard();
-
-        // 检测连消
-        await this.processGrid();
+        this.pendingRemovals = targets;
+        return this.finishSuccessfulToolUse();
     }
 }
 

@@ -28,14 +28,14 @@ function findJellyTotal(core) {
 (async function () {
     console.log('========== 障碍系统逻辑验证 ==========');
 
-    const level = levelData.getLevel(3); // 关卡3：有果冻+冰块
+    const level = levelData.getLevel(6); // 当前生成器中首次引入果冻+冰块的模板
     const core = new GameCore(level, {});
 
     // 1. 冰块/果冻初始化
     const ices = findIcePositions(core);
     const jellyTotal = findJellyTotal(core);
-    console.log('冰块数量(应为4):', ices.length, '| 果冻总层数(应为8):', jellyTotal);
-    if (ices.length !== 4 || jellyTotal !== 8) console.log('  !! 初始化数据不符');
+    console.log('冰块数量(应为2):', ices.length, '| 果冻总层数(应为6):', jellyTotal);
+    if (ices.length !== 2 || jellyTotal !== 6) throw new Error('关卡6障碍初始化数据不符');
 
     // 2. 冰块锁定移动：尝试把冰块棋子作为交换源
     const icePos = ices[0];
@@ -47,7 +47,7 @@ function findJellyTotal(core) {
     core.callbacks.onInvalidSwap = function () { invalidFired = true; return Promise.resolve(); };
     await core.trySwap(from, to);
     console.log('冰块锁定: 无效交换回调触发=' + invalidFired + ', 步数未消耗=' + (core.movesLeft === movesBefore));
-    if (!invalidFired || core.movesLeft !== movesBefore) console.log('  !! 冰块锁定逻辑异常');
+    if (!invalidFired || core.movesLeft !== movesBefore) throw new Error('冰块锁定逻辑异常');
 
     // 3. 模拟完整对局（随机走），结束后检查状态一致性
     const gridUtil = require('../js/core/grid');
@@ -83,8 +83,8 @@ function findJellyTotal(core) {
     const iceLeft = findIcePositions(core).length;
     const jellyLeft = findJellyTotal(core);
     console.log('对局结束: 剩余冰块=' + iceLeft + ', 剩余果冻层=' + jellyLeft + ', 得分=' + core.score);
-    if (iceLeft > 4) console.log('  !! 冰块数量异常增加');
-    if (jellyLeft > 8) console.log('  !! 果冻层数异常增加');
+    if (iceLeft > 2) throw new Error('冰块数量异常增加');
+    if (jellyLeft > 6) throw new Error('果冻层数异常增加');
 
     // 5. 果冻破层递减验证（构造简易场景）：手动减层
     core.jellyGrid[3][3] = 5;
@@ -93,7 +93,7 @@ function findJellyTotal(core) {
     // 模拟一次消除命中
     if (core.jellyGrid[hit.row][hit.column] > 0) core.jellyGrid[hit.row][hit.column]--;
     console.log('果冻破层: ' + before + ' -> ' + core.jellyGrid[3][3] + ' (应递减1)');
-    if (core.jellyGrid[3][3] !== before - 1) console.log('  !! 果冻破层逻辑异常');
+    if (core.jellyGrid[3][3] !== before - 1) throw new Error('果冻破层逻辑异常');
 
     console.log('========================================');
     console.log('结果: 障碍系统逻辑' + (invalidFired && core.movesLeft !== undefined ? '验证完成' : ''));

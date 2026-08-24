@@ -4,17 +4,24 @@ module.exports = {
     "name": "甜蜜开场",
     "rows": 8,
     "columns": 8,
-    "moveCount": 22,
+    "timeLimitSec": 180,
+    "moveCount": 28,
     "goals": [
         {
             "type": "jelly",
-            "target": 4
+            "target": 6
         }
     ],
     "underlays": {
         "3:3": 1,
         "3:4": 1,
         "4:3": 1,
-        "4:4": 1
+        "4:4": 1,
+        "5:3": 1,
+        "5:4": 1
+    },
+    "obstacles": {
+        "2:2": 1,
+        "5:5": 1
     }
 };
