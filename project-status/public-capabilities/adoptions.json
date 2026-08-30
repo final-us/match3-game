@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "project_id": "sanxiao",
+  "policy": "only-published-skills",
+  "adoptions": [],
+  "notes": "当前只接入规则，不创建 TencentDB Team；未来需先登记 provisioning 与项目主 Agent，再提出用户审批请求。"
+}

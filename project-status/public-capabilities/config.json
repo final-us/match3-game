@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "project_id": "sanxiao",
+  "team_name": "消除",
+  "main_agent": null,
+  "provisioning_status": "not-provisioned",
+  "provisioning_allowed": false,
+  "mode": "not-provisioned",
+  "runtime": {
+    "adapter": "tencentdb-agent-memory",
+    "enabled": false,
+    "failure_fallback": "degraded",
+    "automatic_switch": false,
+    "public_raw_memory_write": false
+  },
+  "freeze": {
+    "comparison_experiment": true,
+    "real_skill_publish": true,
+    "real_skill_sync": true,
+    "real_guild_activation": true
+  },
+  "feedback_gate": {
+    "required_feedback_ids": [],
+    "complete": false,
+    "switch_ready": false,
+    "automatic_switch": false
+  },
+  "mode_history": [
+    {
+      "mode": "not-provisioned",
+      "at": "2026-08-30T00:00:00Z",
+      "actor": "registry",
+      "reason": "只同步公共能力规则；未批准创建 TencentDB Team"
+    }
+  ]
+}

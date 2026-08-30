@@ -64,3 +64,22 @@
 - 开源与素材边界、第三方 notice、素材来源和发布前检查项统一记录在 [`docs/release/open-source-and-assets.md`](docs/release/open-source-and-assets.md)；小游戏主包的上游 MIT 文本见 [`match3-wechat/THIRD_PARTY_NOTICES.txt`](match3-wechat/THIRD_PARTY_NOTICES.txt)。项目本身保持默认版权，不添加项目级开源许可证。
 - 未明确授权的代码、字体、音乐、音效、图片和商标不得进入商业包。
 - Holopix/生成式素材需保存生成记录，并确认平台条款允许商业使用。
+
+<!-- PUBLIC_CAPABILITIES_PROTOCOL_START -->
+## 公共能力与 Guild 激活协议
+
+- 项目标识：`sanxiao`；项目 Team：`消除`；主 Agent：`未登记（仅规则接入）`。
+- 公共能力权威仓库：`/Users/Admin/codex/gonggongnengli`。Git 是公共资产和项目采用记录的唯一事实来源；TencentDB Agent Memory 只是可重建运行副本。
+- 本项目当前接入模式：`not-provisioned`；配置来源：本项目 `project-status/public-capabilities/config.json`。项目模式只允许 `off -> read-only -> on`，任何已接入状态都可回退到 `off`；前进切换需要用户批准引用、健康检查、Team/Agent 配对检查和召回检查。
+- 本项目 provisioning 状态：`not-provisioned`。`not-provisioned` 项目只同步规则，不创建 TencentDB Team/Agent；其它项目也不得自行拼接或保存 TencentDB ID、密钥、原始 Chat Memory。
+- 当前 Active Guild：平台发布与合规负责人、QA 与性能负责人。
+- 当前 Preparation Guild：无。
+- 当前 Dormant Guild：体验设计与美术负责人、玩法与技术核心负责人、关卡内容与数值负责人、广告与商业化负责人、后端与在线服务负责人。Preparation/Dormant Guild 只加载职责和激活条件，不处理常规候选、不建设或发布 Skill、不参与运行时召回。
+- Guild 激活触发信号：两个以上项目出现同类重复问题、同一模块累计三条以上可复用候选、不同项目出现冲突做法需要统一边界、尚未激活的公共标准成为交付阻塞、出现高代价安全、支付、隐私、合规或数据风险。模块负责人先把脱敏后的结构化申请放入本项目 `project-status/public-capabilities/outbox/`，由项目主 Agent 检查事实、跨模块影响和证据，再路由给同名 Guild Owner；Dormant 状态只能按 `dormant -> preparation -> active-pilot -> active` 前进，且每次前进都需要用户批准。
+- 公共能力候选只允许走 `candidate -> project-validated -> guild-reviewed -> cross-project-validated -> awaiting-user-approval -> published`；发布、同步、弃用和回滚必须以 Git 内容哈希、版本和审批记录为锚。项目不得直接修改公共 Skill。
+- 项目规则优先级：安全与法律约束 > 本项目 `AGENTS.md` 和权威产品文档 > 冻结契约 > 当前任务验收标准 > 公共 Skill > 历史记忆。公共 Skill 不能覆盖本项目事实、接口或产品决策。
+- 当前冻结项：对比实验、真实 Skill 发布/同步、真实 Guild 激活均冻结；只允许合成数据验证。本项目不在首期反馈门槛内，保持规则接入，不创建运行时 Team。
+- 运行时接线必须 fail-closed：网络错误、超时、身份不匹配或召回校验失败不得阻断项目任务，必须返回明确的 `degraded=true` 降级结果；`read-only` 禁止 capture/create/update/delete，`on` 也不得把原始项目 Chat Memory 写入公共 Team。
+- 新项目必须先登记到 `/Users/Admin/codex/gonggongnengli/registry/projects.json`，再运行：`python3 /Users/Admin/codex/gonggongnengli/scripts/sync_project_protocol.py <项目AGENTS.md>`。可用 `--check` 检查协议漂移；禁止手工复制旧的 Active/Dormant 名单。
+- 原始项目 Chat Memory、凭据、AppID、个人数据、真实用户数据、未脱敏备案材料和受限商业资料不得进入公共能力仓库或公共 Team。
+<!-- PUBLIC_CAPABILITIES_PROTOCOL_END -->
