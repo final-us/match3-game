@@ -80,7 +80,7 @@
 - 项目规则优先级：安全与法律约束 > 本项目 `AGENTS.md` 和权威产品文档 > 冻结契约 > 当前任务验收标准 > 公共 Skill > 历史记忆。公共 Skill 不能覆盖本项目事实、接口或产品决策。
 - 当前冻结项：对比实验、真实 Skill 发布/同步、真实 Guild 激活均冻结。Registry 信息完整后自动 provision，默认模式为 `read-only`；信息不完整时保持 `not-provisioned`，不得猜测 Agent。
 - 运行时接线必须 fail-closed：网络错误、超时、身份不匹配或召回校验失败不得阻断项目任务，必须返回明确的 `degraded=true` 降级结果；`read-only` 禁止 capture/create/update/delete，`on` 也不得把原始项目 Chat Memory 写入公共 Team。
-- 新项目必须先登记到 `/Users/Admin/codex/gonggongnengli/registry/projects.json`，再运行：`python3 /Users/Admin/codex/gonggongnengli/scripts/reconcile_projects.py`。默认仅预览，确认后使用 `--apply` 写入项目配置并同步协议；可用 `sync_project_protocol.py --check` 检查协议漂移。
+- 新项目必须先登记到 `/Users/Admin/codex/gonggongnengli/registry/projects.json`，再运行：`python3 /Users/Admin/codex/gonggongnengli/scripts/reconcile_projects.py`。默认仅预览，确认后使用 `--apply` 写入配置、同步协议并幂等创建缺失 TencentDB Team/Agent；仅在明确离线时使用 `--skip-runtime`。可用 `sync_project_protocol.py --check` 检查协议漂移。
 - 统一效果查看入口：`python3 /Users/Admin/codex/gonggongnengli/scripts/shared_memory_effect.py`。报告只展示模式、健康/身份摘要、召回统计、降级/污染信号和已采用公共 Skill 版本，不输出 Team/Agent ID、密钥或记忆内容。
 - 原始项目 Chat Memory、凭据、AppID、个人数据、真实用户数据、未脱敏备案材料和受限商业资料不得进入公共能力仓库或公共 Team。
 <!-- PUBLIC_CAPABILITIES_PROTOCOL_END -->
