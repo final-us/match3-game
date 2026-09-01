@@ -70,7 +70,7 @@
 
 - 项目标识：`sanxiao`；项目 Team：`消除`；主 Agent：`未登记（仅规则接入）`。
 - 公共能力权威仓库：`/Users/Admin/codex/gonggongnengli`。Git 是公共资产和项目采用记录的唯一事实来源；TencentDB Agent Memory 只是可重建运行副本。
-- 本项目当前接入模式：`not-provisioned`；配置来源：本项目 `project-status/public-capabilities/config.json`。项目模式只允许 `off -> read-only -> on`，任何已接入状态都可回退到 `off`；前进切换需要用户批准引用、健康检查、Team/Agent 配对检查和召回检查。
+- 本项目当前接入模式：`not-provisioned`；配置来源：本项目 `project-status/public-capabilities/config.json`。完整登记的项目默认自动接入 `read-only`；升级到 `on` 仍需要用户批准，任一健康、身份或召回检查失败时 fail-closed 并降级。
 - 本项目 provisioning 状态：`not-provisioned`。`not-provisioned` 项目只同步规则，不创建 TencentDB Team/Agent；其它项目也不得自行拼接或保存 TencentDB ID、密钥、原始 Chat Memory。
 - 当前 Active Guild：平台发布与合规负责人、QA 与性能负责人。
 - 当前 Preparation Guild：无。
@@ -78,8 +78,9 @@
 - Guild 激活触发信号：两个以上项目出现同类重复问题、同一模块累计三条以上可复用候选、不同项目出现冲突做法需要统一边界、尚未激活的公共标准成为交付阻塞、出现高代价安全、支付、隐私、合规或数据风险。模块负责人先把脱敏后的结构化申请放入本项目 `project-status/public-capabilities/outbox/`，由项目主 Agent 检查事实、跨模块影响和证据，再路由给同名 Guild Owner；Dormant 状态只能按 `dormant -> preparation -> active-pilot -> active` 前进，且每次前进都需要用户批准。
 - 公共能力候选只允许走 `candidate -> project-validated -> guild-reviewed -> cross-project-validated -> awaiting-user-approval -> published`；发布、同步、弃用和回滚必须以 Git 内容哈希、版本和审批记录为锚。项目不得直接修改公共 Skill。
 - 项目规则优先级：安全与法律约束 > 本项目 `AGENTS.md` 和权威产品文档 > 冻结契约 > 当前任务验收标准 > 公共 Skill > 历史记忆。公共 Skill 不能覆盖本项目事实、接口或产品决策。
-- 当前冻结项：对比实验、真实 Skill 发布/同步、真实 Guild 激活均冻结；只允许合成数据验证。本项目不在首期反馈门槛内，保持规则接入，不创建运行时 Team。
+- 当前冻结项：对比实验、真实 Skill 发布/同步、真实 Guild 激活均冻结。Registry 信息完整后自动 provision，默认模式为 `read-only`；信息不完整时保持 `not-provisioned`，不得猜测 Agent。
 - 运行时接线必须 fail-closed：网络错误、超时、身份不匹配或召回校验失败不得阻断项目任务，必须返回明确的 `degraded=true` 降级结果；`read-only` 禁止 capture/create/update/delete，`on` 也不得把原始项目 Chat Memory 写入公共 Team。
-- 新项目必须先登记到 `/Users/Admin/codex/gonggongnengli/registry/projects.json`，再运行：`python3 /Users/Admin/codex/gonggongnengli/scripts/sync_project_protocol.py <项目AGENTS.md>`。可用 `--check` 检查协议漂移；禁止手工复制旧的 Active/Dormant 名单。
+- 新项目必须先登记到 `/Users/Admin/codex/gonggongnengli/registry/projects.json`，再运行：`python3 /Users/Admin/codex/gonggongnengli/scripts/reconcile_projects.py`。默认仅预览，确认后使用 `--apply` 写入项目配置并同步协议；可用 `sync_project_protocol.py --check` 检查协议漂移。
+- 统一效果查看入口：`python3 /Users/Admin/codex/gonggongnengli/scripts/shared_memory_effect.py`。报告只展示模式、健康/身份摘要、召回统计、降级/污染信号和已采用公共 Skill 版本，不输出 Team/Agent ID、密钥或记忆内容。
 - 原始项目 Chat Memory、凭据、AppID、个人数据、真实用户数据、未脱敏备案材料和受限商业资料不得进入公共能力仓库或公共 Team。
 <!-- PUBLIC_CAPABILITIES_PROTOCOL_END -->
