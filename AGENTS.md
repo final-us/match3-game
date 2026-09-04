@@ -76,6 +76,9 @@
 - 当前 Preparation Guild：无。
 - 当前 Dormant Guild：体验设计与美术负责人、玩法与技术核心负责人、关卡内容与数值负责人、广告与商业化负责人、后端与在线服务负责人。Preparation/Dormant Guild 只加载职责和激活条件，不处理常规候选、不建设或发布 Skill、不参与运行时召回。
 - Guild 激活触发信号：两个以上项目出现同类重复问题、同一模块累计三条以上可复用候选、不同项目出现冲突做法需要统一边界、尚未激活的公共标准成为交付阻塞、出现高代价安全、支付、隐私、合规或数据风险。模块负责人先把脱敏后的结构化申请放入本项目 `project-status/public-capabilities/outbox/`，由项目主 Agent 检查事实、跨模块影响和证据，再路由给同名 Guild Owner；Dormant 状态只能按 `dormant -> preparation -> active-pilot -> active` 前进，且每次前进都需要用户批准。
+- 每位模块负责人完成非简单任务后、宣告完成前，必须运行 `python3 /Users/Admin/codex/gonggongnengli/capabilityctl.py reflect --project sanxiao --module <模块ID> --source-task <任务ID> ... --apply`。纯格式修正等简单任务使用 `--task-class simple --skip-reason <原因>`，并在任务交付摘要中保留 `not-applicable` 结果。
+- 扫描只有在至少一项证据齐全，并满足“同类问题至少两次、存在可测量收益、明确适用于另一已登记项目、涉及高代价风险”之一时才自动创建 outbox `draft`。候选还必须包含适用范围、例外、步骤、验证方式和脱敏结果；信息不足则返回 `no-candidate`。同一项目、模块和任务 ID 重复执行不会创建重复草稿。
+- 自动草稿不得自动路由、激活 Guild 或发布 Skill。项目主 Agent 必须检查事实、证据、敏感信息和跨模块影响，才能把 `draft` 推进为 `main-agent-reviewed` 并路由给同名 Guild Owner。
 - 公共能力候选只允许走 `candidate -> project-validated -> guild-reviewed -> cross-project-validated -> awaiting-user-approval -> published`；发布、同步、弃用和回滚必须以 Git 内容哈希、版本和审批记录为锚。项目不得直接修改公共 Skill。
 - 项目规则优先级：安全与法律约束 > 本项目 `AGENTS.md` 和权威产品文档 > 冻结契约 > 当前任务验收标准 > 公共 Skill > 历史记忆。公共 Skill 不能覆盖本项目事实、接口或产品决策。
 - 当前冻结项：对比实验、真实 Skill 发布/同步、真实 Guild 激活均冻结。Registry 信息完整后自动 provision，默认模式为 `read-only`；信息不完整时保持 `not-provisioned`，不得猜测 Agent。
