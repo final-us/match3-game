@@ -1,4 +1,16 @@
-# GitHub 交付前检查 · 2026-09-15
+# 发布检查 · 2026-09-15
+
+## 当前任务：battle 依赖安全修复
+
+- Owner：当前项目任务；状态：`verified_for_git_delivery`。用户授权修复前轮 7 项 npm 安全告警，并在本地验收后明确授权“推送”：仅本次依赖/兼容层、测试与文档提交并推送 origin/main；无云部署或微信上传授权。UI/音频/玩法/业务源码保持不变。最终Git身份与推送结果以本记录所在提交及交付回复为准。
+- 身份：基线 `f85a8353de98a4d74cf5940dec245f0abc8a3c04`（此前已推送 main），加本次工作树。文件：battle `package.json` / `package-lock.json` / `.npmrc` / `vendor/lodash-set-compat/`，`test/cloud-dependency-security.js` / `test/open-source-and-assets.js`，小游戏 README 与安全/授权台账。本轮无客户端构建产物变化。
+- 决策/修复：保留微信 SDK 4.0.2，不 force 降级；精确 override axios 0.33.0、lodash.unset 4.18.0、qs 6.16.0；以自有薄层导出 lodash 4.18.1/set 替代无修复版的独立 lodash.set。`install-links=true` 和根依赖引用避免部署依赖本机链接；保留未涉及的锁定版本。第一次路径解析和第二次残留树失败后改隔离干净安装定位，不沿用无效安装证据。
+- 有效证据：Node 24.19.0/npm 11.17.0；最终仓库安装与 `/private/tmp/match3-dependency-ci-1E7Vbb` 独立 `npm ci --ignore-scripts --no-audit --no-fund` 成功；干净树 `npm ls --all` exit0。最终 `npm audit --omit=dev --json` 为0项、104非根依赖。安全回归旧set污染红测、最终真实依赖绿测；同一脚本在仓库和干净安装分别通过，包括路径安全/兼容、实际版本/无symlink/函数身份、qs、SDK内存请求adapter/取消/失败。
+- 受影响验收：battle-cloud-function、battle-logic、battle-client、open-source-and-assets、release-gates 共5个现有脚本通过，新增安全脚本通过，3个新增/修改JS语法及diff检查通过。其他有效历史证据复用；没有重跑全量胜率/声音/UI/包体（客户端文件不变，README属开发元数据）。既有两个腾讯UNDECLARED厂商例外不变，新适配层是自有UNLICENSED，103个第三方依赖+1个自有层准确分开。
+- 独立复核：既有非实现者代理 `01a0a078-7aad-77d3-b7a3-dcb20bd81bf6` 只读核对manifest/lock/.npmrc、适配层真实导出、wxSDK→CloudBase→database解析链、测试与部署契约，结论为条件PASS：未发现阻断本地Git交付的缺陷，真实云/上传/双账号仍未验收。安全脚本单独运行不证明安装新鲜，必须保留先干净ci的流程。既有模型未切换，实际模型/effort未核验。原审核回传延迟时短暂启动固定 `worker`（工具定义锁定gpt-5.6-luna/max，调用也显式指定）替代任务 `01a0a5aa-49c0-7e21-b142-e0a8f519fa1d`；原结果抵达即停止重复工作，不将替代任务冒充第二次验收。
+- 限制/下一步：安全数字只覆盖npm当前已知公告，不是零风险承诺；未调用真实云数据库/元数据/凭据，未验证云端安装器。按用户授权交付本次修复到 `https://github.com/final-us/match3-game.git` 的main，不force、不提交node_modules/隔离素材/本地授权音效。随后由用户按README本地锁定安装→依赖/安全检查→完整云函数含node_modules部署，再双账号验证；本轮不代部署。旧弱网/服务端计分信任及合规门槛保持。详细风险与部署门槛见 `docs/release/security-audit.md`。
+
+## 历史：GitHub 交付前检查（已完成，f85a835）
 
 - Owner：当前项目任务，发布前整体验证；状态：`verified_for_git_delivery`。代码检查与局部修复完成；Git交付以本记录所在提交及交付回复为准，微信部署/新一轮真机回归待用户操作。
 - 授权：用户确认当前音效可用，要求最后整体查 bug，之后提交 Git 并推送 `https://github.com/final-us/match3-game.git`；微信上传由用户操作。本轮不部署云函数、不上传微信、不清除用户数据、不生成新素材或升级依赖。为修复等待席位修改了battle云函数源码，交付后必须由用户重新上传该云函数才能生效。

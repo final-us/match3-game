@@ -1,6 +1,34 @@
 # 发布前安全审计记录
 
-## 2026-09-15 · GitHub 发布前复核
+## 2026-09-15 · 依赖安全修复（本地，尚未部署）
+
+- 用户授权修复前一轮 7 项 npm 安全告警，并在本地验收后授权提交/推送本次修复到GitHub；不上传或部署微信、不操作凭据和用户数据。基线 `f85a8353de98a4d74cf5940dec245f0abc8a3c04`，验证对象为该基线上的本次依赖、测试及文档（随本记录提交）；客户端 UI/音频/玩法与云函数业务逻辑未修改。
+- 官方 registry 查询：`wx-server-sdk` 最新仍为 `4.0.2`；直接升级 `@cloudbase/node-sdk` 到 `3.18.3` 仍带旧 axios 与 database，不能独立解决风险。保留 SDK `4.0.2` / CloudBase `3.17.2`，不执行自动 force 降级。
+
+| 实际风险依赖 | 修复前 | 本次措施 |
+| --- | --- | --- |
+| axios | 0.27.2 | override 精确至 0.33.0，保持 0.x/CommonJS 调用方式；新增传递包 proxy-from-env 1.1.0。 |
+| lodash.set | 4.3.2 | 独立包没有修复版；用自有 callable 适配层直接导出维护中的 lodash 4.18.1/set，不复制或改名掩盖旧实现。 |
+| lodash.unset | 4.5.2 | override 精确至 4.18.0。 |
+| qs | 6.15.3 | override 精确至 6.16.0。 |
+
+- 最终 `npm audit --omit=dev --json` 返回 **0 项已知漏洞**（high/moderate/critical 均为 0，104 个非根依赖记录）。原 7 项包括 SDK 上层依赖受下层漏洞影响的重复链路，并非 7 个独立攻击入口。此结果只代表 npm 当前公告覆盖，不等于项目不存在安全风险。
+- `cloud-dependency-security.js` 修改前已复现旧 set 经 `__proto__` 路径污染 Object.prototype；最终针对 CloudBase 实际解析的包验证 set/unset 字符串/数组危险路径、正常嵌套字段/数组/字面点号、返回值、qs 正常解析与污染防护。还检查锁文件与安装版本、无链接目录及 set 函数确实来自 lodash/set，避免仅让审计数字变绿。
+- Axios 验证使用真实 SDK 暴露的 callable requestClient 与 metadata.lookup，但每次均注入内存 adapter：JSON 转换、响应 data、GET/POST 配置、错误传播和取消通过。**没有访问真实 metadata、读取云凭据、连接云数据库或执行真实事务**；HTTP 网络适配器、生产凭据获取和云端事务仍需部署后验证。
+- Node `24.19.0` / npm `11.17.0`：在独立临时目录 `/private/tmp/match3-dependency-ci-1E7Vbb` 只复制最终 manifest/lock/.npmrc/vendor，`npm ci --ignore-scripts --no-audit --no-fund` 与 `npm ls --all` 均 exit 0；同一安全脚本对该干净安装与仓库安装都通过。无 invalid/extraneous/dangling 依赖；原有可选 peer `ws` 未安装不阻断本游戏的服务端事务链路。
+- 安装调试曾出现 file override 按传递包位置解析出的 dangling link，随后直接根依赖仍有旧锁记录残留；已改用隔离干净安装定位，删除两条无效记录并持久化 `.npmrc` 的 `install-links=true`。其余原有传递版本保留，未采用全量重新解析导致的无关升级。兼容层是安装时打包的普通目录，不依赖 postinstall、机器绝对路径或手改 node_modules。
+- 受影响回归：battle-cloud-function、battle-logic、battle-client、open-source-and-assets、release-gates 均通过；新增安全脚本及相关 JS 语法通过。对战测试为本地桩/模拟，不冒充联网或真机；未改客户端输入，复用既有视觉、声音、难度与包体证据，不重复跑全部模拟。
+- 许可证：104 个非根记录含 103 个第三方包与 1 个自有适配层。新增 lodash 保留完整 MIT/OpenJS/Underscore LICENSE；自有适配层 UNLICENSED 为默认版权，不能误算为新的未知第三方授权。既有两个腾讯 UNDECLARED 厂商例外不变，详见合规台账。
+- 非实现者独立复核条件PASS：未发现阻断本地Git交付的安全/安装/兼容缺陷；核对锁定版本、无悬空链接、自有层真实导出、SDK解析链与部署说明。保留“先干净ci，再运行安全检查”要求，不以单独安全脚本冒充安装新鲜性验证；真实云/双账号门槛不在本次通过范围。
+
+### 部署门槛与维护
+
+1. 按小游戏 README 的安全依赖流程在 battle 目录完成本地安装/依赖树/安全检查，再将包含该 node_modules 与许可证的完整云函数上传；**本次没有部署，线上旧告警不会因本地修复自行消失**。
+2. 不假定微信云端安装器支持 npm overrides/local file package。若选择云端安装依赖，需另行验证 npm 版本、.npmrc/vendor/lock 收录和最终实际依赖；未通过前使用已验证的本地完整依赖部署路径。真实云平台接收、Node运行版本和行为须由部署/真机门槛确认。
+3. 上传后双账号复核建房/邀请/加入/准备/比分/道具/60秒结算/退出，检查云日志没有 SDK 加载、依赖或事务错误；不记录凭据。部署失败不要仅撤销 overrides 后继续发布，恢复先前版本也必须明确其已知漏洞。
+4. 以后 SDK 升级时复核上游是否已经修复，再移除相应 override/兼容层；重新运行同一安全和对战验证。保留此前服务端计分信任、弱网与商业合规限制。
+
+## 历史：2026-09-15 · GitHub 发布前复核（修复前）
 
 - 只读查询 npm 官方 registry：`npm view wx-server-sdk version` 仍为 `4.0.2`，与锁定版本一致；未更新依赖或部署云函数。
 - `npm audit --package-lock-only --omit=dev` 当前返回 7 项：5 high、2 moderate、0 critical（不是安全检查全绿）。涉及 `axios`、`lodash.set`、`lodash.unset`、`qs` 及其 SDK 上层依赖。完整本次日志保存在本机临时检查目录，未将依赖清单上传其他审计服务。
@@ -35,7 +63,7 @@
 
 1. 在微信云开发测试环境部署最新 `battle` 云函数，确认 SDK 4.0.2 的事务行为、建房限流、`createdAt` 查询索引和权限规则；确认 `cleanup-battle-rooms` 定时触发器能删除 7 天前的测试房间及限流控制文档。
 2. 使用两个真实账号完成建房、邀请、加入、准备、3 秒倒计时、60 秒结算、退后台、断网和主动退出测试。
-3. 上线前再次查询官方 SDK 最新版本和 `npm audit`；若官方仍未清理依赖，评估迁移到 `@cloudbase/node-sdk` 或增加服务端隔离措施。
+3. 上线前依照顶部依赖修复记录核对实际部署版本和 `npm audit`；若出现新公告或SDK更新，复核传递依赖与兼容性，不假定直接换为 `@cloudbase/node-sdk` 就能清除风险。
 4. 不以 `npm audit fix --force` 自动降级 SDK，因为可能破坏已采用的事务能力和官方当前兼容路径。
 
 ## 2026-08-23 验收进度

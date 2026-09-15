@@ -32,6 +32,14 @@ match3-wechat/
 
 首次运行包含 SDK 兼容检查的测试前，先在 `cloudfunctions/battle/` 执行 `npm ci --ignore-scripts` 安装锁定依赖。包体资源检查：`node test/package-budget.js`；授权与素材合规检查：`node test/open-source-and-assets.js`。运行时棋子使用 `res/piece1-runtime.png` 至 `res/piece5-runtime.png`（256×256 透明 PNG）；`piece1-v2.png` 至 `piece5-v2.png` 仅作为 512×512 源图保留。
 
+### battle 安全依赖与上传
+
+2026-09-15 的依赖修复保留 `wx-server-sdk@4.0.2`，使用精确 overrides 和自有 `vendor/lodash-set-compat` 适配层。不要使用 `npm audit fix --force`、删除锁文件或手改 `node_modules`。本地已用 Node `24.19.0` / npm `11.17.0` 验证；安装工具需支持 overrides 与 install-links（npm 至少 8.8，其他版本仍需验证）。安装命令必须在 `cloudfunctions/battle/` 执行，以读取随库 `.npmrc` 中的 `install-links=true`。
+
+上传前在该目录执行 `npm ci --ignore-scripts`、`npm ls --all`、`npm audit --omit=dev`，再从 `match3-wechat/` 运行 `node test/cloud-dependency-security.js`。仅当全部通过，才将完整 battle 目录连同已安装的 `node_modules` 上传部署（开发者工具选择包含本地依赖的“所有文件”方式，具体菜单以当前版本为准），保留依赖 LICENSE。不能只上传修改后的业务源码。
+
+默认不要选择“云端安装依赖”：本轮未验证云端构建器的 npm 版本与本地包打包行为；若使用该方式，必须确认 `.npmrc`、`vendor/`、锁文件均被上传，构建器支持上述选项，且部署后的实际依赖通过同一检查。上传后用两个账号复核建房/邀请/准备/比分/道具/60秒结算/退出；本地 mock 不替代真实云验证。依赖仅属于云函数，不进入小游戏主包。详见[安全记录](../docs/release/security-audit.md)。
+
 ## 如何在微信开发者工具中运行
 
 1. 打开「微信开发者工具」（需先安装：https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html）

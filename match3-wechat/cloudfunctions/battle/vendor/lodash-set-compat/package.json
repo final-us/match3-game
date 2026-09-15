@@ -1,0 +1,11 @@
+{
+  "name": "@match3/lodash-set-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Internal callable lodash.set adapter backed by the maintained lodash/set implementation",
+  "main": "index.js",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "lodash": "4.18.1"
+  }
+}

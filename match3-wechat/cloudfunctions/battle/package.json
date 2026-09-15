@@ -4,6 +4,13 @@
   "description": "消消乐双人对战云函数",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "4.0.2"
+    "wx-server-sdk": "4.0.2",
+    "lodash.set": "file:vendor/lodash-set-compat"
+  },
+  "overrides": {
+    "axios": "0.33.0",
+    "lodash.unset": "4.18.0",
+    "qs": "6.16.0",
+    "lodash.set": "$lodash.set"
   }
 }

@@ -137,13 +137,17 @@ Object.keys(cloudPackages).forEach(function (packagePath) {
 });
 assert.deepStrictEqual(licenseCounts, {
     ISC: 4,
-    MIT: 71,
+    MIT: 72,
     UNDECLARED: 2,
     'BSD-3-Clause': 13,
+    UNLICENSED: 1,
     'Apache-2.0': 10,
     'BlueOak-1.0.0': 1,
     '0BSD': 1
 }, '云函数依赖许可证统计发生漂移，请同步复核台账');
+assert.strictEqual(cloudPackages['node_modules/lodash.set'].name, '@match3/lodash-set-compat');
+assert.strictEqual(cloudPackages['node_modules/lodash.set'].license, 'UNLICENSED',
+    '自有兼容层保持默认版权，不得误记为第三方未声明许可');
 assert.deepStrictEqual(undeclared, [
     'node_modules/@cloudbase/signature-nodejs',
     'node_modules/@cloudbase/wx-cloud-client-sdk'
