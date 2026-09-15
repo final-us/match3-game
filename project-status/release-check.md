@@ -1,6 +1,17 @@
 # 发布检查 · 2026-09-15
 
-## 当前任务：battle 依赖安全修复
+## 当前任务：失败换位碰壁反馈
+
+- Owner：当前项目任务；状态：`verified_for_git_delivery_device_acceptance_pending`。基线 `b7e4c76587564b914a42c67795e539940020927f`（安全修复已推送），本次仅无消除/冰块/果冻换位失败动效及既有音效接线确认。用户在本地验证后明确授权“推送”：仅本次代码、测试、预览工具与文档提交到origin/main，不部署微信，无外部创作费用或素材上传。Git身份与实际推送结果以本记录所在提交及交付回复为准；推送授权不代表已通过真机验收。
+- 原因/实现：真实renderer回归红测复现 `animateInvalidSwap` 中错误的 `self` 引用；改成240ms、最大7逻辑像素的顶碰/回弹/余振，降效180ms/最大3像素，障碍与棋子共享显示偏移（锁定格55%幅度），不改变逻辑位置。独立输入锁阻止反馈期间连划/道具叠加，不使用processing锁，不暂停倒计时，finally释放。setGame清理旧反馈，旧Promise不会清除新棋盘反馈。
+- 音频：复用已接受invalid 0.32秒采样，单人/PvP每次失败各一次；既有真实Main音频回归验证回调、动画Promise和cue调用。未改audio.js、精灵或授权边界，成功交换/补棋继续静音。
+- 文件：`js/core/game-core.js`、`js/render/board-render.js`、`test/invalid-swap.js`（均在match3-wechat下）；扩展现有 `tools/preview-level-entry.cjs` 的 `?preview=invalid` 模式，用真实Main/Core/Board/Audio、内存存档、无云请求，可重复查看普通/冰块/果冻、横竖、静音与降效。
+- 本地证据：新增invalid-swap从红转绿，覆盖五种失败来源、输入去重、步数/障碍/分数不变、计时推进、横竖、降效、重绑与异常解锁；audio、slide、timer、ui-smoke、battle-client、package-budget、special、tool、release-gates通过；相关JS语法/diff通过，Impeccable机械检测无发现（不能代替动效验收）。主包估算3,842,756/4,194,304字节、57文件，无新增二进制。既有不受影响云依赖审计证据复用。
+- 运行证据：浏览器实际Canvas隔离预览390×844/320×568加载正式猫咪素材并触发失败反馈，步数保持28，偏移回到null，无unhandledrejection/控制台错误；静音/降效路径可运行。浏览器截图只能证明布局与状态，实际微信/iOS/鸿蒙的动画流畅度及听感仍需用户审核，不冒充真机验收。
+- 独立非实现者审查：既有代理条件PASS，未发现阻断本地变更的具体问题；确认输入/计时隔离、位移边界、罩层一致、重绑identity guard与测试范围。未重复测试/真实Canvas/音频审查，音效Main绑定由主代理现有回归验证；未使用同一个core在反馈中途重跑initGrid的非当前运行路径作为已验证场景。
+- 下一步：按授权提交并推送本次7个文件到 `https://github.com/final-us/match3-game.git` 的main，不force、不纳入音效/隔离素材/node_modules；随后由用户在微信开发者工具重新编译后审核三类失败换位及声音。本次不重新设计其他音效、画面或玩法，不代上传微信。共享记忆本任务检索无相关批准记录，适用结论已记在上述规范，不复制瞬时状态进记忆；无相关输入变化的已通过证据继续复用。
+
+## 历史：battle 依赖安全修复（已推送b7e4c76）
 
 - Owner：当前项目任务；状态：`verified_for_git_delivery`。用户授权修复前轮 7 项 npm 安全告警，并在本地验收后明确授权“推送”：仅本次依赖/兼容层、测试与文档提交并推送 origin/main；无云部署或微信上传授权。UI/音频/玩法/业务源码保持不变。最终Git身份与推送结果以本记录所在提交及交付回复为准。
 - 身份：基线 `f85a8353de98a4d74cf5940dec245f0abc8a3c04`（此前已推送 main），加本次工作树。文件：battle `package.json` / `package-lock.json` / `.npmrc` / `vendor/lodash-set-compat/`，`test/cloud-dependency-security.js` / `test/open-source-and-assets.js`，小游戏 README 与安全/授权台账。本轮无客户端构建产物变化。

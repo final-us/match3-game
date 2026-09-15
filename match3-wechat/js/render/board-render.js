@@ -58,6 +58,7 @@ class BoardRenderer {
         // 粒子系统（碎屑效果）
         this.particles = [];
         this.specialEffects = [];
+        this.invalidSwapFeedback = null;
 
         // 触摸状态
         this.touchStartPos = null;
@@ -153,6 +154,7 @@ class BoardRenderer {
 
     /** 绑定游戏核心，并从 grid 初始化视觉棋子 */
     setGame(core) {
+        this.invalidSwapFeedback = null;
         this.core = core;
         this.computeLayout();
         this.syncPiecesFromGrid();
@@ -285,41 +287,47 @@ class BoardRenderer {
         return this.wait(220);
     }
 
-    /** 无效交换动画：撞墙效果——向目标方向顶两下再弹回（不真的滑过去） */
+    /** 无效换位：小幅顶碰、回弹、轻抖归位；只动显示层，不改格子位置。 */
     animateInvalidSwap(from, to) {
+        if (this.invalidSwapFeedback) return this.invalidSwapFeedback.promise;
         const a = this.findPiece(from.row, from.column);
         const b = this.findPiece(to.row, to.column);
-        if (!a || !b) return this.wait(200);
-
-        // 交换方向（相邻格，单位向量）
-        const dirRow = to.row - from.row;
-        const dirCol = to.column - from.column;
-        const nudge = this.tileSize * 0.28; // 每次顶出的位移量
-
-        return (async function () {
-            // 第一下：顶出再弹回
-            self.nudgePiece(a, dirRow, dirCol, nudge);
-            self.nudgePiece(b, -dirRow, -dirCol, nudge);
-            await self.wait(90);
-            self.movePieceTo(a, from.row, from.column);
-            self.movePieceTo(b, to.row, to.column);
-            await self.wait(90);
-
-            // 第二下：顶出再弹回（更轻）
-            self.nudgePiece(a, dirRow, dirCol, nudge * 0.6);
-            self.nudgePiece(b, -dirRow, -dirCol, nudge * 0.6);
-            await self.wait(80);
-            self.movePieceTo(a, from.row, from.column);
-            self.movePieceTo(b, to.row, to.column);
-            await self.wait(90);
-        })();
+        if (!a || !b) return Promise.resolve();
+        const feedback = {
+            from: { row: from.row, column: from.column },
+            to: { row: to.row, column: to.column },
+            elapsed: 0,
+            duration: this.screen.reduceEffects ? 180 : 240,
+            distance: Math.min(this.screen.reduceEffects ? 3 : 7, this.tileSize * 0.14)
+        };
+        this.pressGrid = null;
+        this.invalidSwapFeedback = feedback;
+        feedback.promise = this.wait(feedback.duration).finally(() => {
+            // 后台计时到期或重绑棋盘后均不会留下位移，也不清除新棋盘的反馈。
+            if (this.invalidSwapFeedback === feedback) this.invalidSwapFeedback = null;
+        });
+        return feedback.promise;
     }
 
-    /** 让棋子朝目标方向临时顶出一段距离（撞墙效果） */
-    nudgePiece(piece, dirRow, dirCol, distance) {
-        const center = this.pieceCenter(piece.row, piece.col);
-        piece.targetX = center.x + dirCol * distance;
-        piece.targetY = center.y + dirRow * distance;
+    /** 棋子与障碍罩共享同一偏移，冰块/果冻只能轻颤，不能像成功换位一样滑走。 */
+    invalidSwapOffset(row, column) {
+        const f = this.invalidSwapFeedback;
+        if (!f) return null;
+        const sign = row === f.from.row && column === f.from.column ? 1
+            : (row === f.to.row && column === f.to.column ? -1 : 0);
+        if (!sign) return null;
+        const t = Math.min(1, f.elapsed / f.duration);
+        // 一次主撞击、一次反向回弹和更轻的余振；分段smoothstep保持圆润。
+        const times = [0, 0.2, 0.46, 0.7, 1];
+        const values = [0, 1, -0.42, 0.18, 0];
+        let segment = 0;
+        while (segment < 3 && t > times[segment + 1]) segment++;
+        const p = (t - times[segment]) / (times[segment + 1] - times[segment]);
+        const eased = p * p * (3 - 2 * p);
+        const blockedScale = this.core.isBlocked({ row: row, column: column }) ? 0.55 : 1;
+        const offset = (values[segment] + (values[segment + 1] - values[segment]) * eased)
+            * f.distance * sign * blockedScale;
+        return { x: (f.to.column - f.from.column) * offset, y: (f.to.row - f.from.row) * offset };
     }
 
     /** 爆发一组碎屑粒子 */
@@ -501,6 +509,7 @@ class BoardRenderer {
     // ===== 每帧更新（动画插值）=====
 
     update(dt) {
+        if (this.invalidSwapFeedback) this.invalidSwapFeedback.elapsed += Math.max(0, dt);
         const k = Math.min(1, dt / 100); // 约 100ms 内完成插值
         for (let i = 0; i < this.pieces.length; i++) {
             const p = this.pieces[i];
@@ -843,8 +852,9 @@ class BoardRenderer {
             for (let c = 0; c < jelly[r].length; c++) {
                 const layers = jelly[r][c];
                 if (!layers) continue;
-                const cx = this.boardX + c * this.tileSize + this.tileSize / 2;
-                const cy = this.boardY + r * this.tileSize + this.tileSize / 2;
+                const offset = this.invalidSwapOffset(r, c);
+                const cx = this.boardX + c * this.tileSize + this.tileSize / 2 + (offset ? offset.x : 0);
+                const cy = this.boardY + r * this.tileSize + this.tileSize / 2 + (offset ? offset.y : 0);
                 const s = this.tileSize * 0.46;
 
                 // 果冻罩主体（半透明，棋子透过可见）
@@ -887,8 +897,9 @@ class BoardRenderer {
         for (let r = 0; r < ice.length; r++) {
             for (let c = 0; c < ice[r].length; c++) {
                 if (!ice[r][c]) continue;
-                const x = this.boardX + c * this.tileSize;
-                const y = this.boardY + r * this.tileSize;
+                const offset = this.invalidSwapOffset(r, c);
+                const x = this.boardX + c * this.tileSize + (offset ? offset.x : 0);
+                const y = this.boardY + r * this.tileSize + (offset ? offset.y : 0);
                 const pad = 2;
 
                 // 冰块主体（高覆盖，棋子若隐若现）
@@ -922,6 +933,9 @@ class BoardRenderer {
     /** 画一个视觉棋子（特殊棋子画专属样式，普通棋子画色块+emoji） */
     drawPiece(piece) {
         const ctx = this.ctx;
+        const offset = this.invalidSwapOffset(piece.row, piece.col);
+        const drawX = piece.x + (offset ? offset.x : 0);
+        const drawY = piece.y + (offset ? offset.y : 0);
 
         // 特殊棋子：保留猫咪底图，叠加会呼吸的猫爪光束/魔法炸弹。
         const special = config.getSpecialDef(piece.type);
@@ -930,7 +944,7 @@ class BoardRenderer {
             if (size < 1) return;
             ctx.save();
             ctx.globalAlpha = piece.alpha;
-            ctx.translate(piece.x, piece.y);
+            ctx.translate(drawX, drawY);
             ctx.scale(piece.scale, piece.scale);
 
             const s = Math.min(this.tileSize - 2, this.tileSize * 0.94);
@@ -998,7 +1012,7 @@ class BoardRenderer {
 
         ctx.save();
         ctx.globalAlpha = piece.alpha;
-        ctx.translate(piece.x, piece.y);
+        ctx.translate(drawX, drawY);
         ctx.scale(piece.scale, piece.scale);
 
         // 优先用猫咪素材图（type 1-5 对应 piece1-5），无图则回退代码绘制

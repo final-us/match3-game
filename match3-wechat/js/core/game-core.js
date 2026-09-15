@@ -44,6 +44,7 @@ class GameCore {
         this.timerStarted = false;
         this.timerPaused = false;
         this.processing = false;
+        this.swapFeedbackPending = false;
         this.ended = false;
         this.won = false;
         this.minMatchCount = 3; // 最小消除数（默认 3 连；「干扰」道具时设为 4）
@@ -68,6 +69,7 @@ class GameCore {
         this.timerStarted = false;
         this.timerPaused = false;
         this.processing = false;
+        this.swapFeedbackPending = false;
         this.ended = false;
         this.won = false;
         this.pendingTriggers = [];
@@ -114,7 +116,7 @@ class GameCore {
 
     /** 是否可交互 */
     isPlaying() {
-        return !this.processing && !this.ended;
+        return !this.processing && !this.swapFeedbackPending && !this.ended;
     }
 
     /** 后台或场景切换时暂停单人倒计时 */
@@ -234,12 +236,6 @@ class GameCore {
             return false;
         }
 
-        // 覆盖锁定：被果冻/冰块覆盖的棋子不能主动交换（像钉住一样推不动）
-        if (this.isBlocked(from) || this.isBlocked(to)) {
-            if (this.callbacks.onInvalidSwap) await this.callbacks.onInvalidSwap(from, to);
-            return false;
-        }
-
         const typeA = gridUtil.getPieceType(this.grid, from);
         const typeB = gridUtil.getPieceType(this.grid, to);
         if (!typeA || !typeB) return false;
@@ -247,9 +243,14 @@ class GameCore {
         const colDiff = Math.abs(from.column - to.column);
         if (rowDiff + colDiff !== 1) return false;
 
-        const valid = this.validateMove(from, to);
-        if (!valid) {
-            if (this.callbacks.onInvalidSwap) await this.callbacks.onInvalidSwap(from, to);
+        // 覆盖锁定或无法消除：只反馈一次，不改棋盘/步数，也不暂停计时。
+        if (this.isBlocked(from) || this.isBlocked(to) || !this.validateMove(from, to)) {
+            this.swapFeedbackPending = true;
+            try {
+                if (this.callbacks.onInvalidSwap) await this.callbacks.onInvalidSwap(from, to);
+            } finally {
+                this.swapFeedbackPending = false;
+            }
             return false;
         }
 
