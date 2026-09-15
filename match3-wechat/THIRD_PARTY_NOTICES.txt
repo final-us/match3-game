@@ -77,68 +77,31 @@ official dependency chain and not submit an external clarification request.
 These packages are used only by the cloud function and are not included in the
 client main package.
 
-3. PLAYFUL PIANO
-----------------
+3. ElevenLabs generated audio
+------------------------------
 
-Title: PLAYFUL PIANO
-Creator: Dylann Taylor
-Source: https://dylanntaylor.itch.io/playful-piano
-License: CC0 1.0 Universal (public-domain dedication)
+Provider: ElevenLabs
+Models: music_v1 and eleven_text_to_sound_v2
+Generated: 9-10 September 2026
 
-Adopted source files:
+The calm and battle background tracks and 15 sound-effect cues were generated
+from original text-only descriptions for this project under an active paid
+Starter plan. No project file, reference audio, image, source code, personal
+data, or filing material was uploaded. The provider's pricing page stated that
+commercial music use is available on Starter and higher plans and described
+generated sound effects as royalty-free. The applicable terms stated that paid
+users may use outputs commercially and retain rights to outputs as between the
+user and provider, subject to the terms and prohibited-use policy; generated
+outputs may not be unique.
 
-- PlayfulPiano_Atmos_Loop.ogg
-- PlayfulPiano_JazzTrio_Loop.ogg
+The accepted sources and complete prompts, parameters, dates, hashes, estimated
+cost and authorization record are kept outside the client package under
+assets/_incoming/audio-elevenlabs-20260909-match3-v9-pilot/. The final runtime
+files are locally downmixed, cropped, faded, gain-adjusted, resampled and
+encoded as mono MP3. This notice records provenance and does not imply that
+ElevenLabs licenses the project as a whole.
 
-The project converts the complete loops to mono AAC/M4A for
-res/audio/calm.m4a and res/audio/battle.m4a. CC0 applies only to this music and
-does not license the project as a whole.
-
-4. UI Sound Effects
--------------------
-
-Title: UI Sound Effects (Button Clicks, User Feedback, Notifications)
-Publisher: Robin Lamb
-Source:
-https://opengameart.org/content/ui-sound-effects-button-clicks-user-feedback-notifications
-License: CC0 1.0 Universal (public-domain dedication)
-
-The project adopts nine click, chime, feedback, and notification OGG samples.
-The source page states that the recordings originate from the VCSL and VSCO 2
-CE public-domain sample libraries.
-
-5. Kenney Interface Sounds
---------------------------
-
-Title: Interface Sounds 1.0
-Creator: Kenney
-Source: https://kenney.nl/assets/interface-sounds
-License: CC0 1.0 Universal (public-domain dedication)
-
-The project adopts four switch, drop, glass, and confirmation OGG samples.
-
-6. Kenney Impact Sounds
------------------------
-
-Title: Impact Sounds 1.0
-Creator: Kenney
-Source: https://kenney.nl/assets/impact-sounds
-License: CC0 1.0 Universal (public-domain dedication)
-
-The project adopts seven soft-impact, wood-impact, and glass-impact OGG
-samples.
-
-7. Kenney RPG Audio
--------------------
-
-Title: RPG Audio 1.0
-Creator: Kenney
-Source: https://kenney.nl/assets/rpg-audio
-License: CC0 1.0 Universal (public-domain dedication)
-
-The project adopts three coin-handling and cloth OGG samples.
-
-8. Freesound special-piece recordings
+4. Freesound special-piece recordings
 -------------------------------------
 
 The following adopted recordings are published under CC0 1.0 Universal:
@@ -147,18 +110,90 @@ The following adopted recordings are published under CC0 1.0 Universal:
   https://freesound.org/people/Kinoton/sounds/347163/
 - Short Explosion.wav, animationIsaac:
   https://freesound.org/people/animationIsaac/sounds/207322/
-- magical sound effect, reasanka:
-  https://freesound.org/people/reasanka/sounds/429525/
 - Cliche Magic Spell Sound, qubodup:
   https://freesound.org/people/qubodup/sounds/817466/
 
-The first three recordings provide the independent rocket, bomb, and color-ball
-one-shots. The fourth provides the single music-box cue used whenever one match
-payload reports two or more triggered special pieces. Exact adopted source
+The second recording provides the independent bomb cue. The first rocket and
+third music-box recordings are historical sources only, no longer in the sprite.
+The current rocket cue uses Mixkit below; combinations use individual special
+piece cues simultaneously. Exact historical source
 files and SHA256 values are recorded in docs/design/sfx-acoustic-runtime-v8.md.
 
-The samples in sections 4-8 are cropped, faded, filtered, gain-adjusted,
-time-compressed where documented, layered, and
-concatenated offline into res/audio/sfx-acoustic.m4a. The game ships only that
-derived 22-cue AAC/M4A sprite, not the source archives. CC0 applies only to
-these sounds and does not license the project as a whole.
+The bomb recording, generated cues, ice and licensed clear/four-clear/rocket/win
+sounds are concatenated offline into res/audio/sfx-acoustic.mp3. The game
+ships only that derived 21-cue MP3 sprite. The unused old music-box combination
+sample is archived and no longer included. The game does not ship source archives.
+CC0 applies only to the relevant recordings and
+does not license the project as a whole.
+
+5. Shimmer glitter magic (fourClear)
+-----------------------------------
+
+Title: Shimmer glitter magic (shimmer_1)
+Creator: The Berklee College of Music / Berklee
+Source collection: Berklee samples v.13, recorded for Richard Boulanger for
+the One Laptop per Child music library
+Collection: https://archive.org/details/Berklee44v13
+Work: https://opengameart.org/content/shimmer-glitter-magic
+OpenGameArt submitter: qubodup
+License: Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+Legal code: https://creativecommons.org/licenses/by/3.0/legalcode
+Unrestricted source download:
+https://opengameart.org/sites/default/files/shimmer_1.flac
+
+Changes: resampled from 44100 Hz to 22050 Hz mono, converted to PCM and
+appended to the existing MP3 sprite at 32 kbps. No pitch change, gain change,
+trimming or added sound effects. The original duration is retained (0.658367s).
+Used for four-in-a-line match feedback, not the fourth cascade count.
+
+CC BY 3.0 applies to this sound, including its adapted use here. Project
+copyright terms do not restrict the rights granted by that license to this
+sound. Retain attribution, the license and source links, and identify any
+further adaptations. No endorsement by Berklee or the submitter is implied.
+This sound is offered without warranties as described by the license.
+
+6. Ice cracking
+----------------
+Creator: timbreknight
+Work: https://freesound.org/people/timbreknight/sounds/342546/
+License: CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+Source: public compressed preview, explicitly accepted by the product owner.
+Changes: crop 1.1-1.7 seconds, mono downmix, 2ms/8ms edge fades, resample to
+22050 Hz and encode into the runtime MP3. No pitch changes or added sounds.
+
+7. Fairy arcade sparkle (normal matches and cascades)
+-----------------------------------------------------
+Source: Mixkit, item 866, Fairy arcade sparkle
+https://mixkit.co/free-sound-effects/sparkle/
+License: Mixkit Sound Effects Free License
+https://mixkit.co/license/#sfxFree
+https://mixkit.co/terms/
+Changes: mono downmix, 2ms/8ms edge fades, resampling and MP3 encoding.
+The complete 1.497-second source is retained; cascade playback increases pitch
+by 2, 4, 5, 7 and 9 semitones using playback rate, with correspondingly shorter
+duration. This is not an original sound owned by this project or a CC0 asset.
+The license permits commercial video-game End Products and modifications, but
+prohibits standalone/stock/tool/template or source-file redistribution and
+registration on rights-management services. Original audio, all derivatives and
+the mixed runtime sprite are excluded from the public source repository; only
+the licensed game End Product may include them under the applicable terms.
+
+8. Magic wand sparkle and Christmas reveal tones
+------------------------------------------------
+Source: Mixkit, item 3062, Magic wand sparkle (rocket cue, 2.5 seconds)
+https://assets.mixkit.co/active_storage/sfx/3062/3062.wav
+Source: Mixkit, item 2988, Christmas reveal tones (win cue, 3.026984 seconds)
+https://assets.mixkit.co/active_storage/sfx/2988/2988.wav
+https://mixkit.co/free-sound-effects/sparkle/
+License: Mixkit Sound Effects Free License
+https://mixkit.co/license/#sfxFree
+The commercial End Product and source-file redistribution restrictions in
+section 7 also apply to these sounds. Official WAV downloads, user accepted
+15 September 2026; full duration retained, mono downmix, 22050 Hz resampling,
+2ms/8ms edge fades and 32kbps MP3 encoding; no pitch shift or layering.
+Magic wand sparkle is played when horizontal/vertical specials activate,
+not when they are generated (fourClear remains section 5). Christmas reveal
+tones replaces the generated victory cue. All sources and derivatives stay
+outside public Git, with local provenance under selected-sfx-20260915/rocket-win/.

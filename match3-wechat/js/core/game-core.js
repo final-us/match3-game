@@ -727,7 +727,15 @@ class GameCore {
 
             let suppressed = [];
             const triggeredSpecials = [];
+            let specialCombo = null;
             if (this.pendingCombo) {
+                // Renderer-only contract: avoid asking presentation code to infer
+                // a combo from an otherwise mixed special-trigger list.
+                specialCombo = {
+                    first: { row: this.pendingCombo.first.pos.row, column: this.pendingCombo.first.pos.column, type: this.pendingCombo.first.type },
+                    second: { row: this.pendingCombo.second.pos.row, column: this.pendingCombo.second.pos.column, type: this.pendingCombo.second.type },
+                    center: { row: this.pendingCombo.center.row, column: this.pendingCombo.center.column }
+                };
                 triggeredSpecials.push({
                     row: this.pendingCombo.first.pos.row,
                     column: this.pendingCombo.first.pos.column,
@@ -835,7 +843,8 @@ class GameCore {
                     jellyHits: jellyHits,
                     iceHits: iceHits,
                     generated: generated,
-                    triggeredSpecials: triggeredSpecials
+                    triggeredSpecials: triggeredSpecials,
+                    specialCombo: specialCombo
                 });
             }
 

@@ -182,6 +182,18 @@ function wouldGenerate(core, type) {
     matrix = combo(config.SPECIAL_TYPES.COLOR_BALL, config.SPECIAL_TYPES.COLOR_BALL, centerA, centerB);
     report('彩球+彩球=全屏清除', matrix.result.targets.length === core.grid.length * core.grid[0].length);
 
+    // 回调为渲染提供明确组合元数据；不能由触发列表顺序猜测。
+    firstMatch = null;
+    core = new GameCore(level, { onMatch: function (data) { if (!firstMatch) firstMatch = data; } });
+    makeCleanBoard(core);
+    core.grid[4][3] = config.SPECIAL_TYPES.H_ROCKET;
+    core.grid[4][4] = config.SPECIAL_TYPES.V_ROCKET;
+    await core.trySwap({ row: 4, column: 3 }, { row: 4, column: 4 });
+    report('特殊组合回调含明确渲染元数据', firstMatch && firstMatch.specialCombo &&
+        firstMatch.specialCombo.first.type === config.SPECIAL_TYPES.V_ROCKET &&
+        firstMatch.specialCombo.second.type === config.SPECIAL_TYPES.H_ROCKET &&
+        firstMatch.specialCombo.center.row === 4 && firstMatch.specialCombo.center.column === 4);
+
     // 9. 锤子/炸弹命中特殊棋子必须触发特殊效果及连锁。
     firstMatch = null;
     core = new GameCore(level, { onMatch: function (data) { if (!firstMatch) firstMatch = data; } });

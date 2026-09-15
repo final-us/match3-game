@@ -98,6 +98,16 @@ function applyUpdate() {
     }
 }
 
+// 分享卡片是最容易暴露旧缓存的入口。若微信已经把新包下载好，
+// 进入邀请房间前直接应用新包，避免好友停留在旧 UI。
+function applyReadyUpdate(state) {
+    if (typeof state === 'string') currentState = state;
+    if (!SAFE_UPDATE_STATES[currentState] || !updateReady || updateApplying || !updateManager ||
+        typeof updateManager.applyUpdate !== 'function') return false;
+    applyUpdate();
+    return updateApplying;
+}
+
 function maybePromptUpdate(state) {
     if (typeof state === 'string') currentState = state;
     if (!updateReady || updatePrompted || updateDismissed || updateApplying || !SAFE_UPDATE_STATES[currentState]) {
@@ -201,5 +211,6 @@ module.exports = {
     SAFE_UPDATE_STATES: SAFE_UPDATE_STATES,
     init: init,
     maybePromptUpdate: maybePromptUpdate,
+    applyReadyUpdate: applyReadyUpdate,
     openPrivacyContract: openPrivacyContract
 };

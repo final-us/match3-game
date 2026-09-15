@@ -1,6 +1,13 @@
 # 依赖
 node_modules/
 
+# Mixkit audio is a local release asset, not public source material.
+match3-wechat/res/audio/sfx-acoustic.mp3
+
+# Local creative inputs, rejected candidates, provider receipts and review media.
+# Accepted game assets live under match3-wechat/res; provenance summaries live in docs/.
+assets/_incoming/
+
 # 备份
 .backup/
 

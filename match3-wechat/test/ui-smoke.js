@@ -75,7 +75,7 @@ assert('首页 HUD 原尺寸、左对齐且避开胶囊', function () {
     const coinText = drawnText.find(function (item) { return item.text === '1000'; });
     if (!heartImage || !coinImage || !heartText || !coinText) throw new Error('首页 HUD 内容缺失');
     if (heartImage.args[4] < 28 || coinImage.args[4] < 28) throw new Error('首页 HUD 图标尺寸异常');
-    if (Math.abs(heartImage.args[2] + heartImage.args[4] / 2 - (homeScreen.safeTop + 40 + 21)) > 1) {
+    if (Math.abs(heartImage.args[2] + heartImage.args[4] / 2 - (homeScreen.safeTop + 8 + 21)) > 1) {
         throw new Error('体力图标未垂直居中');
     }
     if (heartText.x <= heartImage.args[1] + heartImage.args[3] || coinText.x <= coinImage.args[1] + coinImage.args[3]) {
@@ -83,10 +83,30 @@ assert('首页 HUD 原尺寸、左对齐且避开胶囊', function () {
     }
     if (coinImage.args[1] + coinImage.args[3] >= homeScreen.contentRight) throw new Error('首页 HUD 侵入微信胶囊');
     const titleImage = drawnImages.find(function (item) { return item.src === 'res/home/title-logo.png'; });
-    if (!titleImage || titleImage.args[2] < homeScreen.safeTop + 90) throw new Error('首页标题与 HUD 重叠');
+    if (!titleImage || titleImage.args[2] < homeScreen.safeTop + 58) throw new Error('首页标题与 HUD 重叠');
 });
 assert('主菜单（体力充足）', function () {
     UI.drawMenu(ctx, screen, 5, { count: 5, timeLeftText: '00:00', canPlay: true }, { coins: 1000 });
+});
+assert('原稿首页层级与短屏触控', function () {
+    for (const [width,height] of [[320,568],[375,812],[430,932]]) {
+        const s={width,height,safeTop:24,safeBottom:20};
+        drawnImages.length = 0;
+        const b=UI.drawMenu(ctx,s,5,{count:5,timeLeftText:'12:34',canPlay:true},{coins:1000});
+        for (const [key, src] of [['battle','res/home/duel-heads.png'],['shop','res/ui/shop.png'],['settings','res/ui/settings.png']]) {
+            const image = imageRecords(src)[0];
+            if (!image) throw new Error('缺少精修按钮图标 ' + key);
+            const [,ix,iy,iw,ih] = image.args;
+            const target = b[key];
+            if (ix < target.x || iy < target.y || ix + iw > target.x + target.w || iy + ih > target.y + target.h) throw new Error('图标溢出按钮 ' + key);
+        }
+        if(b.start.w>=b.battle.w) throw new Error('副入口宽度不得压过主入口');
+        for(const key of ['battle','start','shop','settings']) {
+            const r=b[key];
+            if(r.w<44||r.h<44||r.x<0||r.x+r.w>width||r.y<0||r.y+r.h>height) throw new Error('触控范围异常 '+key);
+        }
+        if(b.battle.y+b.battle.h>=b.start.y) throw new Error('主副入口重叠');
+    }
 });
 assert('主菜单（体力不足）', function () {
     const hidden = UI.drawMenu(ctx, screen, 5, { count: 0, timeLeftText: '12:34', canPlay: false, canAd: false }, { coins: 0 });
@@ -129,6 +149,46 @@ assert('设置页（320×568 不溢出）', function () {
         }
     });
 });
+assert('B商店与设置：三档状态、触控与独立开关', function () {
+    for (const [width,height] of [[320,568],[375,812],[430,932]]) {
+        const s={width,height,safeTop:24,safeBottom:20,contentTop:72,reduceEffects:true};
+        for (const options of [{canReward:true,count:1,limit:10},{canReward:true,count:10,limit:10},{canReward:true,pending:true},{canReward:false}]) {
+            drawnText.length=0;
+            const b=UI.drawShop(ctx,s,0,{hammer:0,bomb:0,color:0},options);
+            for(const [key,r] of Object.entries(b)) {
+                if(r.w<44||r.h<44||r.x<0||r.y<s.safeTop||r.x+r.w>width||r.y+r.h>height-s.safeBottom) throw new Error('商店触控溢出或过小 '+key);
+            }
+            if (!textValues().includes('金币不足')) throw new Error('未显示金币不足原因');
+            if (options.pending && !textValues().includes('领取中')) throw new Error('未显示领取中');
+            if (options.count===10 && !textValues().includes('今日已满')) throw new Error('未显示领取上限');
+            for (const type of ['hammer','bomb','color']) {
+                const a=b['buy_'+type],r=b['reward_'+type];
+                if (r && a.x+a.w>=r.x) throw new Error('购买与领取命中范围重叠');
+            }
+        }
+        drawnText.length=0;
+        const b=UI.drawSettings(ctx,s,{musicEnabled:true,sfxEnabled:false});
+        if(!textValues().includes('开')||!textValues().includes('关')) throw new Error('开关状态不独立或仅靠颜色');
+        for(const r of Object.values(b)) {
+            if(r.h<44||r.w<44||r.x<0||r.y<s.safeTop||r.x+r.w>width||r.y+r.h>height-s.safeBottom) throw new Error('设置触控异常');
+        }
+    }
+});
+assert('单人短屏：棋盘完整且不被道具遮挡', function () {
+    for(const [width,height] of [[320,568],[375,812],[430,932]]) {
+        const s={width,height,safeTop:24,safeBottom:20};
+        const board=new BoardRenderer(ctx,s);
+        board.setGame(new GameCore({id:5,rows:8,columns:8,moveCount:25,goals:[{type:'score',target:3600}]},{}));
+        board.setTools({hammer:2,bomb:1,color:0});
+        if(board.tileSize<30) throw new Error('小屏棋子缩得过小');
+        if(board.boardY+board.boardH+8>board.tools[0].y-44) throw new Error('道具面板遮住棋盘');
+        drawnImages.length=0;
+        board.drawTools();
+        for(const type of ['hammer','bomb','yarn']) {
+            if(!imageRecords('res/ui/tool-'+type+'.png').length) throw new Error('道具图标未绘制 '+type);
+        }
+    }
+});
 assert('零素材情境式引导（窄屏安全区）', function () {
     const small = { width: 320, height: 568, safeTop: 24, safeBottom: 20, reduceEffects: false };
     Object.keys(OnboardingUI.CONTENT).forEach(function (key) {
@@ -164,7 +224,11 @@ assert('单人倒计时与超时文案', function () {
     if (topBarText.indexOf('目标分 3600') === -1 || topBarText.indexOf('时间') === -1 || topBarText.indexOf('01:02') === -1) {
         throw new Error('棋盘目标框未显示倒计时');
     }
-    if (canvasStats.fill !== 4) throw new Error('棋盘新增了独立时间框');
+    const timedFills=canvasStats.fill;
+    const timerText=drawnText.find(t=>t.text==='01:02');
+    if(timerText.y>=board.boardY || timerText.y<130) throw new Error('倒计时未位于既有目标框');
+    board.core.timeLimitMs=0;canvasStats.fill=0;board.drawTopBar();
+    if(canvasStats.fill!==timedFills) throw new Error('计时状态增加了额外框体');
     drawnText.length = 0;
     UI.drawResult(ctx, screen, { win: false, reason: 'timeout', score: 0, coinReward: 0, star: 0, canRevive: false });
     if (textValues().indexOf('时间到') === -1) throw new Error('结算页未显示超时文案');
@@ -202,13 +266,12 @@ assert('无限关卡地图每屏固定五关', function () {
         const button = buttons['level_' + id];
         return { x: button.x + button.w / 2, y: button.y + button.h / 2 };
     });
-    if (centers[0].y <= centers[4].y || centers[4].y > screen.height * 0.3) {
+    if (centers[0].y <= centers[4].y || Math.abs(centers[4].y - screen.height * 0.3) > 0.001) {
         throw new Error('五个节点未沿小径向亭子收束');
     }
-    const expectedPathX = [0.52, 0.45, 0.56, 0.48, 0.50];
     centers.forEach(function (center, index) {
-        if (Math.abs(center.x / screen.width - expectedPathX[index]) > 0.01) {
-            throw new Error('关卡节点偏离小径中心线 ' + (index + 1));
+        if (!Number.isFinite(center.x) || !Number.isFinite(center.y) || center.x < screen.width*.35 || center.x > screen.width*.80) {
+            throw new Error('关卡节点不在云阶有效区 ' + (index + 1));
         }
     });
 });
@@ -221,6 +284,57 @@ assert('关卡地图（小屏）', function () {
             throw new Error('小屏关卡节点溢出 ' + id);
         }
     });
+});
+assert('地图连续拖动不抢返回按钮，缺省安全区仍有效', function () {
+    for (const [width,height] of [[320,568],[375,812],[430,932]]) {
+        for (const fraction of [0,.5,.9]) {
+            for (const safeBottom of [undefined,34]) {
+                const s={width,height,contentTop:72,safeBottom};
+                const b=UI.drawLevelSelect(ctx,s,8,0,{}, {offset:5+fraction});
+                if (b.visibleLevels.length!==5) throw new Error('滚动五关窗口丢失');
+                if (!Number.isFinite(b.back.y) || b.back.y+b.back.h>height-(safeBottom||0)) throw new Error('返回按钮安全区异常');
+                for (const id of b.visibleLevels) {
+                    const hit=b['level_'+id];
+                    if (!hit) continue; // Partially clipped nodes must not receive taps.
+                    if (hit.w<44 || hit.h<44 || hit.y<144 || hit.y+hit.h>b.back.y-12) throw new Error('滚动节点侵入固定控件 '+id);
+                    if (UI.hitTest(b.back.x+b.back.w/2,b.back.y+4,hit)) throw new Error('返回点击被节点捕获');
+                }
+            }
+        }
+    }
+});
+assert('第一关及静止地图五个节点在全面屏均可点击', function () {
+    for (const [width, height] of [[320,568],[375,667],[375,812],[390,844],[430,932]]) {
+        for (const safeBottom of [0, 20, 34]) {
+            const s = { width, height, safeTop: 47, contentTop: 91, safeBottom };
+            for (const offset of [0, 5]) {
+                const b = UI.drawLevelSelect(ctx, s, offset + 1, 0, {}, { offset });
+                for (const id of b.visibleLevels) {
+                    const hit = b['level_' + id];
+                    if (!hit) throw new Error(width + '×' + height + ' bottom=' + safeBottom + ' 缺少level_' + id + '命中区');
+                    if (hit.w < 44 || hit.h < 44 || hit.y + hit.h > b.back.y - 12) throw new Error('节点命中区不可完整操作');
+                    if (!UI.hitTest(hit.x + hit.w / 2, hit.y + hit.h / 2, hit)) throw new Error('节点中心不可点击');
+                }
+            }
+        }
+    }
+});
+assert('月光结算各状态安全区、按钮与内容不重叠', function () {
+    for (const [width,height] of [[320,568],[375,812],[430,932]]) {
+        for (const state of [{win:true,star:3,hasNext:true},{win:true,star:0,hasNext:false},{win:false,canRevive:false},{win:false,canRevive:true},{win:false,reason:'timeout',timed:true,canRevive:true}]) {
+            drawnText.length=0;
+            const b=UI.drawResult(ctx,{width,height,contentTop:72,safeBottom:34}, {...state,score:999999999,coinReward:999999});
+            const controls=Object.values(b);
+            for (const a of controls) {
+                if (a.w<44 || a.h<44 || a.x<0 || a.y<72 || a.x+a.w>width || a.y+a.h>height-34) throw new Error('结算按钮越界');
+                for (const c of controls) if (a!==c && a.x<c.x+c.w && a.x+a.w>c.x && a.y<c.y+c.h && a.y+a.h>c.y) throw new Error('结算按钮相交');
+            }
+            const content=drawnText.filter(t=>t.text.startsWith('得分：') || t.text.includes('金币') || t.text.startsWith('别急'));
+            const firstButtonY=Math.min(...controls.map(b=>b.y));
+            if (content.some(t=>t.y+16>firstButtonY)) throw new Error('结果文字遮挡按钮');
+            if (!!b.revive!==!!(!state.win&&state.canRevive)) throw new Error('复活可用性改变');
+        }
+    }
 });
 assert('PvP UI（倒计时/警告/受击）', function () {
     const pvpScreen = { width: 375, height: 812, safeTop: 0, safeBottom: 0, reduceEffects: false };
@@ -261,8 +375,8 @@ assert('PvP 8×8 棋盘在上下保留区居中且不溢出', function () {
         id: 0, rows: 8, columns: 8, moveCount: 999,
         goals: [{ type: 'score', target: 99999999 }]
     }, {}));
-    const top = Math.max(72, pvpScreen.contentTop || pvpScreen.safeTop) + 64;
-    const bottom = pvpScreen.height - pvpScreen.safeBottom - 88;
+    const top = Math.max(72, pvpScreen.contentTop || pvpScreen.safeTop) + 96;
+    const bottom = pvpScreen.height - pvpScreen.safeBottom - 104;
     if (board.core.grid.length !== 8 || board.core.grid[0].length !== 8) throw new Error('棋盘不是 8×8');
     if (board.boardX < 0 || board.boardX + board.boardW > pvpScreen.width) throw new Error('棋盘水平溢出');
     if (board.boardY < top || board.boardY + board.boardH > bottom) throw new Error('棋盘垂直溢出');
@@ -271,6 +385,54 @@ assert('PvP 8×8 棋盘在上下保留区居中且不溢出', function () {
     if (board.pointToGrid(board.boardX + board.boardW, board.boardY) !== null ||
         board.pointToGrid(board.boardX, board.boardY + board.boardH) !== null) {
         throw new Error('棋盘右/下精确边界被映射到越界格');
+    }
+});
+
+assert('B对战准备/结算状态：安全区、44px控件、互不交叠', function () {
+    const overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+    for(const [width,height] of [[320,568],[375,812],[430,932]]) for(const contentTop of [72,88]) {
+        const s={width,height,contentTop,safeBottom:34};
+        function check(buttons) {
+            const controls=Object.values(buttons);
+            for(const a of controls) {
+                if(a.w<44||a.h<44||a.x<0||a.y<contentTop||a.x+a.w>width||a.y+a.h>height-34) throw new Error('对战控件安全区/尺寸异常');
+                for(const b of controls) if(a!==b&&overlap(a,b)) throw new Error('对战控件相交');
+            }
+        }
+        for(const myReady of [false,true]) {
+            drawnText.length=0;
+            const buttons=BattleUI.drawWait(ctx,s,{roomId:'long-room-123456',myName:'很长的猫咪玩家名字',oppName:'另一个猫咪玩家',myReady,oppReady:myReady,oppJoined:myReady,items:{freeze:0,disturb:3},isHost:!myReady});
+            check(buttons);
+            if(!!buttons.freezePlus===myReady) throw new Error('准备锁定配额契约改变');
+            const hint=drawnText.find(t=>t.text.startsWith('双方准备后'));
+            if(hint.y+7>buttons.ready.y) throw new Error('短屏提示压住准备按钮');
+        }
+        for(const result of ['win','draw','lose']) {
+            drawnText.length=0;drawnImages.length=0;
+            check(BattleUI.drawResult(ctx,s,{result,myScore:999999999,oppScore:888888888,coinReward:result==='lose'?0:150}));
+            if(result==='draw'&&!imageRecords('res/home/duel-heads.png').length) throw new Error('平局双猫缺失');
+            if(result==='lose'&&textValues().includes('奖励 +150 金币')) throw new Error('虚构奖励');
+        }
+    }
+});
+assert('B对战HUD：提示不遮棋盘，冷却/生效/耗尽可辨', function () {
+    for(const [width,height] of [[320,568],[375,812],[430,932]]) {
+        const s={width,height,contentTop:72,safeBottom:34};
+        const board=new BoardRenderer(ctx,s);board.battleMode=true;
+        board.setGame(new GameCore({id:0,rows:8,columns:8,moveCount:999,goals:[{type:'score',target:99999}]},{}));
+        const dockY=height-34-98;
+        if(board.boardY<168||board.boardY+board.boardH>dockY-6) throw new Error('对战棋盘侵入HUD/道具区');
+        drawnText.length=0;
+        BattleUI.drawTop(ctx,s,{timeLeft:8,myScore:999999999,oppScore:999999999});
+        BattleUI.drawEffects(ctx,s,{frozen:true,frozenRemaining:2500,disturb:true,disturbRemaining:4000,castNotice:'freeze',boardX:board.boardX,boardY:board.boardY,boardW:board.boardW,boardH:board.boardH});
+        if(drawnText.some(t=>t.y+10>=board.boardY)) throw new Error('提示侵入棋盘');
+        if(!textValues().some(t=>t.includes('冰冻 3秒')&&t.includes('干扰需4连 4秒'))) throw new Error('组合受击状态丢失');
+        for(const state of [{freeze:1,disturb:2,cooldownRemaining:4500,active:false},{freeze:0,disturb:2,cooldownRemaining:0,active:true}]) {
+            drawnText.length=0;const b=BattleUI.drawItems(ctx,s,state);
+            if(b.freeze.h<44||b.disturb.h<44||b.freeze.y<dockY) throw new Error('道具触控异常');
+            if(state.active&&!textValues().includes('用尽')) throw new Error('耗尽状态丢失');
+            if(state.cooldownRemaining&&!textValues().includes('共享冷却 5秒')) throw new Error('冷却秒数丢失');
+        }
     }
 });
 

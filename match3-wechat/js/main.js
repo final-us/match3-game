@@ -255,10 +255,7 @@ class Main {
 
         // 再创建逻辑层，动画回调绑定到渲染层
         this.core = new GameCore(level, {
-            onSwap: (from, to) => {
-                AudioFX.swap();
-                return this.board.animateSwap(from, to);
-            },
+            onSwap: (from, to) => this.board.animateSwap(from, to),
             onInvalidSwap: (from, to) => {
                 AudioFX.invalid();
                 return this.board.animateInvalidSwap(from, to);
@@ -269,10 +266,7 @@ class Main {
                 return this.board.animateMatch(data);
             },
             onGravity: (data) => this.board.animateGravity(data),
-            onFill: (data) => {
-                AudioFX.drop();
-                return this.board.animateFill(data);
-            },
+            onFill: (data) => this.board.animateFill(data),
             onColorChange: (data) => this.board.animateColorChange(data),
             onReshuffle: () => this.board.animateReshuffle(),
             onLevelEnd: this.handleLevelEnd.bind(this)
@@ -516,13 +510,19 @@ class Main {
     pollRoom() {
         if (!this.battle || !this.battle.roomId) return;
         const self = this;
-        cloudBattle.call('query', { roomId: this.battle.roomId }).then(function (res) {
+        const b = this.battle;
+        if (b.pollPending || b.completedTracked) return;
+        b.pollPending = true;
+        const revision = b.pollRevision;
+        cloudBattle.call('query', { roomId: b.roomId }).then(function (res) {
+            b.pollPending = false;
+            if (self.battle !== b || b.completedTracked || b.actionPending || revision !== b.pollRevision) return;
             if (!res.ok) {
                 if (self.battle && !self.battle.queryErrorTracked) {
                     self.battle.queryErrorTracked = true;
                     analytics.track('pvp_error', { category: 'query', reason: battleErrorReason(res, 'query') });
                 }
-                if (res.err === '邀请已失效' || res.err === '房间不存在') {
+                if (res.err === '邀请已失效' || res.err === '房间不存在' || res.err === '不在房间') {
                     self.stopPolling();
                     self.battle = null;
                     self.battleCore = null;
@@ -534,7 +534,8 @@ class Main {
             }
             self.applyPoll(res);
         }).catch(function () {
-            if (self.battle && !self.battle.queryErrorTracked) {
+            b.pollPending = false;
+            if (self.battle === b && !b.completedTracked && !b.queryErrorTracked) {
                 self.battle.queryErrorTracked = true;
                 analytics.track('pvp_error', { category: 'query', reason: 'network' });
             }
@@ -543,8 +544,9 @@ class Main {
 
     /** 应用轮询结果 */
     applyPoll(res) {
-        if (!this.battle) return;
+        if (!this.battle || this.battle.completedTracked) return;
         const b = this.battle;
+        if (Number.isFinite(res.myScore)) b.syncedScore = Math.max(b.syncedScore, res.myScore);
 
         // 对手信息
         if (res.opp) {
@@ -642,12 +644,13 @@ class Main {
     }
 
     startBattle() {
-        if (this.battleCreating) return;
+        if (this.battleCreating || this.state === 'playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
         this.battleCreating = true;
         analytics.track('pvp_click');
         const self = this;
-        this.battle = this.newBattleState(true);
+        const b = this.battle = this.newBattleState(true);
         cloudBattle.call('create', { nickname: '房主猫' }).then(function (res) {
+            if (self.battle !== b) return;
             self.battleCreating = false;
             if (res.ok && res.roomId) {
                 self.battle.roomId = res.roomId;
@@ -664,6 +667,7 @@ class Main {
                     ? BATTLE_CREATE_RATE_LIMIT_MESSAGE : '暂时无法创建对局，请稍后重试');
             }
         }).catch(function () {
+            if (self.battle !== b) return;
             self.battleCreating = false;
             AudioFX.invalid();
             analytics.track('pvp_create', { result: 'failure', reason: 'network' });
@@ -674,6 +678,7 @@ class Main {
 
     /** 好友点卡片进入 → 加入房间 */
     joinBattle(roomId) {
+        if (this.battleCreating || this.state === 'playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
         if (!cloudBattle.isValidRoomId(roomId)) {
             AudioFX.invalid();
             analytics.track('pvp_error', { category: 'join', reason: 'expired' });
@@ -681,9 +686,12 @@ class Main {
             return;
         }
         const self = this;
-        this.battle = this.newBattleState(false);
-        this.battle.roomId = roomId;
+        this.battleCreating = true;
+        const b = this.battle = this.newBattleState(false);
+        b.roomId = roomId;
         cloudBattle.call('join', { roomId: roomId, nickname: '挑战猫' }).then(function (res) {
+            if (self.battle !== b) return;
+            self.battleCreating = false;
             if (res.ok) {
                 self.state = 'battle_wait';
                 analytics.track('pvp_join', { result: 'success' });
@@ -696,6 +704,8 @@ class Main {
                 self.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
             }
         }).catch(function () {
+            if (self.battle !== b) return;
+            self.battleCreating = false;
             AudioFX.invalid();
             analytics.track('pvp_join', { result: 'failure', reason: 'network' });
             self.battle = null;
@@ -712,6 +722,15 @@ class Main {
             oppReady: false,
             oppJoined: false,
             myScore: 0,
+            syncedScore: 0,
+            scorePending: false,
+            lastScoreSyncAt: 0,
+            lastSentScore: 0,
+            scoreErrorTracked: false,
+            pollPending: false,
+            pollRevision: 0,
+            actionPending: false,
+            inputClosed: false,
             oppScore: 0,
             startTime: 0,
             endTime: 0,
@@ -765,11 +784,18 @@ class Main {
         }
         if (!query || typeof query !== 'object' || query.invite !== '1' ||
             this.state === 'battle_wait' || this.state === 'battle_playing') return;
+        if (this.state === 'playing') {
+            this.showBattleNotice('请先完成当前闯关，再打开好友邀请');
+            return;
+        }
+        if (this.battleCreating) return;
         if (!cloudBattle.isValidRoomId(query.roomId)) {
             analytics.track('pvp_error', { category: 'join', reason: 'expired' });
             this.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
             return;
         }
+        // 仅在非对局安全场景应用已下载的新包；失败时继续处理邀请。
+        if (runtime.applyReadyUpdate(this.state)) return;
         this.joinBattle(query.roomId);
     }
 
@@ -784,11 +810,11 @@ class Main {
         this.battleBoard = new BoardRenderer(this.ctx, this.screen);
         this.battleBoard.battleMode = true;
         this.battleCore = new GameCore(BATTLE_LEVEL, {
-            onSwap: (from, to) => { AudioFX.swap(); return this.battleBoard.animateSwap(from, to); },
+            onSwap: (from, to) => this.battleBoard.animateSwap(from, to),
             onInvalidSwap: (from, to) => { AudioFX.invalid(); return this.battleBoard.animateInvalidSwap(from, to); },
             onMatch: (data) => { AudioFX.match(data); return this.battleBoard.animateMatch(data); },
             onGravity: (data) => this.battleBoard.animateGravity(data),
-            onFill: (data) => { AudioFX.drop(); return this.battleBoard.animateFill(data); },
+            onFill: (data) => this.battleBoard.animateFill(data),
             onColorChange: (data) => this.battleBoard.animateColorChange(data),
             onReshuffle: () => this.battleBoard.animateReshuffle(),
             onLevelEnd: () => {}
@@ -801,10 +827,16 @@ class Main {
 
     /** 等待页：准备 */
     battleReady() {
-        if (!this.battle || !this.battle.roomId) return;
+        if (!this.battle || !this.battle.roomId || this.state !== 'battle_wait' || this.battle.actionPending) return;
         AudioFX.click();
         const self = this;
-        cloudBattle.call('ready', { roomId: this.battle.roomId }).then(function (res) {
+        const b = this.battle;
+        b.actionPending = true;
+        b.pollRevision++;
+        cloudBattle.call('ready', { roomId: b.roomId }).then(function (res) {
+            if (self.battle !== b || b.completedTracked) return;
+            b.actionPending = false;
+            b.pollRevision++;
             if (!res.ok) {
                 AudioFX.invalid();
                 analytics.track('pvp_error', { category: 'ready', reason: battleErrorReason(res, 'ready') });
@@ -815,6 +847,9 @@ class Main {
             if (res.items) self.battle.items = res.items;
             analytics.track('pvp_ready', { status: res.ready ? 'ready' : 'cancelled' });
         }).catch(function () {
+            if (self.battle !== b || b.completedTracked) return;
+            b.actionPending = false;
+            b.pollRevision++;
             AudioFX.invalid();
             analytics.track('pvp_error', { category: 'ready', reason: 'network' });
         });
@@ -822,7 +857,8 @@ class Main {
 
     /** 等待页按固定总预算调整自己可见的 PvP 道具配置。 */
     battleAdjustItem(item, delta) {
-        if (!this.battle || this.battle.myReady || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
+        if (!this.battle || this.state !== 'battle_wait' || this.battle.actionPending ||
+            this.battle.myReady || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
         const next = {};
         for (let i = 0; i < BATTLE_ITEM_ALLOWLIST.length; i++) {
             const key = BATTLE_ITEM_ALLOWLIST[i];
@@ -846,7 +882,13 @@ class Main {
             next[other]++;
         }
         const self = this;
-        cloudBattle.call('configureItems', { roomId: this.battle.roomId, items: next }).then(function (res) {
+        const b = this.battle;
+        b.actionPending = true;
+        b.pollRevision++;
+        cloudBattle.call('configureItems', { roomId: b.roomId, items: next }).then(function (res) {
+            if (self.battle !== b || b.completedTracked) return;
+            b.actionPending = false;
+            b.pollRevision++;
             if (res.ok && res.items) {
                 self.battle.items = res.items;
                 AudioFX.click();
@@ -854,6 +896,9 @@ class Main {
                 AudioFX.invalid();
             }
         }).catch(function () {
+            if (self.battle !== b || b.completedTracked) return;
+            b.actionPending = false;
+            b.pollRevision++;
             AudioFX.invalid();
         });
     }
@@ -861,10 +906,17 @@ class Main {
     /** 等待页：取消/退出 */
     battleCancel() {
         if (!this.battle) return;
+        const self = this;
         if (this.battle.roomId) {
-            cloudBattle.call('leave', { roomId: this.battle.roomId });
+            cloudBattle.call('leave', { roomId: this.battle.roomId }).catch(function () {
+                analytics.track('pvp_error', { category: 'leave', reason: 'network' });
+                if (self.state === 'menu' && !self.battle) {
+                    self.showBattleNotice('退出尚未同步，请网络恢复后重新创建对局');
+                }
+            });
         }
         this.stopPolling();
+        this.battleCreating = false;
         this.battle = null;
         this.battleCore = null;
         this.battleBoard = null;
@@ -873,7 +925,7 @@ class Main {
 
     /** 对战道具释放：仅允许房间配置中的 freeze/disturb。 */
     battleUseItem(item) {
-        if (!this.battle || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
+        if (!this.isBattleInputOpen(Date.now()) || this.battle.actionPending || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
         const now = Date.now();
         if (this.battle.items[item] <= 0 || now < this.battle.itemCooldownUntil ||
             now < this.battle.activeEffectUntil) {
@@ -881,7 +933,13 @@ class Main {
             return;
         }
         const self = this;
-        cloudBattle.call('useItem', { roomId: this.battle.roomId, item: item }).then(function (res) {
+        const b = this.battle;
+        b.actionPending = true;
+        b.pollRevision++;
+        cloudBattle.call('useItem', { roomId: b.roomId, item: item }).then(function (res) {
+            if (self.battle !== b || b.completedTracked) return;
+            b.actionPending = false;
+            b.pollRevision++;
             if (!res.ok) {
                 AudioFX.invalid();
                 if (res.err) self.showBattleNotice(res.err);
@@ -893,6 +951,9 @@ class Main {
             self.battle.castNotice = { item: item, until: Date.now() + 1500 };
             AudioFX.pvpCast(item);
         }).catch(function () {
+            if (self.battle !== b || b.completedTracked) return;
+            b.actionPending = false;
+            b.pollRevision++;
             AudioFX.invalid();
         });
     }
@@ -902,10 +963,21 @@ class Main {
         return this.battle && Date.now() < this.battle.frozenUntil;
     }
 
+    isBattleInputOpen(now) {
+        const b = this.battle;
+        return !!(this.state === 'battle_playing' && b && !b.completedTracked &&
+            b.startTime > 0 && now >= b.startTime && now < b.endTime);
+    }
+
     /** 更新对战帧逻辑（干扰到期、分数上报、倒计时结束） */
     updateBattle(now) {
         if (!this.battle) return;
         if (this.battle.startTime && now < this.battle.startTime) return;
+        if (!this.isBattleInputOpen(now)) {
+            if (!this.battle.inputClosed && this.battleBoard) this.battleBoard.onTouchEnd();
+            this.battle.inputClosed = true;
+            return;
+        }
         if (this.battle.startTime && !this.battle.countdownStarted) {
             this.battle.countdownStarted = true;
             this.battle.countdownStartUntil = now + COUNTDOWN_START_DISPLAY_MS;
@@ -919,12 +991,31 @@ class Main {
             this.battleCore.minMatchCount = 3;
             this.battle.disturbUntil = 0;
         }
-        // 分数上报（800ms 节流，兼顾观感与云函数调用成本）
-        if (this.battleCore && now - this.lastScoreSync > 800 && this.battleCore.score !== this.battle.myScore) {
-            this.battle.myScore = this.battleCore.score;
-            this.lastScoreSync = now;
-            cloudBattle.call('syncScore', { roomId: this.battle.roomId, score: this.battleCore.score });
-        }
+        const b = this.battle;
+        if (!this.battleCore) return;
+        b.myScore = this.battleCore.score;
+        // 显示分数与服务端确认分数分开。失败后下一窗口重试；截止前最后800ms立即提交新增分数。
+        if (b.scorePending || b.myScore <= b.syncedScore ||
+            (now - b.lastScoreSyncAt < 800 && !(b.endTime - now <= 800 && b.myScore > b.lastSentScore))) return;
+        const score = b.myScore;
+        const self = this;
+        b.scorePending = true;
+        b.lastScoreSyncAt = now;
+        b.lastSentScore = score;
+        cloudBattle.call('syncScore', { roomId: b.roomId, score: score }).then(function (res) {
+            b.scorePending = false;
+            if (self.battle !== b || b.completedTracked) return;
+            if (res.ok) b.syncedScore = Math.max(b.syncedScore, score);
+            else if (!b.scoreErrorTracked) {
+                b.scoreErrorTracked = true;
+                analytics.track('pvp_error', { category: 'sync_score', reason: 'unavailable' });
+            }
+        }).catch(function () {
+            b.scorePending = false;
+            if (self.battle !== b || b.completedTracked || b.scoreErrorTracked) return;
+            b.scoreErrorTracked = true;
+            analytics.track('pvp_error', { category: 'sync_score', reason: 'network' });
+        });
     }
 
     battleBackToMenu() {
@@ -943,6 +1034,7 @@ class Main {
         const x = e.touches[0].clientX;
         const y = e.touches[0].clientY;
         if (this.handleGuideTouch(x, y)) return;
+        if (this.battleCreating) return;
 
         if (this.state === 'playing' && this.board) {
             this.board.onTouchStart(x, y);
@@ -1040,7 +1132,7 @@ class Main {
                 this.battleCancel();
             }
         } else if (this.state === 'battle_playing' && this.battleBoard) {
-            if (this.battle && this.battle.startTime && Date.now() < this.battle.startTime) return;
+            if (!this.isBattleInputOpen(Date.now())) return;
             // 冰冻中不能操作
             if (this.isFrozen()) return;
             // 道具栏点击
@@ -1081,7 +1173,8 @@ class Main {
             this.levelMapOffset = Math.max(0, Math.min(maxOffset, this.levelMapOffset + dy / stepPx));
             this.levelMapTouch.lastY = y;
             if (Math.abs(y - this.levelMapTouch.y) > 8) this.levelMapDragged = true;
-        } else if (this.state === 'battle_playing' && this.battleBoard && !this.isFrozen()) {
+        } else if (this.state === 'battle_playing' && this.battleBoard &&
+            this.isBattleInputOpen(Date.now()) && !this.isFrozen()) {
             this.battleBoard.onTouchMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }

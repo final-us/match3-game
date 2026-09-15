@@ -90,6 +90,37 @@ try {
         }));
     });
 
+    test('分享入口优先应用已下载的新包', function () {
+        const store = makeWx();
+        const runtime = loadRuntime(store);
+        runtime.init('menu');
+        store.manager.handlers.ready[0]();
+        assert.strictEqual(runtime.applyReadyUpdate(), true);
+        assert.strictEqual(store.manager.applyCount, 1);
+        assert.strictEqual(runtime.applyReadyUpdate(), false, '更新应用中不得重复触发');
+    });
+
+    test('分享更新以当前场景为准，不打断单人和对战', function () {
+        for (const state of ['playing', 'battle_wait', 'battle_playing']) {
+            const store = makeWx();
+            const runtime = loadRuntime(store);
+            runtime.init('menu');
+            store.manager.handlers.ready[0]();
+            assert.strictEqual(runtime.applyReadyUpdate(state), false, state + '不得强制重启');
+            assert.strictEqual(store.manager.applyCount, 0);
+        }
+    });
+
+    test('分享更新同步失败返回false，允许继续处理邀请', function () {
+        const store = makeWx();
+        const runtime = loadRuntime(store);
+        runtime.init('menu');
+        store.manager.handlers.ready[0]();
+        store.manager.applyUpdate = function () { throw new Error('update unavailable'); };
+        assert.strictEqual(runtime.applyReadyUpdate('menu'), false);
+        assert(store.toasts.some(function (item) { return item.title.indexOf('无法应用') >= 0; }));
+    });
+
     test('全局错误只记录类别和计数', function () {
         const store = makeWx();
         const runtime = loadRuntime(store);

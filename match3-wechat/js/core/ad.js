@@ -49,8 +49,13 @@ function hasRealInterstitial() {
         store && typeof store.createInterstitialAd === 'function');
 }
 
-function finishReward(completed, reason) {
-    if (!pendingReward) return;
+function callAdMethod(instance, method) {
+    try { return Promise.resolve(instance[method]()); }
+    catch (e) { return Promise.reject(e); }
+}
+
+function finishReward(completed, reason, instance) {
+    if (!pendingReward || pendingReward.ad !== instance) return;
     const current = pendingReward;
     pendingReward = null;
     track(completed ? 'ad_complete' : (reason === 'cancel' ? 'ad_cancel' : 'ad_fail'), current.placement, {
@@ -64,12 +69,14 @@ function createRewardedAd() {
     try {
         const ad = getStore().createRewardedVideoAd({ adUnitId: config.AD_CONFIG.rewardedAdUnitId });
         ad.onClose(function (res) {
-            finishReward(!!(res && res.isEnded), res && res.isEnded ? 'completed' : 'cancel');
+            finishReward(!!(res && res.isEnded), res && res.isEnded ? 'completed' : 'cancel', ad);
         });
         ad.onError(function (err) {
-            rewardedAd = null;
-            realRewardedUnavailable = true;
-            finishReward(false, err && err.errCode ? String(err.errCode) : 'runtime_error');
+            if (rewardedAd === ad) {
+                rewardedAd = null;
+                realRewardedUnavailable = true;
+            }
+            finishReward(false, err && err.errCode ? String(err.errCode) : 'runtime_error', ad);
         });
         return ad;
     } catch (e) {
@@ -102,18 +109,20 @@ function showRewarded(placement, options) {
         return Promise.resolve(false);
     }
 
+    const instance = rewardedAd;
     return new Promise(function (resolve) {
-        pendingReward = { resolve: resolve, placement: placement };
-        rewardedAd.show().then(function () {
-            track('ad_show', placement);
+        const request = pendingReward = { resolve: resolve, placement: placement, ad: instance };
+        callAdMethod(instance, 'show').catch(function () {
+            if (pendingReward !== request) return;
+            return callAdMethod(instance, 'load').then(function () {
+                if (pendingReward === request) return callAdMethod(instance, 'show');
+            });
+        }).then(function () {
+            if (pendingReward === request) track('ad_show', placement);
         }).catch(function () {
-            const load = typeof rewardedAd.load === 'function' ? rewardedAd.load() : Promise.reject(new Error('load_unavailable'));
-            load.then(function () { return rewardedAd.show(); })
-                .then(function () { track('ad_show', placement); })
-                .catch(function () {
-                    rewardedAd = null;
-                    finishReward(false, 'show_failed');
-                });
+            if (pendingReward !== request) return;
+            if (rewardedAd === instance) rewardedAd = null;
+            finishReward(false, 'show_failed', instance);
         });
     });
 }
@@ -138,8 +147,8 @@ function saveInterstitialState(state) {
     try { store.setStorageSync(INTERSTITIAL_STORAGE_KEY, state); } catch (e) {}
 }
 
-function finishInterstitial(shown, reason) {
-    if (!pendingInterstitial) return;
+function finishInterstitial(shown, reason, instance) {
+    if (!pendingInterstitial || pendingInterstitial.ad !== instance) return;
     const current = pendingInterstitial;
     pendingInterstitial = null;
     if (shown) {
@@ -154,10 +163,10 @@ function createInterstitialAd() {
     if (!hasRealInterstitial()) return null;
     try {
         const ad = getStore().createInterstitialAd({ adUnitId: config.AD_CONFIG.interstitialAdUnitId });
-        ad.onClose(function () { finishInterstitial(true, 'closed'); });
+        ad.onClose(function () { finishInterstitial(true, 'closed', ad); });
         ad.onError(function (err) {
-            interstitialAd = null;
-            finishInterstitial(false, err && err.errCode ? String(err.errCode) : 'runtime_error');
+            if (interstitialAd === ad) interstitialAd = null;
+            finishInterstitial(false, err && err.errCode ? String(err.errCode) : 'runtime_error', ad);
         });
         return ad;
     } catch (e) {
@@ -181,13 +190,15 @@ function showInterstitial() {
         track('ad_fail', placement, { reason: 'create_failed' });
         return Promise.resolve(false);
     }
+    const instance = interstitialAd;
     return new Promise(function (resolve) {
-        pendingInterstitial = { resolve: resolve, placement: placement };
-        interstitialAd.show().then(function () {
-            track('ad_show', placement);
+        const request = pendingInterstitial = { resolve: resolve, placement: placement, ad: instance };
+        callAdMethod(instance, 'show').then(function () {
+            if (pendingInterstitial === request) track('ad_show', placement);
         }).catch(function () {
-            interstitialAd = null;
-            finishInterstitial(false, 'show_failed');
+            if (pendingInterstitial !== request) return;
+            if (interstitialAd === instance) interstitialAd = null;
+            finishInterstitial(false, 'show_failed', instance);
         });
     });
 }

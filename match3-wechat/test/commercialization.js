@@ -45,6 +45,70 @@ const config = require('../js/core/config');
 const analytics = require('../js/core/analytics');
 const ad = require('../js/core/ad');
 
+async function checkAdFailureRecovery() {
+    const oldWx = global.wx;
+    const adPath = require.resolve('../js/core/ad');
+    const oldModule = require.cache[adPath];
+    const unhandled = [];
+    const onUnhandled = function (error) { unhandled.push(error); };
+    process.on('unhandledRejection', onUnhandled);
+    const flush = function () { return new Promise(function (resolve) { setImmediate(resolve); }); };
+    try {
+        for (const format of ['rewarded', 'interstitial']) {
+            for (const failure of ['event_then_reject', 'show_throw', 'load_throw']) {
+                if (format === 'interstitial' && failure === 'load_throw') continue;
+                const instances = [];
+                const store = {};
+                global.wx = {
+                    getStorageSync: function (key) { return store[key]; },
+                    setStorageSync: function (key, value) { store[key] = value; }
+                };
+                global.wx[format === 'rewarded' ? 'createRewardedVideoAd' : 'createInterstitialAd'] = function () {
+                    const first = instances.length === 0;
+                    const instance = {
+                        onClose: function (fn) { this.close = fn; },
+                        onError: function (fn) { this.error = fn; },
+                        show: function () {
+                            if (!first) return Promise.resolve();
+                            if (failure === 'show_throw') throw new Error('show unavailable');
+                            if (failure === 'event_then_reject') this.error({ errCode: 1003 });
+                            return Promise.reject(new Error('show failed'));
+                        },
+                        load: function () { throw new Error('load failed'); }
+                    };
+                    instances.push(instance);
+                    return instance;
+                };
+                delete require.cache[adPath];
+                const isolatedAd = require('../js/core/ad');
+                const show = function () {
+                    if (format === 'rewarded') return isolatedAd.showRewarded('revive');
+                    store[isolatedAd.INTERSTITIAL_STORAGE_KEY] = { completedGames: 2, lastShownAt: 0 };
+                    return isolatedAd.onSoloResultExit();
+                };
+                let outcome = 'pending';
+                show().then(function (value) { outcome = value; }, function () { outcome = 'rejected'; });
+                await flush();
+                assert.strictEqual(outcome, false, format + '/' + failure + '应安全返回失败而非抛错或挂起');
+                assert.strictEqual(unhandled.length, 0, format + '/' + failure + '不得产生未处理拒绝');
+                const next = show();
+                let nextOutcome = 'pending';
+                next.then(function (value) { nextOutcome = value; });
+                instances[0].close({ isEnded: true });
+                instances[0].error({ errCode: 1003 });
+                await flush();
+                assert.strictEqual(nextOutcome, 'pending', format + '旧广告回调不得结算新请求');
+                instances[1].close({ isEnded: true });
+                assert.strictEqual(await next, true, format + '失败后下一次请求应可恢复');
+            }
+        }
+    } finally {
+        global.wx = oldWx;
+        require.cache[adPath] = oldModule;
+        process.removeListener('unhandledRejection', onUnhandled);
+    }
+}
+
 async function run() {
     const originalNow = Date.now;
     let now = 1000000;
@@ -147,6 +211,7 @@ async function run() {
         remoteShouldFail = true;
         assert(analytics.track('test_event', { count: 4 }), '远程失败不得影响本地 track');
 
+        await checkAdFailureRecovery();
         console.log('商业化基础设施测试通过');
     } finally {
         config.REPORTING_CONFIG.enabled = false;

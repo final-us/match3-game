@@ -2,8 +2,8 @@
  * 零素材 Canvas 情境式引导；覆盖当前页面但不改变页面/棋盘状态。
  */
 
-const THEME = require('./theme');
 const typography = require('./typography');
+const moon = require('./moon-controls');
 
 const CONTENT = {
     solo_intro: {
@@ -32,39 +32,46 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 
-function roundRect(ctx, x, y, w, h, radius) {
-    const r = Math.min(radius, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
-
-function drawButton(ctx, x, y, w, h, text, top, bottom) {
-    const gradient = ctx.createLinearGradient(x, y, x, y + h);
-    gradient.addColorStop(0, top);
-    gradient.addColorStop(1, bottom);
-    ctx.fillStyle = gradient;
-    roundRect(ctx, x, y, w, h, Math.min(14, h / 2));
-    ctx.fill();
-    ctx.fillStyle = THEME.textLight;
-    typography.drawCentered(ctx, text, x, y, w, h, {
-        size: 15, minSize: 10, weight: 'bold'
+function wrapLines(ctx, lines, maxWidth) {
+    const wrapped = [];
+    lines.forEach(function (text) {
+        // Balance short instructions across two lines, keeping punctuation off line starts.
+        if (ctx.measureText(text).width > maxWidth) {
+            let split = 0, best = Infinity;
+            for (let i = 1; i < text.length; i++) {
+                if (/^[，。、；：！？]/.test(text.slice(i))) continue;
+                const left = ctx.measureText(text.slice(0, i)).width;
+                const right = ctx.measureText(text.slice(i)).width;
+                // Prefer an existing clause boundary over splitting a phrase or “5 连”.
+                const difference = /[，。；！？]/.test(text[i - 1]) ? -1 : Math.abs(left - right);
+                if (left <= maxWidth && right <= maxWidth && difference < best) {
+                    split = i;
+                    best = difference;
+                }
+            }
+            if (split) {
+                wrapped.push(text.slice(0, split), text.slice(split));
+                return;
+            }
+        }
+        let line = '';
+        for (const char of text) {
+            if (line && ctx.measureText(line + char).width > maxWidth) {
+                wrapped.push(line);
+                line = '';
+            }
+            line += char;
+        }
+        if (line) wrapped.push(line);
     });
+    return wrapped;
 }
 
 function draw(ctx, screen, key) {
     const content = CONTENT[key] || CONTENT.solo_intro;
     const width = Number(screen.width) || 320;
     const height = Number(screen.height) || 568;
-    const safeTop = Math.max(0, Number(screen.safeTop) || 0);
+    const safeTop = Math.max(0, Number(screen.safeTop) || 0, Number(screen.contentTop) || 0);
     const safeBottom = Math.max(0, Number(screen.safeBottom) || 0);
     const cardW = Math.min(348, width - 24);
     const cardH = 274;
@@ -76,31 +83,29 @@ function draw(ctx, screen, key) {
     const buttonY = cardY + cardH - 62;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(7, 10, 42, 0.72)';
+    ctx.fillStyle = 'rgba(71, 86, 133, 0.34)';
     ctx.fillRect(0, 0, width, height);
 
-    ctx.fillStyle = THEME.glassBg;
-    roundRect(ctx, cardX, cardY, cardW, cardH, 24);
-    ctx.fill();
-    ctx.strokeStyle = THEME.glassBorder;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    moon.panel(ctx, screen, cardX, cardY, cardW, cardH);
 
-    ctx.fillStyle = THEME.gold;
-    typography.drawFit(ctx, content.title, width / 2, cardY + 52, cardW - 32, {
+    ctx.fillStyle = '#303C70';
+    typography.drawFit(ctx, content.title, width / 2, cardY + 44, cardW - 40, {
         size: 25, minSize: 18, weight: 'bold', align: 'center'
     });
-    ctx.fillStyle = THEME.textSceneMuted;
-    for (let i = 0; i < content.lines.length; i++) {
-        typography.drawFit(ctx, content.lines[i], width / 2, cardY + 94 + i * 30, cardW - 34, {
-            size: 15, minSize: 10, align: 'center'
+    ctx.fillStyle = '#4E5B82';
+    typography.set(ctx, 14, undefined, false, 'center', 'middle');
+    const lines = wrapLines(ctx, content.lines, cardW - 44);
+    const lineTop = cardY + 130 - (lines.length - 1) * 12;
+    for (let i = 0; i < lines.length; i++) {
+        typography.drawFit(ctx, lines[i], width / 2, lineTop + i * 24, cardW - 44, {
+            size: 14, minSize: 14, align: 'center'
         });
     }
 
     const leftX = cardX + 20;
     const rightX = leftX + buttonW + buttonGap;
-    drawButton(ctx, leftX, buttonY, buttonW, buttonH, '跳过', THEME.btnGrayTop, THEME.btnGrayBottom);
-    drawButton(ctx, rightX, buttonY, buttonW, buttonH, '知道了', THEME.primaryLight, THEME.primary);
+    moon.button(ctx, leftX, buttonY, buttonW, buttonH, '跳过', 'blue', 15);
+    moon.button(ctx, rightX, buttonY, buttonW, buttonH, '知道了', 'pink', 15);
     ctx.restore();
 
     return {

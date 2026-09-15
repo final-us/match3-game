@@ -13,6 +13,7 @@ const AudioFX = require('../audio');
 const assets = require('./assets');
 const THEME = require('./theme');
 const typography = require('./typography');
+const moon = require('./moon-controls');
 
 function drawImageCover(ctx, img, w, h) {
     if (!img || !img.width || !img.height) return false;
@@ -167,8 +168,8 @@ class BoardRenderer {
         const margin = this.battleMode ? 6 : 2;
         const widthTileSize = Math.floor((safeWidth - margin * 2) / cols);
         if (this.battleMode) {
-            const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 64;
-            const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 88;
+            const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 96;
+            const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 104;
             const availableHeight = Math.max(rows, bottom - top);
             this.tileSize = Math.max(1, Math.min(widthTileSize, Math.floor(availableHeight / rows)));
             this.boardW = this.tileSize * cols;
@@ -178,11 +179,13 @@ class BoardRenderer {
             return;
         }
 
-        this.tileSize = Math.floor((safeWidth - margin * 2) / cols);
+        const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 118;
+        // Reserve the full tool surface plus a gap; width alone overflows short phones.
+        const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 108;
+        this.tileSize = Math.max(1, Math.min(widthTileSize, Math.floor((bottom - top) / rows)));
         this.boardW = this.tileSize * cols;
         this.boardH = this.tileSize * rows;
         this.boardX = Math.floor(safeLeft + (safeWidth - this.boardW) / 2);
-        const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 118;
         this.boardY = Math.floor(top);
     }
 
@@ -293,7 +296,6 @@ class BoardRenderer {
         const dirCol = to.column - from.column;
         const nudge = this.tileSize * 0.28; // 每次顶出的位移量
 
-        const self = this;
         return (async function () {
             // 第一下：顶出再弹回
             self.nudgePiece(a, dirRow, dirCol, nudge);
@@ -343,6 +345,45 @@ class BoardRenderer {
         this.specialEffects.push({ type: type, x: x, y: y, life: 0, maxLife: this.screen.reduceEffects ? 180 : 420 });
     }
 
+    /**
+     * Add the moon-crystal overlay for one match payload.  The core deliberately
+     * uses the core's explicit specialCombo contract plus the actual
+     * removed/jelly/ice footprint. Chained specials stay local.
+     */
+    spawnMatchEffects(data) {
+        const triggered = data.triggeredSpecials || [];
+        const footprint = (data.removed || []).concat(data.jellyHits || [], data.iceHits || []);
+        const combo = data.specialCombo || null;
+
+        if (combo) {
+            const a = combo.first.type;
+            const b = combo.second.type;
+            const center = this.pieceCenter(combo.second.row, combo.second.column);
+            let kind = '';
+            if (a === config.SPECIAL_TYPES.COLOR_BALL && b === config.SPECIAL_TYPES.COLOR_BALL) kind = 'screen';
+            else if (a === config.SPECIAL_TYPES.COLOR_BALL || b === config.SPECIAL_TYPES.COLOR_BALL) kind = 'color';
+            else if ((a === config.SPECIAL_TYPES.H_ROCKET || a === config.SPECIAL_TYPES.V_ROCKET) &&
+                (b === config.SPECIAL_TYPES.H_ROCKET || b === config.SPECIAL_TYPES.V_ROCKET)) kind = 'cross';
+            else if (((a === config.SPECIAL_TYPES.H_ROCKET || a === config.SPECIAL_TYPES.V_ROCKET) && b === config.SPECIAL_TYPES.BOMB) ||
+                ((b === config.SPECIAL_TYPES.H_ROCKET || b === config.SPECIAL_TYPES.V_ROCKET) && a === config.SPECIAL_TYPES.BOMB)) kind = 'tripleCross';
+            else if (a === config.SPECIAL_TYPES.BOMB && b === config.SPECIAL_TYPES.BOMB) kind = 'square';
+            if (kind) {
+                this.specialEffects.push({ kind: kind, x: center.x, y: center.y, targets: footprint,
+                    life: 0, maxLife: this.screen.reduceEffects ? 180 : 420 });
+            }
+        }
+
+        // Draw ordinary or chained triggers only at their own real origin.
+        for (let i = 0; i < triggered.length; i++) {
+            const item = triggered[i];
+            if (combo && ((item.row === combo.first.row && item.column === combo.first.column && item.type === combo.first.type) ||
+                (item.row === combo.second.row && item.column === combo.second.column && item.type === combo.second.type))) continue;
+            if (!config.isSpecialType(item.type)) continue;
+            const center = this.pieceCenter(item.row, item.column);
+            this.spawnSpecialEffect(item.type, center.x, center.y);
+        }
+    }
+
     /** 消除动画：棋子缩小消失 + 碎屑粒子 + 障碍反馈 + 特殊棋子生成（含连消触发的消除） */
     animateMatch(data) {
         const removed = data.removed;
@@ -350,6 +391,7 @@ class BoardRenderer {
         const iceHits = data.iceHits || [];
         const generated = data.generated || [];
         const targets = [];
+        this.spawnMatchEffects(data);
         for (let i = 0; i < removed.length; i++) {
             const p = this.findPiece(removed[i].row, removed[i].column);
             if (p) {
@@ -368,7 +410,6 @@ class BoardRenderer {
                 if (special) {
                     // 特殊棋子被触发：爆大粒子（特效感）
                     this.spawnBurst(center.x, center.y, [special.color, '#FFFFFF'], 22);
-                    this.spawnSpecialEffect(p.type, center.x, center.y);
                 } else {
                     const def = config.getPieceTypeDef(p.type);
                     this.spawnBurst(center.x, center.y, def ? [def.color] : ['#888888'], 10);
@@ -518,22 +559,7 @@ class BoardRenderer {
         const self = this;
 
         function pill(x, py, pw, ph, image, label, value, warning) {
-            ctx.save();
-            if (!self.screen.reduceEffects) {
-                ctx.shadowColor = 'rgba(23, 12, 58, 0.34)';
-                ctx.shadowBlur = 8;
-                ctx.shadowOffsetY = 2;
-            }
-            const g = ctx.createLinearGradient(x, py, x, py + ph);
-            g.addColorStop(0, 'rgba(255, 232, 226, 0.96)');
-            g.addColorStop(1, 'rgba(196, 145, 177, 0.95)');
-            ctx.fillStyle = g;
-            self.roundRect(x, py, pw, ph, ph / 2);
-            ctx.fill();
-            ctx.strokeStyle = warning ? '#FF7F9F' : '#F5D08C';
-            ctx.lineWidth = warning ? 3 : 2;
-            ctx.stroke();
-            ctx.restore();
+            moon.button(ctx,x,py,pw,ph,'',warning?'pink':'blue');
             let textX = x + pw / 2;
             let textW = pw - 10;
             if (image) {
@@ -542,8 +568,8 @@ class BoardRenderer {
                 textX = x + iconBox + (pw - iconBox) / 2;
                 textW = pw - iconBox - 8;
             }
-            ctx.fillStyle = warning ? '#A92D52' : '#FFF8F2';
-            ctx.shadowColor = 'rgba(65, 33, 75, 0.48)';
+            ctx.fillStyle = warning ? '#A92D52' : THEME.textDark;
+            ctx.shadowColor = 'rgba(255,255,255,0.72)';
             ctx.shadowBlur = 2;
             typography.drawFit(ctx, String(value), textX, py + ph * 0.58, textW, {
                 size: Math.max(15, Math.floor(ph * 0.42)), minSize: 8,
@@ -551,16 +577,17 @@ class BoardRenderer {
             });
             ctx.shadowColor = 'transparent';
             if (label) {
-                ctx.fillStyle = 'rgba(70,43,84,0.78)';
+                ctx.fillStyle = THEME.textMid;
                 typography.drawFit(ctx, label, textX, py + 9, textW, {
                     size: 9, minSize: 7, align: 'center'
                 });
             }
         }
 
-        pill(8, y, 74, 44, null, '关卡', this.core.level.id, false);
-        pill(w / 2 - 66, y, 132, 44, null, '当前得分', this.core.score, false);
-        pill(w - 108, y, 100, 44, assets.get('uiMoves'), '', this.core.movesLeft, false);
+        const inner=w-16, levelW=inner*.22, scoreW=inner*.46-12, movesW=inner*.32;
+        pill(8, y, levelW, 44, null, '关卡', this.core.level.id, false);
+        pill(14+levelW, y, scoreW, 44, null, '当前得分', this.core.score, false);
+        pill(w-8-movesW, y, movesW, 44, assets.get('uiMoves'), '剩余步数', this.core.movesLeft, this.core.movesLeft<=5);
 
         const goals = this.core.level.goals || [];
         const goalText = [];
@@ -573,12 +600,7 @@ class BoardRenderer {
         const goalY = y + 52;
         const goalW = w - 16;
         const goalH = 50;
-        ctx.fillStyle = 'rgba(35, 31, 88, 0.82)';
-        this.roundRect(goalX, goalY, goalW, goalH, 18);
-        ctx.fill();
-        ctx.strokeStyle = THEME.glassBorder;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        moon.panel(ctx,this.screen,goalX,goalY,goalW,goalH);
 
         if (timed) {
             const warning = Number(this.core.timeLeftMs) <= 10000;
@@ -687,7 +709,9 @@ class BoardRenderer {
             ctx.globalAlpha = alpha;
             if (!this.screen.reduceEffects) ctx.globalCompositeOperation = 'lighter';
 
-            if (effect.type === config.SPECIAL_TYPES.H_ROCKET || effect.type === config.SPECIAL_TYPES.V_ROCKET) {
+            if (effect.kind) {
+                this.drawMoonComboEffect(effect, progress);
+            } else if (effect.type === config.SPECIAL_TYPES.H_ROCKET || effect.type === config.SPECIAL_TYPES.V_ROCKET) {
                 ctx.translate(effect.x, effect.y);
                 if (effect.type === config.SPECIAL_TYPES.V_ROCKET) ctx.rotate(Math.PI / 2);
                 const width = this.boardW * (0.55 + progress * 0.62);
@@ -716,6 +740,95 @@ class BoardRenderer {
                 ctx.stroke();
             }
             ctx.restore();
+        }
+    }
+
+    /** B direction: bounded moon-glass ribbons, rings, and deterministic stars. */
+    drawMoonComboEffect(effect, progress) {
+        const ctx = this.ctx;
+        const pale = '#F1F7FF';
+        const blue = '#93BFFF';
+        const violet = '#D49AFF';
+        const fade = 1 - progress * 0.45;
+        const centerRow = Math.floor((effect.y - this.boardY) / this.tileSize);
+        const centerCol = Math.floor((effect.x - this.boardX) / this.tileSize);
+        const drawRibbon = (horizontal, offset) => {
+            const length = horizontal ? this.boardW : this.boardH;
+            const width = this.tileSize * (0.18 + (1 - progress) * 0.18);
+            const x = horizontal ? this.boardX : effect.x + offset * this.tileSize;
+            const y = horizontal ? effect.y + offset * this.tileSize : this.boardY;
+            const g = horizontal ? ctx.createLinearGradient(this.boardX, 0, this.boardX + this.boardW, 0) :
+                ctx.createLinearGradient(0, this.boardY, 0, this.boardY + this.boardH);
+            g.addColorStop(0, 'rgba(147,191,255,0)');
+            g.addColorStop(0.38, 'rgba(212,154,255,0.42)');
+            g.addColorStop(0.5, 'rgba(241,247,255,0.92)');
+            g.addColorStop(0.62, 'rgba(147,191,255,0.42)');
+            g.addColorStop(1, 'rgba(147,191,255,0)');
+            ctx.fillStyle = g;
+            if (horizontal) ctx.fillRect(this.boardX, y - width / 2, length, width);
+            else ctx.fillRect(x - width / 2, this.boardY, width, length);
+        };
+        const ring = (radius, color, width) => {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        };
+        const star = (x, y, radius) => {
+            ctx.fillStyle = pale;
+            ctx.beginPath();
+            ctx.moveTo(x, y - radius);
+            ctx.lineTo(x + radius * 0.22, y - radius * 0.22);
+            ctx.lineTo(x + radius, y);
+            ctx.lineTo(x + radius * 0.22, y + radius * 0.22);
+            ctx.lineTo(x, y + radius);
+            ctx.lineTo(x - radius * 0.22, y + radius * 0.22);
+            ctx.lineTo(x - radius, y);
+            ctx.lineTo(x - radius * 0.22, y - radius * 0.22);
+            ctx.closePath();
+            ctx.fill();
+        };
+
+        if (effect.kind === 'cross' || effect.kind === 'tripleCross') {
+            const bands = effect.kind === 'tripleCross' ? [-1, 0, 1] : [0];
+            for (let i = 0; i < bands.length; i++) {
+                drawRibbon(true, bands[i]);
+                drawRibbon(false, bands[i]);
+            }
+        } else if (effect.kind === 'square') {
+            const radius = this.tileSize * (0.4 + progress * 2.8);
+            ring(radius, violet, Math.max(2, this.tileSize * 0.08));
+            ring(radius * 0.62, pale, 2);
+        } else if (effect.kind === 'screen') {
+            const radius = Math.max(this.boardW, this.boardH) * (0.08 + progress * 0.72);
+            ring(radius, blue, Math.max(2, this.tileSize * 0.07));
+            ring(radius * 0.7, violet, 2);
+        } else if (effect.kind === 'color') {
+            // The payload carries the actual target footprint, including obstacle hits.
+            const targets = effect.targets || [];
+            for (let i = 0; i < targets.length; i++) {
+                const target = targets[i];
+                if (target.row === centerRow && target.column === centerCol) continue;
+                const point = this.pieceCenter(target.row, target.column);
+                ctx.strokeStyle = i % 2 ? violet : blue;
+                ctx.lineWidth = this.screen.reduceEffects ? 1.5 : 2.5;
+                ctx.beginPath();
+                ctx.moveTo(effect.x, effect.y);
+                ctx.lineTo(effect.x + (point.x - effect.x) * (0.35 + progress * 0.65),
+                    effect.y + (point.y - effect.y) * (0.35 + progress * 0.65));
+                ctx.stroke();
+                if (!this.screen.reduceEffects) star(point.x, point.y, 2.5);
+            }
+            ring(this.tileSize * (0.3 + progress * 0.55), pale, 2);
+        }
+
+        if (!this.screen.reduceEffects && effect.kind !== 'color') {
+            const radius = this.tileSize * (0.65 + progress * 1.4);
+            for (let i = 0; i < 6; i++) {
+                const angle = i * Math.PI / 3 + progress * 2;
+                star(effect.x + Math.cos(angle) * radius, effect.y + Math.sin(angle) * radius, 2.2 * fade);
+            }
         }
     }
 

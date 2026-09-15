@@ -42,6 +42,8 @@ match3-game/
 2. 配置云开发环境（详见 `match3-server/README.md`）
 3. 编译运行
 
+注意：含 Mixkit 授权素材的 `match3-wechat/res/audio/sfx-acoustic.mp3` 仅保留在本地微信发布包，不随公开源码分发。克隆后须由项目持有人恢复合法本地副本；缺失时的合成音效只是故障回退，不是正式音频。`assets/_incoming/` 中的制作输入、未采用候选和供应商记录也只保留本地。详情见[音频运行规范](docs/design/audio-runtime-v9.md)。
+
 ## 测试
 
 首次运行包含 SDK 兼容检查的测试前，先在 `match3-wechat/cloudfunctions/battle/` 执行 `npm ci --ignore-scripts` 安装锁定的云函数依赖。

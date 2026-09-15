@@ -145,6 +145,8 @@ async function join(openid, event) {
             players[index].lastSeen = at;
         } else {
             if (players.length >= 2) return { ok: false, err: '房间已满' };
+            // 换了对手后，留下的玩家也要重新确认准备。
+            players.forEach(function (candidate) { candidate.ready = false; });
             players.push(newPlayer(openid, event.nickname, at));
         }
         await ref.update({ data: { players: players } });
@@ -271,6 +273,19 @@ async function leave(openid, event) {
         if (!room) return { ok: true };
         const player = room.players.find(function (candidate) { return candidate.openid === openid; });
         if (!player) return { ok: true };
+
+        if (room.status === 'waiting') {
+            const remaining = room.players.filter(function (candidate) { return candidate.openid !== openid; });
+            remaining.forEach(function (candidate) { candidate.ready = false; });
+            const update = { players: remaining };
+            if (!remaining.length) {
+                update.status = 'finished';
+                update.finishedAt = at;
+                update.finishReason = 'leave';
+            }
+            await ref.update({ data: update });
+            return { ok: true };
+        }
 
         player.online = false;
         player.lastSeen = at;

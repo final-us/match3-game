@@ -93,6 +93,18 @@
       },
       {
         "type": "file",
+        "value": "res/audio/calm.m4a"
+      },
+      {
+        "type": "file",
+        "value": "res/audio/battle.m4a"
+      },
+      {
+        "type": "file",
+        "value": "res/audio/sfx-acoustic.m4a"
+      },
+      {
+        "type": "file",
         "value": "res/btnBack.png"
       },
       {

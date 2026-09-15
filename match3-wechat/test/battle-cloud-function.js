@@ -23,6 +23,11 @@ function documentRef(id) {
                 '事务 set 数据不得包含 _id');
             documents[id] = Object.assign({ _id: id }, options.data);
             return Promise.resolve({});
+        },
+        update: function (options) {
+            assert(documents[id], '更新必须针对现有房间');
+            Object.assign(documents[id], options.data);
+            return Promise.resolve({});
         }
     };
 }
@@ -146,6 +151,40 @@ Module._load = originalLoad;
         console.error = oldConsoleError;
     }
 
+    currentOpenid = 'waiting-host';
+    const waitingRoom = await battleFunction.main({ action: 'create' });
+    assert(waitingRoom.ok);
+    const waitingId = waitingRoom.roomId;
+    currentOpenid = 'waiting-guest';
+    assert((await battleFunction.main({ action: 'join', roomId: waitingId })).ok);
+    assert((await battleFunction.main({ action: 'ready', roomId: waitingId })).ok);
+    assert((await battleFunction.main({ action: 'leave', roomId: waitingId })).ok);
+    assert.strictEqual(documents[waitingId].players.length, 1, '等待中退出必须释放席位');
+    currentOpenid = 'waiting-host';
+    assert((await battleFunction.main({ action: 'ready', roomId: waitingId })).ok);
+    assert.strictEqual(documents[waitingId].status, 'waiting', '退出玩家不可继续参与allReady');
+    currentOpenid = 'replacement-guest';
+    assert((await battleFunction.main({ action: 'join', roomId: waitingId })).ok, '空席位应允许新好友加入');
+    assert.strictEqual(documents[waitingId].players.every(function (p) { return !p.ready; }), true,
+        '换人后双方重新确认准备，不沿用上个对手的准备状态');
+    assert((await battleFunction.main({ action: 'ready', roomId: waitingId })).ok);
+    currentOpenid = 'waiting-host';
+    assert((await battleFunction.main({ action: 'ready', roomId: waitingId })).ok);
+    assert.strictEqual(documents[waitingId].status, 'playing', '双方重新准备后应可开局');
+    currentOpenid = 'replacement-guest';
+    assert((await battleFunction.main({ action: 'leave', roomId: waitingId })).ok);
+    assert.strictEqual(documents[waitingId].status, 'finished', '对局中退出仍应结算而非删除席位');
+    assert.strictEqual(documents[waitingId].players.length, 2);
+    assert.strictEqual(documents[waitingId].result['waiting-host'].result, 'win');
+    assert.strictEqual(documents[waitingId].result['replacement-guest'].result, 'lose');
+
+    currentOpenid = 'last-waiting-player';
+    const emptyRoom = await battleFunction.main({ action: 'create' });
+    assert((await battleFunction.main({ action: 'leave', roomId: emptyRoom.roomId })).ok);
+    assert.strictEqual(documents[emptyRoom.roomId].players.length, 0);
+    currentOpenid = 'late-invite-player';
+    assert.strictEqual((await battleFunction.main({ action: 'join', roomId: emptyRoom.roomId })).ok, false,
+        '所有人离开的旧邀请不得复活空房间');
     console.log('battle cloud function tests passed');
 })().catch(function (error) {
     console.error(error);

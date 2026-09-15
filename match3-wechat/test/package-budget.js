@@ -12,10 +12,11 @@ const assets = require('../js/render/assets').ASSETS;
 const config = require('../project.config.json');
 const maxActiveBytes = 3.5 * 1024 * 1024;
 const maxBgmBytes = 360 * 1024;
-const maxSfxBytes = 48 * 1024;
+// Full accepted rocket/win tails add ~15KB; overall 4MiB package cap is unchanged.
+const maxSfxBytes = 64 * 1024;
 const maxEstimatedMainPackageBytes = 4 * 1024 * 1024;
-const bgmPaths = ['res/audio/calm.m4a', 'res/audio/battle.m4a'];
-const sfxPath = 'res/audio/sfx-acoustic.m4a';
+const bgmPaths = ['res/audio/calm.mp3', 'res/audio/battle.mp3'];
+const sfxPath = 'res/audio/sfx-acoustic.mp3';
 const developerMetadata = new Set([
     'README.md',
     'project.config.json',

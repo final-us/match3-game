@@ -39,8 +39,8 @@ const MAX_SFX_VOICES = 12;
 const LOCAL_MUSIC_VOLUME = 0.52;
 const OUTCOME_DUCK_MS = 600;
 const BGM_FILES = {
-    calm: 'res/audio/calm.m4a',
-    battle: 'res/audio/battle.m4a'
+    calm: 'res/audio/calm.mp3',
+    battle: 'res/audio/battle.mp3'
 };
 const MUSIC_SCENES = {
     calm: { interval: 1450, duration: 0.42, volume: 0.045, notes: [523, 659, 784, 659, 587, 659, 523, 392] },
@@ -316,7 +316,7 @@ function claimVoice(node) {
     return true;
 }
 
-function playSprite(name, gain, delay) {
+function playSprite(name, gain, delay, rate) {
     if (!sfxEnabled) return true;
     const cue = SFX_SPRITE.cues[name];
     if (!cue) return false;
@@ -328,6 +328,8 @@ function playSprite(name, gain, delay) {
     const c = ctx;
     if (!output || !c || typeof c.createBufferSource !== 'function') return false;
     gain = gain == null ? 1 : gain;
+    rate = rate == null ? 1 : rate;
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return false;
     const startTime = c.currentTime + (delay || 0);
     let claimed = false;
     try {
@@ -342,6 +344,12 @@ function playSprite(name, gain, delay) {
             localGain.connect(output);
         } else {
             source.connect(output);
+        }
+        if (rate !== 1) {
+            if (!source.playbackRate || typeof source.playbackRate.setValueAtTime !== 'function') {
+                throw new Error('playbackRate unavailable');
+            }
+            source.playbackRate.setValueAtTime(rate, startTime);
         }
         source.start(startTime, cue.offset, cue.duration);
         return true;
@@ -547,31 +555,39 @@ const AudioFX = {
         const payload = typeof data === 'number' ? { combo: data } : (data || {});
         const triggered = payload.triggeredSpecials || [];
         if (triggered.length >= 2) {
-            if (!playSprite('specialCombo')) tone(784, 0.14, 'sine', 0.11);
+            // 特殊组合不再使用一条独立的“组合音效”。同时触发组合中的
+            // 两个真实特殊棋子音色，听感和画面动作保持一致。
+            const played = {};
+            for (let i = 0; i < triggered.length && i < 2; i++) {
+                const type = triggered[i] && triggered[i].type;
+                const kind = specialKind(type);
+                if (!kind || played[kind]) continue;
+                played[kind] = true;
+                playSpecial(type, true);
+            }
             return;
         }
-        const combo = Math.max(1, Math.min(Number(payload.combo) || 1, 6));
-        const sampled = combo === 1 ? playSprite('clear') : playSprite('combo', 0.80 + combo * 0.06);
-        if (sampled && combo > 1) {
-            for (let layer = 1; layer < combo; layer++) playSprite('clear', 0.08, layer * 0.055);
-        } else if (!sampled) {
+        const integerClampedCombo = Math.max(1, Math.min(Math.floor(Number(payload.combo) || 1), 6));
+        const comboRate = Math.pow(2, [0, 2, 4, 5, 7, 9][integerClampedCombo - 1] / 12);
+        // collectWithSpecials emits a horizontal/vertical rocket only for a
+        // four-in-a-line match. Cascade count 4 is a different event.
+        const fourClear = (payload.generated || []).some(function (item) {
+            return item.type === 101 || item.type === 102;
+        });
+        const sampled = fourClear ? playSprite('fourClear') : playSprite('clear', undefined, undefined, comboRate);
+        if (!sampled) {
             const scale = [523, 587, 659, 784, 880];
-            const noteCount = Math.min(2 + Math.floor((combo - 1) / 2), 4);
-            const octave = combo >= 4 ? 2 : 1;
+            const noteCount = Math.min(2 + Math.floor((integerClampedCombo - 1) / 2), 4);
+            const octave = integerClampedCombo >= 4 ? 2 : 1;
             for (let i = 0; i < noteCount; i++) {
-                const frequency = scale[Math.min(i + (combo - 1) % 3, scale.length - 1)] * octave;
+                const frequency = scale[Math.min(i + (integerClampedCombo - 1) % 3, scale.length - 1)] * octave;
                 tone(frequency, 0.10, 'triangle', 0.12, i * 0.065);
                 tone(frequency * 2, 0.065, 'sine', 0.035, i * 0.065);
             }
         }
 
-        const generated = payload.generated || [];
-        const seenGenerated = {};
+        // 新生成的特殊棋子尚未触发：保留本次消除音，不提前播放爆发音。
         const seenTriggered = {};
-        for (let i = 0; i < generated.length && i < 8; i++) {
-            const type = generated[i].type;
-            if (!seenGenerated[type]) { seenGenerated[type] = true; playSpecial(type, false); }
-        }
         for (let i = 0; i < triggered.length && i < 12; i++) {
             const type = triggered[i].type;
             if (!seenTriggered[type]) { seenTriggered[type] = true; playSpecial(type, true); }

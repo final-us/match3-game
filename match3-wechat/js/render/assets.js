@@ -9,6 +9,7 @@ const ASSETS = {
     // 首页（月夜花园方向，无文字背景，动态 UI 由 Canvas 绘制）
     homeBackground: 'res/home/moonlit-garden-bg.jpg',
     homeDuelCats: 'res/home/duel-cats.png',
+    homeDuelIcon: 'res/home/duel-heads.png',
     homeTitleLogo: 'res/home/title-logo.png',
     homeButtonPrimary: 'res/home/button-primary.png',
     homeButtonSecondary: 'res/home/button-secondary.png',

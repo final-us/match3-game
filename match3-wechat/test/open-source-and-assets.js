@@ -12,22 +12,20 @@ const repoRoot = path.resolve(projectRoot, '..');
 const upstreamUrl = 'https://github.com/xiaozhu188/pixi-game-match3';
 const upstreamCommit = '658679250f30ef8d01ff570eb976017c5727cbf0';
 const upstreamFile = 'src/match3/Match3Utility.ts';
-const musicUrl = 'https://dylanntaylor.itch.io/playful-piano';
-const sfxPath = 'res/audio/sfx-acoustic.m4a';
-const sfxSha256 = 'c199ca1193150ea0c950abfde37cd3094a70029e2ff74692a2e7397b4049915c';
+const sfxPath = 'res/audio/sfx-acoustic.mp3';
+const sfxSha256 = 'dffb3257a79902f517013afdf09597fc13e36ba4e92e095d74444c542521337e';
 const sfxSources = [
-    'https://opengameart.org/content/ui-sound-effects-button-clicks-user-feedback-notifications',
-    'https://kenney.nl/assets/interface-sounds',
-    'https://kenney.nl/assets/impact-sounds',
-    'https://kenney.nl/assets/rpg-audio',
     'https://freesound.org/people/Kinoton/sounds/347163/',
     'https://freesound.org/people/animationIsaac/sounds/207322/',
-    'https://freesound.org/people/reasanka/sounds/429525/',
-    'https://freesound.org/people/qubodup/sounds/817466/'
+    'https://freesound.org/people/qubodup/sounds/817466/',
+    'https://opengameart.org/content/shimmer-glitter-magic',
+    'https://freesound.org/people/timbreknight/sounds/342546/',
+    'https://mixkit.co/free-sound-effects/sparkle/'
 ];
 const activePaths = [
     'res/home/moonlit-garden-bg.jpg',
     'res/home/duel-cats.png',
+    'res/home/duel-heads.png',
     'res/home/title-logo.png',
     'res/home/button-primary.png',
     'res/home/button-secondary.png',
@@ -92,22 +90,28 @@ assert(notices.includes('Copyright (c) 2023-PRESENT hairyf <https://github.com/h
 assert(notices.includes('THE SOFTWARE IS PROVIDED "AS IS"'), 'notice 缺少 MIT 免责声明');
 assert(notices.includes('wx-server-sdk 4.0.2'), 'notice 缺少 wx-server-sdk 版本');
 assert(notices.includes('License: MIT'), 'notice 缺少 wx-server-sdk MIT 声明');
-assert(notices.includes(musicUrl), 'notice 缺少 PLAYFUL PIANO 来源');
-assert(notices.includes('Dylann Taylor'), 'notice 缺少 PLAYFUL PIANO 作者');
-assert(notices.includes('CC0 1.0 Universal'), 'notice 缺少 PLAYFUL PIANO CC0 声明');
-assert(notices.includes('PlayfulPiano_Atmos_Loop.ogg'), 'notice 缺少 calm 源音乐记录');
-assert(notices.includes('PlayfulPiano_JazzTrio_Loop.ogg'), 'notice 缺少 battle 源音乐记录');
+assert(notices.includes('ElevenLabs'), 'notice 缺少 ElevenLabs 生成素材记录');
+assert(notices.includes('music_v1'), 'notice 缺少音乐模型记录');
+assert(notices.includes('eleven_text_to_sound_v2'), 'notice 缺少音效模型记录');
 sfxSources.forEach(function (url) {
     assert(notices.includes(url), 'notice 缺少音效来源: ' + url);
     assert(ledger.includes(url), '台账缺少音效来源: ' + url);
 });
-assert(notices.includes('derived 22-cue AAC/M4A sprite'), 'notice 缺少音效精灵派生范围');
+assert(notices.includes('derived 21-cue MP3 sprite'), 'notice 缺少音效精灵派生范围');
+assert(notices.includes('https://mixkit.co/license/#sfxFree'), '缺少Mixkit音效许可');
+assert(notices.includes('Magic wand sparkle'), '横竖特殊触发缺少新来源');
+assert(notices.includes('Christmas reveal tones'), '通关成功缺少新来源');
+assert(notices.includes('source-file redistribution'), '缺少Mixkit源码分发边界');
+assert(read(repoRoot, '.gitignore').split(/\r?\n/).includes('match3-wechat/' + sfxPath), '含Mixkit运行音效必须与公开Git隔离');
+assert(notices.includes('The Berklee College of Music'), '四连音效缺少作者署名');
+assert(notices.includes('https://creativecommons.org/licenses/by/3.0/'), '四连音效缺少许可链接');
+assert(notices.includes('Changes: resampled'), '四连音效缺少改编说明');
 assert(ledger.includes('`' + sfxPath + '`'), '台账缺少正式音效精灵');
 assert(ledger.includes(sfxSha256), '台账缺少正式音效精灵 SHA256');
 const sfxFile = path.join(projectRoot, sfxPath);
 assert(fs.existsSync(sfxFile), '正式音效精灵不存在');
 assert(!isIgnored(sfxPath, ignoreRules), '正式音效精灵不得被包体忽略');
-assert.strictEqual(fs.statSync(sfxFile).size, 42325, '正式音效精灵字节数发生漂移');
+assert.strictEqual(fs.statSync(sfxFile).size, 61022, '正式音效精灵字节数发生漂移');
 assert.strictEqual(crypto.createHash('sha256').update(fs.readFileSync(sfxFile)).digest('hex'), sfxSha256,
     '正式音效精灵 SHA256 发生漂移');
 assert.strictEqual(typeof cloudSdk.init, 'function', 'wx-server-sdk 缺少 init API');
@@ -150,7 +154,7 @@ assert(!/(?:本项目|整个项目)[^\n。]{0,30}MIT/i.test(readme), 'README 不
 assert(readme.includes('[' + 'pixi-game-match3](' + upstreamUrl + ')'), 'README 缺少可点击的精确上游 URL');
 assert(readme.includes('[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)'), 'README 缺少 notice 链接');
 
-assert(Object.keys(assets).length === 27, 'assets.js 活跃素材数量必须为 27');
+assert(Object.keys(assets).length === activePaths.length, 'assets.js 活跃素材数量必须匹配来源清单');
 assert.deepStrictEqual(Object.values(assets).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
 activePaths.forEach(function (relative) {
     assert(ledger.includes('`' + relative + '`'), '台账缺少活跃素材: ' + relative);

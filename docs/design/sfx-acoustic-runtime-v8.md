@@ -43,3 +43,9 @@ python3 match3-wechat/tools/gen-sfx-acoustic-preview.py --runtime-only
 ```
 
 生成器只依赖 Python 标准库和临时 FFmpeg；FFmpeg、解码 PCM 与完整第三方源包不进入仓库或小游戏包。AAC 编码优先复用同一临时 FFmpeg，不支持时保留原 `afconvert` 路径。
+
+## 音频冻结约束
+
+以下原文于 2026-09-07 从项目 AGENTS.md 迁入，仅调整存放位置，未改动音频决策、资产或运行实现：
+
+- 音频冻结规则：舒缓场景与 PvP 使用 Dylann Taylor 的 `PLAYFUL PIANO` CC0 循环（Atmos Loop → `calm.m4a`、JazzTrio Loop → `battle.m4a`；完整 51.20 秒、AAC/M4A、22050 Hz 单声道），`InnerAudioContext` 播放失败时回退 WebAudio 程序化旋律；音效优先播放 Robin Lamb/OpenGameArt、Kenney 与 Freesound 的 CC0 原声采样合成精灵 `sfx-acoustic.m4a`，读取或解码失败时回退原有 WebAudio 合成；同次 match 触发至少两个特殊棋子时只播放一次统一的 V7 音乐盒组合 cue，单特殊仍播放独立 V4 cue；音乐和音效独立控制，后台及音频中断时暂停。
