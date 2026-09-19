@@ -9,6 +9,7 @@ const config = require('../core/config');
 const assets = require('./assets');
 const typography = require('./typography');
 const moon = require('./moon-controls');
+const privacyReader = require('./privacy-reader');
 
 const UI = {};
 
@@ -468,6 +469,11 @@ function drawSupportHeading(ctx, screen, title, iconKey) {
     typography.drawFit(ctx, title, titleX+titleW/2+14, y + 19, titleW-68, {size:22,minSize:18,weight:'bold',align:'center'});
     return y + 48;
 }
+
+UI.drawPrivacy = function (ctx, screen, offset) {
+    drawSceneBackground(ctx, screen, 'homeBackground', 0.44);
+    return privacyReader.draw(ctx, screen, offset);
+};
 
 UI.drawSettings = function (ctx, screen, settings) {
     const cx = screen.width / 2;

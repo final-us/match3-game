@@ -37,12 +37,19 @@ function load(id){
 const widths={320:568,390:844,430:932},params=new URLSearchParams(location.search);
 const width=widths[params.get('width')]?+params.get('width'):390,height=widths[width];
 const motionPreview=params.get('preview')==='invalid';
+const privacyPreview=params.get('preview')==='privacy';
 const canvas=document.getElementById('game'),status=document.getElementById('status');
 canvas.width=width*2;canvas.height=height*2;canvas.style.width=width+'px';canvas.style.height=height+'px';
 const ctx=canvas.getContext('2d');ctx.scale(2,2);
 const Main=load('js/main.js'),UI=load('js/render/ui.js');
 const app=Object.create(Main.prototype);
 Object.assign(app,{ctx,screen:{width,height,safeTop:47,contentTop:91,safeBottom:34},state:'levelselect',progress:{unlockedLevel:1,failures:{},stars:{}},guide:null,guideQueue:[],levelMapOffset:0});
+if(privacyPreview){
+ app.state='settings';app.privacyOffset=0;
+ document.title='本地隐私协议阅读验证';
+ document.querySelector('p').textContent='设置 → 隐私说明。断开微信接口的本地阅读验证；'+(load('js/core/privacy-policy.js').publication.approvedForRelease?'正文已确认，后台声明与真机验收仍须核实。':'正文待确认，暂勿送审。');
+ document.querySelectorAll('a').forEach(a=>a.href+='&preview=privacy');
+}
 let previewCase='plain',previewError='',feedbackCount=0;
 const audio=load('js/audio.js');
 if(motionPreview){
@@ -78,7 +85,16 @@ if(motionPreview){
 }
 function draw(){
  ctx.clearRect(0,0,width,height);
- if(app.state==='levelselect'){
+ if(app.state==='settings'){
+  app.settingsButtons=UI.drawSettings(ctx,app.screen,{});
+  status.textContent='设置：点击隐私说明';
+ }else if(app.state==='privacy'){
+  app.privacyButtons=UI.drawPrivacy(ctx,app.screen,app.privacyOffset);app.privacyOffset=app.privacyButtons.offset;
+  status.textContent=JSON.stringify({state:app.state,offset:app.privacyOffset,max:app.privacyButtons.maxScroll});
+ }else if(app.state==='menu'&&privacyPreview){
+  app.menuButtons=UI.drawMenu(ctx,app.screen,1,{count:5,canPlay:true,timeLeftText:'00:00'},{coins:0});
+  status.textContent='首页：可返回设置';
+ }else if(app.state==='levelselect'){
   app.levelSelectButtons=UI.drawLevelSelect(ctx,app.screen,1,0,{},{});
   const hit=app.levelSelectButtons.level_1;
   status.textContent=JSON.stringify({viewport:[width,height],state:app.state,firstLevelHit:hit||null});
@@ -91,11 +107,19 @@ function draw(){
  }
 }
 canvas.addEventListener('click',e=>{
- if(motionPreview)return;
+ if(motionPreview||privacyPreview)return;
  const r=canvas.getBoundingClientRect(),point={clientX:(e.clientX-r.left)*width/r.width,clientY:(e.clientY-r.top)*height/r.height};
  try{app.handleTouchStart({touches:[point]});app.handleTouchEnd({changedTouches:[point]});draw();}
  catch(error){status.textContent='FAIL '+error.stack;}
 });
+if(privacyPreview){
+ const point=e=>{const r=canvas.getBoundingClientRect();return{clientX:(e.clientX-r.left)*width/r.width,clientY:(e.clientY-r.top)*height/r.height};};
+ canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);app.handleTouchStart({touches:[point(e)]});draw();});
+ canvas.addEventListener('pointermove',e=>{if(e.buttons){app.handleTouchMove({touches:[point(e)]});draw();}});
+ canvas.addEventListener('pointerup',e=>{app.handleTouchEnd({changedTouches:[point(e)]});draw();});
+ canvas.addEventListener('pointercancel',()=>app.handleTouchEnd({}));
+ canvas.addEventListener('wheel',e=>{if(app.state!=='privacy')return;e.preventDefault();app.privacyOffset=Math.max(0,Math.min(app.privacyButtons.maxScroll,app.privacyOffset+e.deltaY));draw();},{passive:false});
+}
 load('js/render/assets.js').preload(draw);
 `;
 http.createServer((req, res) => {

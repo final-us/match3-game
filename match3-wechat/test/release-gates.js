@@ -48,4 +48,6 @@ const cleanupTrigger = (battleConfig.triggers || []).find(function (trigger) {
 assert(cleanupTrigger && cleanupTrigger.type === 'timer', '缺少对战房间定时清理触发器');
 assert(/^\S+( \S+){6}$/.test(cleanupTrigger.config), '定时清理必须使用七段 cron');
 
+const privacyIssues = require('../js/core/privacy-policy').releaseIssues();
+assert.strictEqual(privacyIssues.length, 0, '隐私发布门禁：' + privacyIssues.join('；'));
 console.log('release gates passed');

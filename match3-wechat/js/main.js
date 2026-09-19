@@ -151,6 +151,9 @@ class Main {
         this.levelMapTouch = null;
         this.levelMapDragged = false;
         this.settingsButtons = null;
+        this.privacyButtons = null;
+        this.privacyOffset = 0;
+        this.privacyTouch = null;
         this.resultLeaving = false;
         this.soloFailureRecorded = false;
         this.soloCompletionTracked = false;
@@ -801,6 +804,7 @@ class Main {
 
     /** 进入后台时暂停单人计时，并丢弃后台期间的主循环间隔 */
     handleHide() {
+        this.privacyTouch = null;
         this.lastTime = Date.now();
         if (this.state === 'playing' && this.core) this.core.pauseTimer();
     }
@@ -1070,10 +1074,27 @@ class Main {
                 if (next) AudioFX.click();
             } else if (UI.hitTest(x, y, this.settingsButtons.privacy)) {
                 AudioFX.click();
-                runtime.openPrivacyContract();
+                this.privacyOffset = 0;
+                this.privacyTouch = null;
+                this.privacyButtons = null;
+                this.state = 'privacy';
             } else if (UI.hitTest(x, y, this.settingsButtons.back)) {
                 AudioFX.click();
                 this.state = 'menu';
+            }
+        } else if (this.state === 'privacy' && this.privacyButtons) {
+            const p = this.privacyButtons;
+            this.privacyTouch = null;
+            if (UI.hitTest(x, y, p.back)) {
+                AudioFX.click();
+                this.privacyTouch = null;
+                this.state = 'settings';
+            } else if (UI.hitTest(x, y, p.prev) && p.prevEnabled) {
+                this.privacyOffset = Math.max(0, this.privacyOffset - p.step);
+            } else if (UI.hitTest(x, y, p.next) && p.nextEnabled) {
+                this.privacyOffset = Math.min(p.maxScroll, this.privacyOffset + p.step);
+            } else if (UI.hitTest(x, y, p.viewport)) {
+                this.privacyTouch = { lastY: y };
             }
         } else if (this.state === 'levelselect' && this.levelSelectButtons) {
             this.levelMapTouch = { x: x, y: y, lastY: y };
@@ -1163,7 +1184,12 @@ class Main {
     handleTouchMove(e) {
         if (!e.touches || !e.touches.length) return;
         if (this.guide) return;
-        if (this.state === 'playing' && this.board) {
+        if (this.state === 'privacy' && this.privacyTouch && this.privacyButtons) {
+            const y = e.touches[0].clientY;
+            this.privacyOffset = Math.max(0, Math.min(this.privacyButtons.maxScroll,
+                this.privacyOffset + this.privacyTouch.lastY - y));
+            this.privacyTouch.lastY = y;
+        } else if (this.state === 'playing' && this.board) {
             this.board.onTouchMove(e.touches[0].clientX, e.touches[0].clientY);
         } else if (this.state === 'levelselect' && this.levelMapTouch && this.levelSelectButtons) {
             const y = e.touches[0].clientY;
@@ -1181,7 +1207,9 @@ class Main {
 
     handleTouchEnd(e) {
         if (this.guide) return;
-        if (this.state === 'playing' && this.board) {
+        if (this.state === 'privacy') {
+            this.privacyTouch = null;
+        } else if (this.state === 'playing' && this.board) {
             this.board.onTouchEnd();
         } else if (this.state === 'levelselect' && this.levelMapTouch && this.levelSelectButtons) {
             const changedTouch = e && e.changedTouches && e.changedTouches[0];
@@ -1287,6 +1315,9 @@ class Main {
                 this.progress.stars || {},
                 { offset: this.levelMapOffset }
             );
+        } else if (this.state === 'privacy') {
+            this.privacyButtons = UI.drawPrivacy(this.ctx, this.screen, this.privacyOffset);
+            this.privacyOffset = this.privacyButtons.offset;
         } else if (this.state === 'settings') {
             this.settingsButtons = UI.drawSettings(this.ctx, this.screen, {
                 musicEnabled: AudioFX.isMusicEnabled(),
