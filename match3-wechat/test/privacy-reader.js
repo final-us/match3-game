@@ -25,7 +25,7 @@ vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
     Date,
     require(name) {
         if (name === './audio') return { unlock() {}, click() {} };
-        if (name === './core/runtime') return { openPrivacyContract() { platformOpens++; } };
+        if (name === './core/runtime') return { privacyDiagnostic() {}, openPrivacyContract(done) { platformOpens++; done(false); return false; } };
         return requireMain(name);
     }
 }, { filename: mainFile });
@@ -33,7 +33,17 @@ const Main = moduleFixture.exports;
 
 assert.strictEqual(policy.publication.operator, '任务');
 assert.strictEqual(policy.publication.email, '452330817@qq.com');
-assert.strictEqual(policy.sections().length, 10);
+assert.strictEqual(policy.sections().length, 11);
+assert.strictEqual(policy.publication.effectiveDate, '2026年9月19日');
+assert.strictEqual(policy.publication.updatedDate, '2026年9月23日');
+assert.strictEqual(policy.publication.version, '2026-09-23.1');
+const review = fs.readFileSync(require('path').join(__dirname, '../../docs/release/privacy-policy-review.md'), 'utf8');
+const expectedBody = policy.sections().map(s => '## ' + s.title + '\n\n' + s.paragraphs.join('\n\n')).join('\n\n');
+assert.strictEqual(review.split('\n---\n\n')[1].trim(), expectedBody, '确认稿须与运行正文逐段一致');
+const dailyText = policy.sections().find(s => s.title === '每日挑战与云端记录').paragraphs.join('');
+for (const fact of ['不是匿名数据', '最多25步交换坐标', '有效7天', '超过30天', '不会删除云端每日记录', '跨日续局需保留本地局标识']) {
+    assert(dailyText.includes(fact), '缺少每日挑战披露: ' + fact);
+}
 const actualApproval = policy.publication.approvedForRelease;
 policy.publication.approvedForRelease = false;
 assert(policy.releaseIssues().includes('本地隐私协议正文待运营方确认'));
@@ -45,13 +55,16 @@ assert(!full.join('').includes('待用户填写'));
 
 for (const [width, height] of [[320, 568], [390, 844], [430, 932]]) {
     const screen = { width, height, safeTop: 47, contentTop: 91, safeBottom: 34 };
+    const pendingButtons = UI.drawSettings(ctx, screen, { privacyPending: true });
+    assert(drawn.some(item => item.text === '正在打开…'), '请求期间必须显示等待反馈');
+    assert(pendingButtons.privacy.w >= 44 && pendingButtons.back.h >= 44);
     const app = Object.create(Main.prototype);
     Object.assign(app, { state: 'settings', guide: null, battleCreating: false,
         settingsButtons: UI.drawSettings(ctx, screen, {}), privacyOffset: 0 });
     const tap = rect => app.handleTouchStart({ touches: [{ clientX: rect.x + rect.w / 2, clientY: rect.y + rect.h / 2 }] });
     const render = () => { app.privacyButtons = UI.drawPrivacy(ctx, screen, app.privacyOffset); app.privacyOffset = app.privacyButtons.offset; };
     tap(app.settingsButtons.privacy);
-    assert.strictEqual(app.state, 'privacy', '设置入口必须进入本地页');
+    assert.strictEqual(app.state, 'privacy', '官方协议不可用时应进入本地页');
     render();
     const p = app.privacyButtons;
     assert(p.viewport.h > 180);
@@ -93,7 +106,7 @@ for (const [width, height] of [[320, 568], [390, 844], [430, 932]]) {
     const clamped = UI.drawPrivacy(ctx, screen, Infinity);
     assert.strictEqual(clamped.offset, clamped.maxScroll);
 }
-assert.strictEqual(platformOpens, 0, '本地阅读不得调用微信协议接口');
+assert.strictEqual(platformOpens, 6, '每次从设置打开先尝试官方接口，本地翻页不再调用');
 assert(drawn.some(item => item.text === (actualApproval ? '猫猫开心消 · 可离线阅读' : '正文待确认 · 暂勿送审')),
     '阅读页应按实际正文确认状态展示副标题');
 if (actualApproval) assert(!drawn.some(item => /正文待确认|暂勿送审/.test(item.text)), '已确认正文不得继续显示草案提示');

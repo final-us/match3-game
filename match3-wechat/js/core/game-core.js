@@ -53,6 +53,9 @@ class GameCore {
         this.pendingCombo = null; // 特殊棋子交换组合
         this.preferredGenerationPositions = []; // 玩家操作形成特殊棋子的优先落点
         this.specialBases = {}; // 特殊棋子的原普通颜色，随棋子一起移动
+        this.collectedCounts = {};
+        this.maxCascade = 0;
+        this.specialComboCount = 0;
         this.initGrid();
     }
 
@@ -77,6 +80,9 @@ class GameCore {
         this.pendingCombo = null;
         this.preferredGenerationPositions = [];
         this.specialBases = {};
+        this.collectedCounts = {};
+        this.maxCascade = 0;
+        this.specialComboCount = 0;
 
         // 果冻层
         this.jellyGrid = [];
@@ -712,6 +718,7 @@ class GameCore {
                 !!this.pendingCombo;
             if (!matches.length && !hasPending) break;
             round++;
+            if (round > this.maxCascade) this.maxCascade = round;
 
             const preferred = this.preferredGenerationPositions;
             this.preferredGenerationPositions = [];
@@ -730,6 +737,11 @@ class GameCore {
             const triggeredSpecials = [];
             let specialCombo = null;
             if (this.pendingCombo) {
+                // 只计玩家把两枚特殊棋子直接交换的组合；被连锁波及的特殊棋子不计。
+                if (config.isSpecialType(this.pendingCombo.first.type) &&
+                    config.isSpecialType(this.pendingCombo.second.type)) {
+                    this.specialComboCount++;
+                }
                 // Renderer-only contract: avoid asking presentation code to infer
                 // a combo from an otherwise mixed special-trigger list.
                 specialCombo = {
@@ -828,6 +840,15 @@ class GameCore {
                 }
             }
 
+            // 收集目标只统计这一轮真正消失的普通棋子。被果冻/冰块挡住的棋子、
+            // 特殊棋子及其保留的原色都不计入。
+            for (let i = 0; i < removed.length; i++) {
+                const type = gridUtil.getPieceType(this.grid, removed[i]);
+                if (config.getPieceTypeDef(type)) {
+                    this.collectedCounts[type] = (this.collectedCounts[type] || 0) + 1;
+                }
+            }
+
             // 计分：实际消除棋子 + 连消加成 + 果冻/冰块奖励 + 特殊触发奖励
             const base = removed.length * 10;
             const comboBonus = (round - 1) * 50;
@@ -876,28 +897,34 @@ class GameCore {
         this.checkLevelEnd();
     }
 
-    /** 检查关卡是否结束（多目标：分数 + 果冻） */
+    /** 检查关卡是否结束（多目标：分数、果冻、指定颜色收集） */
     checkLevelEnd(reason) {
         if (this.ended) return;
 
         const goals = this.level.goals || [];
         let allGoalsDone = goals.length > 0;
 
-        // 分数目标
+        // 每个已声明目标都必须识别且完成，避免配置错误意外自动过关。
         for (let i = 0; i < goals.length; i++) {
-            if (goals[i].type === 'score' && this.score < goals[i].target) allGoalsDone = false;
-        }
-
-        // 果冻目标：显式定义或自动（有关卡果冻即要求清完）
-        const jellyLeft = this.getJellyLeft();
-        let hasJellyGoal = false;
-        for (let i = 0; i < goals.length; i++) {
-            if (goals[i].type === 'jelly') {
-                hasJellyGoal = true;
-                if (jellyLeft > 0) allGoalsDone = false;
+            const goal = goals[i] || {};
+            if (goal.type === 'score') {
+                if (!Number.isFinite(goal.target) || goal.target < 0 || this.score < goal.target) allGoalsDone = false;
+            } else if (goal.type === 'jelly') {
+                if (!Number.isFinite(goal.target) || goal.target < 0 || this.getJellyLeft() > 0) allGoalsDone = false;
+            } else if (goal.type === 'collect') {
+                const pieceType = Number(goal.pieceType);
+                const target = Number(goal.target);
+                if (!Number.isInteger(pieceType) || pieceType < 1 || pieceType > 4 ||
+                    !Number.isFinite(target) || target < 0 || (this.collectedCounts[pieceType] || 0) < target) {
+                    allGoalsDone = false;
+                }
+            } else {
+                allGoalsDone = false;
             }
         }
-        if (this.jellyTotal > 0 && !hasJellyGoal && jellyLeft > 0) {
+        // 保持旧配置语义：有关卡果冻而未显式声明时，仍要求清完。
+        const hasJellyGoal = goals.some(function (goal) { return goal && goal.type === 'jelly'; });
+        if (this.jellyTotal > 0 && !hasJellyGoal && this.getJellyLeft() > 0) {
             allGoalsDone = false;
         }
 
@@ -915,6 +942,9 @@ class GameCore {
                     score: this.score,
                     movesLeft: this.movesLeft,
                     timeLeftMs: this.timeLeftMs,
+                    collectedCounts: Object.assign({}, this.collectedCounts),
+                    maxCascade: this.maxCascade,
+                    specialComboCount: this.specialComboCount,
                     reason: allGoalsDone ? 'goal' : (reason || 'moves')
                 });
             }

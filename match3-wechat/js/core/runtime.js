@@ -29,6 +29,21 @@ function getWx() {
     return null;
 }
 
+// 临时本地诊断：仅开发版/模拟器，只有固定阶段名，无正文、身份或原始错误。
+function privacyDiagnostic(stage) {
+    const store = getWx();
+    if (!store) return;
+    let channel = '';
+    try {
+        channel = store.getAccountInfoSync().miniProgram.envVersion;
+    } catch (e) {}
+    if (channel === 'release' || channel === 'trial') return;
+    let simulator = false;
+    try { simulator = store.getDeviceInfo().platform === 'devtools'; } catch (e) {}
+    if (channel !== 'develop' && !simulator) return;
+    try { console.info('[privacy-P3] ' + stage); } catch (e) {}
+}
+
 function showToast(title) {
     const store = getWx();
     if (!store) return false;
@@ -154,6 +169,7 @@ function init(initialState) {
     if (typeof initialState === 'string') currentState = initialState;
     if (initialized) return updateManager;
     initialized = true;
+    privacyDiagnostic('loaded');
 
     const store = getWx();
     if (!store) return null;
@@ -174,40 +190,56 @@ function init(initialState) {
     return updateManager;
 }
 
-function openPrivacyContract() {
+// onComplete 仅报告协议是否打开，不代表用户同意任何隐私授权。
+function openPrivacyContract(onComplete) {
     const store = getWx();
+    privacyDiagnostic('request');
+    let settled = false;
+    let timeout = null;
+    function finish(success, category) {
+        if (settled) return;
+        settled = true;
+        if (timeout !== null) clearTimeout(timeout);
+        timeout = null;
+        if (success) {
+            privacyDiagnostic('callback_success');
+            trackSafe('privacy_opened', { status: 'success' });
+        } else {
+            privacyDiagnostic(category || 'callback_fail');
+            trackSafe('privacy_open_failed', { category: category || 'platform_unavailable' });
+            if (typeof onComplete !== 'function') showToast('隐私说明暂不可用，请稍后重试');
+        }
+        if (typeof onComplete === 'function') onComplete(success);
+    }
+
     if (!store || typeof store.openPrivacyContract !== 'function') {
-        trackSafe('privacy_open_failed', { category: 'api_unavailable' });
-        showToast('隐私说明暂不可用，请稍后重试');
+        finish(false, 'api_unavailable');
         return false;
     }
 
-    let settled = false;
-    function finish(success) {
-        if (settled) return;
-        settled = true;
-        if (success) {
-            trackSafe('privacy_opened', { status: 'success' });
-        } else {
-            trackSafe('privacy_open_failed', { category: 'platform_unavailable' });
-            showToast('隐私说明暂不可用，请稍后重试');
-        }
-    }
-
     try {
+        // 某些平台实现可能不回调；仅结束本次等待，不重试或代表用户授权。
+        timeout = setTimeout(function () { finish(false, 'timeout'); }, 5000);
         const result = store.openPrivacyContract({
             success: function () { finish(true); },
             fail: function () { finish(false); }
         });
-        if (result && typeof result.catch === 'function') result.catch(function () { finish(false); });
+        // 官方声明不支持Promise风格：返回值完成不等于页面打开，唯success回调作准。
+        if (result && typeof result.then === 'function') {
+            privacyDiagnostic('thenable_returned');
+            result.then(undefined, function () { finish(false, 'promise_rejected'); });
+        } else if (result && typeof result.catch === 'function') {
+            result.catch(function () { finish(false, 'promise_rejected'); });
+        }
         return true;
     } catch (e) {
-        finish(false);
+        finish(false, 'sync_throw');
         return false;
     }
 }
 
 module.exports = {
+    privacyDiagnostic: privacyDiagnostic,
     SAFE_UPDATE_STATES: SAFE_UPDATE_STATES,
     init: init,
     maybePromptUpdate: maybePromptUpdate,

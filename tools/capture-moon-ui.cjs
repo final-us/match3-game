@@ -15,7 +15,7 @@ function collect(file) {
     if (m[1].startsWith('.')) collect(path.resolve(path.dirname(file), m[1] + '.js'));
   }
 }
-['render/ui','render/battle-ui','render/board-render','core/game-core','render/assets'].forEach(x => collect(path.join(root,'js',x+'.js')));
+['render/daily-ui','render/ui','render/battle-ui','render/board-render','core/game-core','render/assets','render/onboarding','core/strategy-feedback'].forEach(x => collect(path.join(root,'js',x+'.js')));
 const server = http.createServer((req,res) => {
   if (req.url === '/') {res.setHeader('Content-Type','text/html');res.end('<canvas id="game"></canvas>');return;}
   const file = path.resolve(root, '.' + decodeURIComponent(req.url.split('?')[0]));
@@ -49,7 +49,7 @@ const server = http.createServer((req,res) => {
     },sources);
     for(const [width,height] of [[320,568],[375,812],[430,932]]) {
       await page.setViewportSize({width,height});
-      for(const mode of ['home','home-empty','board','board-tools','board-timed','settings','settings-off','shop','shop-safe','shop-empty','shop-pending','shop-no-ad','result','result-win','result-timeout','result-no-ad','map','map-states','map-scroll','map-scroll-end','battle-wait','battle-wait-empty','battle-wait-ready','battle-result','battle-result-draw','battle-result-lose','battle-board','battle-cooldown','battle-active','battle-countdown','battle-effects']) {
+      for(const mode of ['home','home-empty','home-safe','home-empty-safe','stamina-empty','stamina-empty-no-ad','board','board-tools','board-timed','settings','settings-off','shop','shop-safe','shop-empty','shop-pending','shop-no-ad','result','result-win','result-timeout','result-no-ad','map','map-states','map-scroll','map-scroll-end','battle-wait','battle-wait-empty','battle-wait-ready','battle-result','battle-result-draw','battle-result-lose','battle-board','battle-cooldown','battle-active','battle-countdown','battle-effects','content-collect','content-mixed','content-guide-collect','content-guide-combo','content-result-win','content-result-timeout','content-result-zero','rematch-wait','rematch-result','rematch-confirmed','rematch-invited','rematch-left','rematch-offline','rematch-expired','rematch-reward','daily-redesign','daily-redesign-loading','daily-redesign-error','daily-redesign-claimed','daily-redesign-pending']) {
         if (modes.length && !modes.includes(mode)) continue;
         await page.evaluate(({width,height,mode})=>{
           const c=document.querySelector('canvas');c.width=width*2;c.height=height*2;c.style.width=width+'px';c.style.height=height+'px';
@@ -57,6 +57,40 @@ const server = http.createServer((req,res) => {
           const screen={width,height,safeTop:24,safeBottom:20,reduceEffects:false};
           const UI=load('js/render/ui.js');
           const Battle=load('js/render/battle-ui.js');
+          if(mode.startsWith('daily-redesign')) UI.drawMenu(ctx,{...screen,contentTop:91,safeBottom:34},5,{count:5,timeLeftText:'00:00',canPlay:true},{coins:1000});
+          if(mode.startsWith('daily-redesign')) load('js/render/daily-ui.js').drawDetail(ctx,{...screen,contentTop:91,safeBottom:34},{
+            challenge:mode==='daily-redesign-loading'?null:load('js/core/daily-challenge.js').challengeForDate('2026-09-22'),
+            loading:mode==='daily-redesign-loading',error:mode==='daily-redesign-error'?'网络未连接，请重试':'',
+            claimed:mode==='daily-redesign-claimed',best:mode==='daily-redesign-claimed'?2130:0,pending:mode==='daily-redesign-pending'
+          });
+          if(mode.startsWith('content-result-')) {
+            UI.drawResult(ctx,{...screen,contentTop:91,safeBottom:34},{
+              win:mode==='content-result-win',score:4200,star:3,hasNext:true,
+              coinReward:mode==='content-result-win'?240:0,canRevive:mode==='content-result-timeout',
+              timed:true,reason:mode==='content-result-timeout'?'timeout':'moves',
+              maxCascade:mode==='content-result-zero'?0:4,specialComboCount:mode==='content-result-zero'?0:2
+            });
+          } else if(mode.startsWith('content-')) {
+            const s={...screen,contentTop:91,safeBottom:34};
+            const Core=load('js/core/game-core.js'),Board=load('js/render/board-render.js');
+            const board=new Board(ctx,s),level=load('js/core/level.js').getLevel(mode==='content-mixed'?17:6);
+            board.setGame(new Core(level,{}));
+            if(mode==='content-guide-combo') {
+              board.core.grid[1][2]=101;board.core.grid[1][3]=103;
+              board.core.iceGrid[1][2]=0;board.core.iceGrid[1][3]=0;
+              board.syncPiecesFromGrid();
+            }
+            board.draw();
+            if(mode.startsWith('content-guide-')) {
+              const helper=load('js/core/strategy-feedback.js');
+              const cells=mode==='content-guide-combo'?helper.specialPair(board.core):helper.collectCells(board.core);
+              load('js/render/onboarding.js').draw(ctx,s,mode==='content-guide-combo'?'special_combo':'collect_cats',{
+                spots:cells.map(cell=>({...board.pieceCenter(cell.row,cell.column),size:board.tileSize}))
+              });
+            }
+          }
+          if(mode==='rematch-wait') Battle.drawWait(ctx,{...screen,contentTop:91,safeBottom:34},{protocolVersion:2,roundNumber:2,myWins:1,oppWins:0,roomId:'preview-room',myName:'我',myReady:false,oppName:'好友',oppReady:false,oppJoined:true,items:{freeze:1,disturb:2},isHost:true});
+          if(mode.startsWith('rematch-')&&mode!=='rematch-wait') Battle.drawResult(ctx,{...screen,contentTop:91,safeBottom:34},{protocolVersion:2,roundNumber:1,myWins:1,oppWins:0,result:'win',myScore:4200,oppScore:3600,coinReward:150,oppOnline:true,myRematch:mode==='rematch-confirmed',oppRematch:mode==='rematch-invited',oppLeft:mode==='rematch-left',offline:mode==='rematch-offline',expired:mode==='rematch-expired',rewardPending:mode==='rematch-reward'});
           if(mode==='battle-wait') Battle.drawWait(ctx,screen,{roomId:'preview-room',myName:'我',myReady:false,oppName:'对手',oppReady:false,oppJoined:true,items:{freeze:1,disturb:2},isHost:true});
           if(mode==='battle-wait-empty') Battle.drawWait(ctx,{...screen,contentTop:72},{roomId:'preview-room',myName:'月光小猫',myReady:false,oppJoined:false,items:{freeze:1,disturb:2},isHost:true});
           if(mode==='battle-wait-ready') Battle.drawWait(ctx,{...screen,contentTop:72},{roomId:'preview-room',myName:'月光小猫',myReady:true,oppName:'星星猫咪',oppReady:true,oppJoined:true,items:{freeze:0,disturb:3},isHost:false});
@@ -64,14 +98,17 @@ const server = http.createServer((req,res) => {
           if(mode==='battle-result-draw') Battle.drawResult(ctx,{...screen,contentTop:72},{result:'draw',myScore:4000,oppScore:4000,coinReward:50});
           if(mode==='battle-result-lose') Battle.drawResult(ctx,{...screen,contentTop:72},{result:'lose',myScore:3200,oppScore:4000,coinReward:0});
           if(mode==='home') UI.drawMenu(ctx,screen,5,{count:5,timeLeftText:'12:34',canPlay:true},{coins:1000});
+          if(mode==='home-safe'||mode==='home-empty-safe') UI.drawMenu(ctx,{...screen,contentTop:91,safeBottom:34},5,{count:mode==='home-safe'?5:0,timeLeftText:'12:34',canPlay:mode==='home-safe',canAd:true},{coins:1000});
           if(mode==='home-empty') UI.drawMenu(ctx,screen,5,{count:0,timeLeftText:'12:34',canPlay:false,canAd:true},{coins:0});
+          if(mode==='stamina-empty') { UI.drawLevelSelect(ctx,screen,8,800,{6:3,7:2},{offset:5}); UI.drawStaminaEmpty(ctx,screen,{timeLeftText:'12:34',canBuy:true,canAd:true}); }
+          if(mode==='stamina-empty-no-ad') { UI.drawLevelSelect(ctx,screen,8,0,{6:3,7:2},{offset:5}); UI.drawStaminaEmpty(ctx,screen,{timeLeftText:'12:34',canBuy:false,canAd:false}); }
           if(mode==='settings') UI.drawSettings(ctx,screen,{musicEnabled:true,sfxEnabled:true});
           if(mode==='settings-off') UI.drawSettings(ctx,screen,{musicEnabled:false,sfxEnabled:false});
-          if(mode==='shop') UI.drawShop(ctx,screen,1000,{hammer:2,bomb:1,color:0},{canReward:true,count:1,limit:10,pending:false});
-          if(mode==='shop-safe') UI.drawShop(ctx,{...screen,contentTop:72},1000,{hammer:2,bomb:1,color:0},{canReward:true,count:1,limit:10,pending:false});
-          if(mode==='shop-empty') UI.drawShop(ctx,screen,0,{hammer:0,bomb:0,color:0},{canReward:true,count:10,limit:10,pending:false});
-          if(mode==='shop-pending') UI.drawShop(ctx,screen,1000,{hammer:2,bomb:1,color:0},{canReward:true,count:1,limit:10,pending:true});
-          if(mode==='shop-no-ad') UI.drawShop(ctx,screen,1000,{hammer:2,bomb:1,color:0},{canReward:false});
+          if(mode==='shop') UI.drawShop(ctx,screen,1000,{hammer:2,bomb:1,color:0},{canReward:true,count:1,limit:10,pending:false,heartCount:2,heartMax:5});
+          if(mode==='shop-safe') UI.drawShop(ctx,{...screen,contentTop:72},1000,{hammer:2,bomb:1,color:0},{canReward:true,count:1,limit:10,pending:false,heartCount:2,heartMax:5});
+          if(mode==='shop-empty') UI.drawShop(ctx,screen,0,{hammer:0,bomb:0,color:0},{canReward:true,count:10,limit:10,pending:false,heartCount:0,heartMax:5});
+          if(mode==='shop-pending') UI.drawShop(ctx,screen,1000,{hammer:2,bomb:1,color:0},{canReward:true,count:1,limit:10,pending:true,heartCount:2,heartMax:5});
+          if(mode==='shop-no-ad') UI.drawShop(ctx,screen,1000,{hammer:2,bomb:1,color:0},{canReward:false,heartCount:5,heartMax:5});
           if(mode==='result') UI.drawResult(ctx,screen,{win:false,score:1800,coinReward:0,star:0,canRevive:true});
           if(mode==='result-win') UI.drawResult(ctx,{...screen,contentTop:72},{win:true,score:4200,coinReward:150,star:3,hasNext:true});
           if(mode==='result-timeout') UI.drawResult(ctx,{...screen,contentTop:72},{win:false,reason:'timeout',timed:true,score:2800,canRevive:true});

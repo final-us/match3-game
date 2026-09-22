@@ -1,15 +1,20 @@
 /**
- * 确定性无限关卡生成器。
- * 同一 generatorVersion + 正整数关卡号始终得到相同任务配置；每次挑战的棋盘仍由 GameCore 随机生成。
+ * 单人无限关卡源。前 20 关使用精修内容，21 关起使用 infinite-v4 难度版；
+ * 每次挑战的棋盘仍由 GameCore 随机生成。
  */
 
-const generatorVersion = 'infinite-v3';
+const curatedLevels = require('./curated-levels');
+
+const generatorVersion = 'curated-v5 + infinite-v4';
+const INFINITE_GENERATOR_VERSION = 'infinite-v4';
+const LAYOUT_SEED_VERSION = 'infinite-v3';
+const INFINITE_CONTENT_REVISION = 'infinite-v4-difficulty';
 const ROWS = 8;
 const COLUMNS = 8;
-const TARGET_CURVE_EARLY = [95, 88, 85, 82, 76, 73, 70, 64, 60, 52];
-const TARGET_CURVE_MID = [84, 82, 79, 76, 73, 70, 67, 63, 57, 50];
-const TARGET_CURVE_LATE = [82, 80, 77, 74, 71, 68, 65, 61, 55, 49];
-const TARGET_CURVE_CYCLE = [80, 78, 76, 73, 70, 68, 65, 62, 56, 48];
+const TARGET_CURVE_EARLY = [95, 80, 77, 74, 69, 65, 62, 58, 55, 45];
+const TARGET_CURVE_MID = [75, 73, 70, 67, 64, 61, 58, 55, 47, 43];
+const TARGET_CURVE_CYCLE = [72, 70, 68, 65, 62, 60, 57, 54, 48, 40];
+const FROZEN_V3_TARGET_CURVE_CYCLE = [80, 78, 76, 73, 70, 68, 65, 62, 56, 48];
 const LEVEL_NAMES = [
     '新手入门', '小试牛刀', '渐入佳境', '甜蜜开场', '草莓奶昔',
     '果冻花园', '缤纷世界', '冰镇果冻', '果冻风暴', '双倍挑战',
@@ -31,8 +36,9 @@ function normalizeLevelId(levelId) {
     return value;
 }
 
-function seedFor(levelId) {
-    const text = generatorVersion + ':' + String(levelId);
+/** v3 布局 seed 保持冻结，避免难度版无意改动 21 关及后的模板方位。 */
+function layoutSeedFor(levelId) {
+    const text = LAYOUT_SEED_VERSION + ':' + String(levelId);
     let hash = 2166136261;
     for (let i = 0; i < text.length; i++) {
         hash ^= text.charCodeAt(i);
@@ -44,16 +50,22 @@ function seedFor(levelId) {
 function targetFor(levelId) {
     if (levelId <= 10) return TARGET_CURVE_EARLY[levelId - 1];
     if (levelId <= 20) return TARGET_CURVE_MID[levelId - 11];
-    if (levelId <= 30) return TARGET_CURVE_LATE[levelId - 21];
-    return TARGET_CURVE_CYCLE[(levelId - 31) % TARGET_CURVE_CYCLE.length];
+    return TARGET_CURVE_CYCLE[(levelId - 21) % TARGET_CURVE_CYCLE.length];
+}
+
+function frozenV3TargetFor(levelId) {
+    if (levelId <= 20) return targetFor(levelId);
+    return FROZEN_V3_TARGET_CURVE_CYCLE[(levelId - 21) % FROZEN_V3_TARGET_CURVE_CYCLE.length];
 }
 
 function timeFor(target, levelId) {
     if (levelId === 1) return 0;
+    // 首个收集教学保留原有观察时间；后续低档挑战用更短时限形成稳定波峰。
+    if (levelId === 6) return 165;
     if (target >= 80) return 180;
     if (target >= 68) return 165;
     if (target >= 58) return 150;
-    return 135;
+    return 120;
 }
 
 /** 8 种旋转/镜像变体不改变模板密度和难度，只改变视觉布局。 */
@@ -77,9 +89,7 @@ function makeLayout(patternName, variant) {
     return layout;
 }
 
-/**
- * 使用上一版 20 关的实测配置作为锚点，避免未标定的随机障碍把难度放大数倍。
- */
+/** 复用 v3 模板选择，v4 只收紧步数和时间，保持名称、目标类型与布局方位。 */
 function profileFor(target, levelId) {
     if (levelId === 1) return { moves: 28, score: 3600 };
     if (target >= 90) return { moves: 28, score: 3800 };
@@ -106,11 +116,12 @@ function makeGoals(profile, underlays) {
     return goals;
 }
 
-function generateLevel(levelId) {
+function generateInfiniteLevel(levelId) {
     const target = targetFor(levelId);
-    const profile = profileFor(target, levelId);
-    if (profile.score && levelId > 1) profile.score += ((levelId + seedFor(2)) % 3 - 1) * 40;
-    const variant = (levelId - 1 + seedFor(1)) % 8;
+    const profile = profileFor(frozenV3TargetFor(levelId), levelId);
+    profile.moves -= 2;
+    if (profile.score && levelId > 1) profile.score += ((levelId + layoutSeedFor(2)) % 3 - 1) * 40;
+    const variant = (levelId - 1 + layoutSeedFor(1)) % 8;
     const underlays = makeLayout(profile.jelly, variant);
     const obstacles = makeLayout(profile.ice, variant);
     const name = LEVEL_NAMES[(levelId - 1) % LEVEL_NAMES.length] + (levelId > LEVEL_NAMES.length ? ' · ' + levelId : '');
@@ -125,8 +136,24 @@ function generateLevel(levelId) {
         underlays: underlays,
         obstacles: obstacles,
         targetWinRate: target,
-        generatorVersion: generatorVersion
+        generatorVersion: INFINITE_GENERATOR_VERSION,
+        // 只重置本次接入循环的 21–30 关失败计数，其余关卡沿用原内容版本。
+        contentRevision: levelId <= 30 ? INFINITE_CONTENT_REVISION + '-cycle21' : INFINITE_CONTENT_REVISION
     };
+}
+
+function generateLevel(levelId) {
+    if (levelId <= 20) {
+        return curatedLevels.getCuratedLevel(levelId, {
+            rows: ROWS,
+            columns: COLUMNS,
+            targetFor: targetFor,
+            timeFor: timeFor,
+            makeLayout: makeLayout,
+            variantFor: function (id) { return (id - 1 + layoutSeedFor(1)) % 8; }
+        });
+    }
+    return generateInfiniteLevel(levelId);
 }
 
 function getLevel(levelId) {
@@ -143,6 +170,9 @@ function getTargetWinRate(levelId) {
 
 module.exports = {
     generatorVersion: generatorVersion,
+    legacyGeneratorVersion: INFINITE_GENERATOR_VERSION,
+    infiniteGeneratorVersion: INFINITE_GENERATOR_VERSION,
+    curatedGeneratorVersion: curatedLevels.GENERATOR_VERSION,
     getLevel: getLevel,
     getTargetWinRate: getTargetWinRate
 };

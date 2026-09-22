@@ -30,6 +30,7 @@ allOk = assert('花费300成功', coin.spendCoins(300)) && allOk;
 allOk = assert('余额200', coin.getCoins() === 200) && allOk;
 allOk = assert('超支失败', coin.spendCoins(500) === false) && allOk;
 allOk = assert('超支后余额不变', coin.getCoins() === 200) && allOk;
+allOk = assert('体力售价固定为1000金币', coin.STAMINA_PRICE === 1000) && allOk;
 
 // 4. 通关奖励（含星级加成）
 allOk = assert('胜利奖励: 基础100+步数10x5+1星30', coin.calcWinCoins(5, 1) === 180) && allOk;

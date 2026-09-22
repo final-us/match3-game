@@ -29,11 +29,7 @@ const activePaths = [
     'res/home/title-logo.png',
     'res/home/button-primary.png',
     'res/home/button-secondary.png',
-    'res/game-background-v2.jpg',
     'res/level-background-v2.jpg',
-    'res/ui/level-node-current-v2.png',
-    'res/ui/level-node-done-v2.png',
-    'res/ui/level-node-locked-v2.png',
     'res/ui/coin.png',
     'res/ui/heart.png',
     'res/ui/moves-paw.png',
@@ -46,6 +42,7 @@ const activePaths = [
     'res/ui/tool-yarn.png',
     'res/ui/result-happy-cat.png',
     'res/ui/result-sad-cat.png',
+    'res/ui/daily-invitation.png',
     'res/piece1-runtime.png',
     'res/piece2-runtime.png',
     'res/piece3-runtime.png',
@@ -158,8 +155,17 @@ assert(!/(?:本项目|整个项目)[^\n。]{0,30}MIT/i.test(readme), 'README 不
 assert(readme.includes('[' + 'pixi-game-match3](' + upstreamUrl + ')'), 'README 缺少可点击的精确上游 URL');
 assert(readme.includes('[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)'), 'README 缺少 notice 链接');
 
-assert(Object.keys(assets).length === activePaths.length, 'assets.js 活跃素材数量必须匹配来源清单');
-assert.deepStrictEqual(Object.values(assets).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
+assert.strictEqual(Object.keys(assets).length, activePaths.length + 1, '仅首页/棋盘背景允许共用一个文件');
+assert.strictEqual(assets.gameBackground, assets.homeBackground, '相同背景必须共用发布文件');
+assert.deepStrictEqual(Array.from(new Set(Object.values(assets))).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
+const retiredPaths = ['res/game-background-v2.jpg', 'res/ui/level-node-current-v2.png',
+    'res/ui/level-node-done-v2.png', 'res/ui/level-node-locked-v2.png'];
+retiredPaths.forEach(function (relative) {
+    assert(fs.existsSync(path.join(projectRoot, relative)), '须保留回退源图: ' + relative);
+    assert(!Object.values(assets).includes(relative), '退役素材不得再注册加载: ' + relative);
+    assert(isIgnored(relative, ignoreRules), '退役素材须从发布包排除: ' + relative);
+    assert(ledger.includes('`' + relative + '`'), '须保留来源记录: ' + relative);
+});
 activePaths.forEach(function (relative) {
     assert(ledger.includes('`' + relative + '`'), '台账缺少活跃素材: ' + relative);
     assert(fs.existsSync(path.join(projectRoot, relative)), '活跃素材不存在: ' + relative);

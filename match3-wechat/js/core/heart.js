@@ -1,18 +1,16 @@
 /**
  * 体力系统（数据驱动）
- * 规则：5 心上限，每 25 分钟恢复 1 颗，离线期间照常恢复（基于时间戳计算）
+ * 规则：5 心上限，每 10 分钟恢复 1 颗，离线期间照常恢复（基于时间戳计算）
  * 存储：本地 storage（lastLossTime=0 表示满心、未在恢复中）
  */
 
 // 体力配置（改这里调数值）
 const HEART_CONFIG = {
     maxHeart: 5,                 // 上限
-    regenMs: 25 * 60 * 1000,     // 每颗恢复间隔：25 分钟
-    adCooldownMs: 30 * 60 * 1000 // 看广告补心冷却：30 分钟 1 次（防刷）
+    regenMs: 10 * 60 * 1000     // 每颗恢复间隔：10 分钟
 };
 
 const STORAGE_KEY = 'match3_heart_v1';
-const AD_HEART_KEY = 'match3_ad_heart_v1';
 
 function getStore() {
     return typeof wx !== 'undefined' ? wx : global.wx;
@@ -31,7 +29,8 @@ function getHeartState() {
     const now = Date.now();
     let state = null;
     if (store && store.getStorageSync) {
-        state = store.getStorageSync(STORAGE_KEY);
+        const saved = store.getStorageSync(STORAGE_KEY);
+        state = saved && typeof saved === 'object' ? Object.assign({}, saved) : saved;
     }
     if (!state || typeof state.count !== 'number') {
         state = { count: HEART_CONFIG.maxHeart, lastLossTime: 0 };
@@ -57,14 +56,26 @@ function getHeartState() {
 }
 
 /** 尝试消耗 1 颗体力（进关卡时调用），返回是否成功 */
-function consumeHeart() {
+function consumeHeart(refundable) {
     const state = getHeartState();
     if (state.count <= 0) return false;
     state.count--;
+    state.refundPending = refundable === true;
     // 从满心扣到非满：开始记录恢复计时；非满继续扣：保持最早缺心时间
     if (state.count < HEART_CONFIG.maxHeart && state.lastLossTime === 0) {
         state.lastLossTime = Date.now();
     }
+    save(state);
+    return true;
+}
+
+/** 成功通关返还本局预扣体力；标记和数量在同一存储项写入，重复结算不重复返还。 */
+function refundConsumedHeart() {
+    const state = getHeartState();
+    if (!state.refundPending) return false;
+    state.count = Math.min(HEART_CONFIG.maxHeart, state.count + 1);
+    state.refundPending = false;
+    if (state.count >= HEART_CONFIG.maxHeart) state.lastLossTime = 0;
     save(state);
     return true;
 }
@@ -98,31 +109,12 @@ function formatTimeLeft() {
     return (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
 }
 
-/** 是否可看广告补心（30 分钟冷却，防刷） */
-function canAdHeart() {
-    const store = getStore();
-    let last = 0;
-    if (store && store.getStorageSync) {
-        last = store.getStorageSync(AD_HEART_KEY) || 0;
-    }
-    return !last || (Date.now() - last) > HEART_CONFIG.adCooldownMs;
-}
-
-/** 记录看广告补心时间 */
-function markAdHeart() {
-    const store = getStore();
-    if (store && store.setStorageSync) {
-        store.setStorageSync(AD_HEART_KEY, Date.now());
-    }
-}
-
 module.exports = {
     HEART_CONFIG: HEART_CONFIG,
     getHeartState: getHeartState,
     consumeHeart: consumeHeart,
+    refundConsumedHeart: refundConsumedHeart,
     addHeart: addHeart,
     getRecoverTimeLeft: getRecoverTimeLeft,
-    formatTimeLeft: formatTimeLeft,
-    canAdHeart: canAdHeart,
-    markAdHeart: markAdHeart
+    formatTimeLeft: formatTimeLeft
 };

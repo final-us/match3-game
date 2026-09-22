@@ -10,6 +10,7 @@ const projectRoot = path.resolve(__dirname, '..');
 const resRoot = path.join(projectRoot, 'res');
 const assets = require('../js/render/assets').ASSETS;
 const config = require('../project.config.json');
+const vm = require('vm');
 const maxActiveBytes = 3.5 * 1024 * 1024;
 const maxBgmBytes = 360 * 1024;
 // Full accepted rocket/win tails add ~15KB; overall 4MiB package cap is unchanged.
@@ -76,8 +77,8 @@ Object.keys(assets).forEach(function (key) {
     const file = path.resolve(projectRoot, relative);
     assert(file.indexOf(projectRoot + path.sep) === 0, '素材路径越出项目根目录: ' + key);
     assert(fs.existsSync(file) && fs.statSync(file).isFile(), '素材文件不存在: ' + key + ' → ' + relative);
+    if (!assetPaths.has(relative)) activeBytes += fs.statSync(file).size;
     assetPaths.add(relative);
-    activeBytes += fs.statSync(file).size;
     assert(!isIgnored(relative), '活跃素材被忽略: ' + relative);
 });
 
@@ -113,6 +114,28 @@ unreferenced.forEach(function (relative) {
 });
 
 assert(activeBytes <= maxActiveBytes, '活跃素材超过预算: ' + activeBytes + ' > ' + maxActiveBytes);
+
+// 运行真实微信分支，检查背景别名在异步加载下均可用，且不会请求被排除文件。
+for (const failOne of [false, true]) {
+    const requests = [];
+    const fixture = { exports: {} };
+    vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'js/render/assets.js'), 'utf8'), {
+        module: fixture,
+        wx: { createImage: function () { const img = {}; requests.push(img); return img; } }
+    });
+    const loader = fixture.exports;
+    let completed = 0;
+    loader.preload(function () { completed++; });
+    assert(!loader.isReady() && completed === 0, '异步资源未完成时不得提前就绪');
+    assert(requests.length === Object.keys(assets).length, '预加载数量须与注册键一致');
+    requests.slice().reverse().forEach(function (img, index) {
+        assert(!isIgnored(img.src) && fs.existsSync(path.join(projectRoot, img.src)), '请求资源必须在发布包中: ' + img.src);
+        if (failOne && index === 0) img.onerror();
+        else img.onload();
+    });
+    assert(loader.isReady() && loader.getProgress() === 1 && completed === 1, '异步加载完成/失败必须正确结束等待');
+    assert(loader.get('homeBackground').src === loader.get('gameBackground').src, '两种背景入口须加载同一发布文件');
+}
 
 const estimatedMainFiles = walk(projectRoot).map(function (file) {
     return { file: file, relative: projectRelative(file) };

@@ -250,6 +250,7 @@ test('单人与PvP成功交换和补棋静音，保留动画及无效交换提�
             const mainModule = { exports: {} };
             vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
                 module: mainModule,
+                wx: wx,
                 require: function (name) {
                     if (name === './audio') return audio;
                     if (name === './render/board-render') return BoardStub;

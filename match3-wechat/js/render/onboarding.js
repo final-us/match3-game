@@ -25,6 +25,14 @@ const CONTENT = {
     pvp_wait: {
         title: '准备开局',
         lines: ['把共 3 个冰冻/干扰道具分配好，再点准备。', 'PvP 道具共享 10 秒冷却。']
+    },
+    collect_cats: {
+        title: '找到目标猫咪',
+        lines: ['消除目标猫咪就能收集。', '特殊棋子的消除也算数。']
+    },
+    special_combo: {
+        title: '让特殊棋子相遇',
+        lines: ['交换亮起的两枚特殊棋子，', '就能触发更强的组合消除。']
     }
 };
 
@@ -67,7 +75,10 @@ function wrapLines(ctx, lines, maxWidth) {
     return wrapped;
 }
 
-function draw(ctx, screen, key) {
+function draw(ctx, screen, key, context) {
+    if ((key === 'collect_cats' || key === 'special_combo') && context) {
+        return drawContextGuide(ctx, screen, key, context);
+    }
     const content = CONTENT[key] || CONTENT.solo_intro;
     const width = Number(screen.width) || 320;
     const height = Number(screen.height) || 568;
@@ -111,6 +122,47 @@ function draw(ctx, screen, key) {
     return {
         skip: { x: leftX, y: buttonY, w: buttonW, h: buttonH },
         confirm: { x: rightX, y: buttonY, w: buttonW, h: buttonH }
+    };
+}
+
+/** Compact contextual panel leaves the relevant, real board cells visible. */
+function drawContextGuide(ctx, screen, key, context) {
+    const width = screen.width, height = screen.height;
+    const top = Math.max(12, Number(screen.contentTop) || 0, Number(screen.safeTop) || 0) + 12;
+    const bottom = height - (Number(screen.safeBottom) || 0) - 12;
+    const spots = context.spots || [];
+    const cardW = Math.min(348, width - 24), cardH = 174, cardX = (width - cardW) / 2;
+    const canUseTop = spots.length && Math.min.apply(null, spots.map(s => s.y - s.size / 2)) > top + cardH + 8;
+    const cardY = canUseTop ? top : bottom - cardH;
+    ctx.save();
+    ctx.fillStyle = 'rgba(31, 40, 81, 0.30)';
+    ctx.fillRect(0, 0, width, height);
+    // Outlined spotlights remain recognisable when effects are reduced.
+    spots.forEach(function (spot) {
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(spot.x - spot.size / 2 + 1, spot.y - spot.size / 2 + 1, spot.size - 2, spot.size - 2);
+    });
+    moon.panel(ctx, screen, cardX, cardY, cardW, cardH);
+    const content = CONTENT[key];
+    ctx.fillStyle = '#303C70';
+    typography.drawFit(ctx, content.title, width / 2, cardY + 28, cardW - 36, {
+        size: 21, minSize: 18, weight: 'bold', align: 'center'
+    });
+    ctx.fillStyle = '#4E5B82';
+    content.lines.forEach(function (line, index) {
+        typography.drawFit(ctx, line, width / 2, cardY + 65 + index * 23, cardW - 36, {
+            size: 14, minSize: 12, align: 'center'
+        });
+    });
+    const buttonW = (cardW - 50) / 2, buttonY = cardY + cardH - 60;
+    moon.button(ctx, cardX + 20, buttonY, buttonW, 46, '跳过', 'blue', 15);
+    moon.button(ctx, cardX + 30 + buttonW, buttonY, buttonW, 46, '知道了', 'pink', 15);
+    ctx.restore();
+    return {
+        skip: { x: cardX + 20, y: buttonY, w: buttonW, h: 46 },
+        confirm: { x: cardX + 30 + buttonW, y: buttonY, w: buttonW, h: 46 },
+        panel: { x: cardX, y: cardY, w: cardW, h: cardH }
     };
 }
 

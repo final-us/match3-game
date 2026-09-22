@@ -46,7 +46,7 @@
 
 当前工作区的 `res/home/moonlit-garden-bg.jpg`、`res/game-background-v2.jpg`、`res/level-background-v2.jpg`、`res/home/title-logo.png`、`res/piece1-runtime.png` 至 `res/piece4-runtime.png` 及对应 512px 源图，已被本项目内置 OpenAI ImageGen 的 B 风格候选覆盖。最新来源/提示/透明报告、未采用项和回滚副本见 [运行候选记录](../../assets/_incoming/moon-ui-runtime/README.md)。下文旧来源与压缩字节表对这些文件仅作历史记录；第五枚和双猫仍是旧图。平台发布、关键视觉和真机验收未完成。
 
-以下 29 张是 `js/render/assets.js` 当前完整注册的活跃素材，来源均记录为本项目内 Codex/OpenAI ImageGen 生成：
+以下25张是 `js/render/assets.js` 当前注册的唯一活跃图片（26个用途键，首页/棋盘背景共用一份文件），来源均记录为本项目内 Codex/OpenAI ImageGen 生成。2026-09-23无损包体清理只改变映射和忽略规则，不重新编码图片；旧节点及重复背景保留在下方回退来源表，不再随客户端发布。
 
 本地文件时间可佐证的制作批次为：首页 5 张生成于 2026-08-20（Asia/Shanghai），游戏场景与 512×512 棋子源图生成于 2026-08-22，256×256 运行图于 2026-08-22 使用 macOS `sips` 从对应源图缩放生成。这些时间只作为仓库内制作记录，不替代生成服务的原始任务记录或账户授权证明。
 
@@ -61,11 +61,10 @@
 | `res/home/button-primary.png` | 本项目内 Codex/OpenAI ImageGen 生成 |
 | `res/home/button-secondary.png` | 本项目内 Codex/OpenAI ImageGen 生成 |
 
-### 游戏场景（2 张）
+### 独立关卡场景（1 张，棋盘共用首页背景）
 
 | 发布路径 | 来源记录 |
 | --- | --- |
-| `res/game-background-v2.jpg` | 本项目内 Codex/OpenAI ImageGen 生成 |
 | `res/level-background-v2.jpg` | 本项目内 Codex/OpenAI ImageGen 生成 |
 
 ### 运行时棋子（5 张）
@@ -78,7 +77,7 @@
 | `res/piece4-runtime.png` | 对应 `res/piece4-v2.png` 的 512×512 源图缩放；源图为本项目内 Codex/OpenAI ImageGen 生成 |
 | `res/piece5-runtime.png` | 对应 `res/piece5-v2.png` 的 512×512 源图缩放；源图为本项目内 Codex/OpenAI ImageGen 生成 |
 
-### 统一 UI 运行图（16 张）
+### 统一 UI 运行图（13 张）
 
 | 发布路径 | 来源记录 |
 | --- | --- |
@@ -94,11 +93,18 @@
 | `res/ui/result-happy-cat.png` | 本项目内 Codex/OpenAI ImageGen 生成，512px 设计源图见 `docs/design/generated-assets/result-happy-cat.png` |
 | `res/ui/result-sad-cat.png` | 本项目内 Codex/OpenAI ImageGen 生成，512px 设计源图见 `docs/design/generated-assets/result-sad-cat.png` |
 | `res/ui/special-row-beam.png` | 本项目内 Codex/OpenAI ImageGen 生成，设计源图见 `docs/design/generated-assets/special-row-beam.png` |
-| `res/ui/level-node-current-v2.png` | 本项目内 Codex/OpenAI ImageGen 生成，设计源图见 `docs/design/generated-assets/level-nodes/level-node-current-source.png` |
-| `res/ui/level-node-done-v2.png` | 本项目内 Codex/OpenAI ImageGen 生成，设计源图见 `docs/design/generated-assets/level-nodes/level-node-done-source.png` |
-| `res/ui/level-node-locked-v2.png` | 本项目内 Codex/OpenAI ImageGen 生成，设计源图见 `docs/design/generated-assets/level-nodes/level-node-locked-source.png` |
+| `res/ui/daily-invitation.png` | 2026-09-22 内置 OpenAI image_gen 对本项目已接受参考图作1次去文字编辑；仅双猫/月徽/珍珠装饰，文字与按钮由代码绘制。1122×1402 RGBA源图经既有sharp缩放及调色板压缩为560×700、168970字节。提示、输入、源图和既有SHA256见 `assets/_incoming/daily-reference/skin/provenance.md`；最新弹窗接受记录见 `docs/content-update-1235.md`。适用[OpenAI条款](https://openai.com/policies/terms-of-use/)，未核实账户特有条款，不额外承诺权利保证。 |
 
-首批 12 张 UI 运行图于 2026-08-23 使用 macOS `sips` 缩放，再用 Pillow 12.3.0 进行 128 色透明 PNG 优化；三张关卡节点在同日使用内置 ImageGen 生成透明源图，再由 `sips` 缩放至最长边 256px。完整提示摘要和派生记录见 `docs/design/generated-assets/README.md`。
+### 保留但不打包的回退图片（2026-09-23）
+
+| 保留路径 | 来源及退出发布包原因 |
+| --- | --- |
+| `res/game-background-v2.jpg` | 本项目内 Codex/OpenAI ImageGen 生成；与 `res/home/moonlit-garden-bg.jpg` 逐字节相同（200391字节），gameBackground用途键改用首页路径。原文件保留、精确排除。 |
+| `res/ui/level-node-current-v2.png` | 本项目内 Codex/OpenAI ImageGen 生成，源图 `docs/design/generated-assets/level-nodes/level-node-current-source.png`；地图已由moon.levelNode原生绘制，不再注册/打包。 |
+| `res/ui/level-node-done-v2.png` | 本项目内 Codex/OpenAI ImageGen 生成，源图 `docs/design/generated-assets/level-nodes/level-node-done-source.png`；同上。 |
+| `res/ui/level-node-locked-v2.png` | 本项目内 Codex/OpenAI ImageGen 生成，源图 `docs/design/generated-assets/level-nodes/level-node-locked-source.png`；同上。 |
+
+首批12张UI运行图于2026-08-23使用macOS `sips`缩放，再用Pillow 12.3.0进行128色透明PNG优化；已退役的三张关卡节点在同日使用内置ImageGen生成透明源图，再由`sips`缩放至最长边256px。完整提示摘要和派生记录见 `docs/design/generated-assets/README.md`。本次仅清理发布引用，不删除或改变来源记录。
 
 ### 主包 PNG 无损优化记录（2026-08-23）
 

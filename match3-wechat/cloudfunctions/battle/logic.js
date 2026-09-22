@@ -8,6 +8,7 @@ const CONFIG = Object.freeze({
     DISTURB_DURATION_MS: 5000,
     OFFLINE_GRACE_MS: 10 * 1000,
     WAITING_ROOM_TTL_MS: 10 * 60 * 1000,
+    REMATCH_ROOM_TTL_MS: 10 * 60 * 1000,
     ROOM_RETENTION_MS: 7 * 24 * 60 * 60 * 1000,
     ITEM_BUDGET: 3,
     ITEM_ALLOWLIST: Object.freeze(['freeze', 'disturb']),
@@ -34,8 +35,16 @@ function isValidRoomId(value) {
 
 function isWaitingRoomExpired(room, at, ttlMs) {
     if (!room || room.status !== 'waiting') return false;
-    if (!Number.isFinite(room.createdAt) || !Number.isFinite(at)) return true;
-    return at - room.createdAt >= (ttlMs == null ? CONFIG.WAITING_ROOM_TTL_MS : ttlMs);
+    const waitingAt = Number.isFinite(room.waitingAt) ? room.waitingAt : room.createdAt;
+    if (!Number.isFinite(waitingAt) || !Number.isFinite(at)) return true;
+    return at - waitingAt >= (ttlMs == null ? CONFIG.WAITING_ROOM_TTL_MS : ttlMs);
+}
+
+function isRematchRoomExpired(room, at, ttlMs) {
+    if (!room || (room.status !== 'waiting' && room.status !== 'finished')) return false;
+    const startedAt = room.status === 'finished' ? room.finishedAt : room.waitingAt;
+    if (!Number.isFinite(startedAt) || !Number.isFinite(at)) return true;
+    return at - startedAt >= (ttlMs == null ? CONFIG.REMATCH_ROOM_TTL_MS : ttlMs);
 }
 
 function isCleanupTimerEvent(event, openid) {
@@ -225,6 +234,7 @@ module.exports = {
     CONFIG: CONFIG,
     isValidRoomId: isValidRoomId,
     isWaitingRoomExpired: isWaitingRoomExpired,
+    isRematchRoomExpired: isRematchRoomExpired,
     isCleanupTimerEvent: isCleanupTimerEvent,
     finiteNonNegativeInteger: finiteNonNegativeInteger,
     CREATE_RATE_LIMIT_MESSAGE: CREATE_RATE_LIMIT_MESSAGE,

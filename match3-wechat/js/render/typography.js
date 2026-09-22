@@ -44,6 +44,34 @@ function drawFit(ctx, text, x, y, maxWidth, options) {
     return size;
 }
 
+// Editable display lettering: rounded device glyphs, pearl edging and a gentle arch.
+// Uses the existing licensed system stack; no raster text or additional font download.
+function drawDisplay(ctx, text, x, y, maxWidth, size) {
+    ctx.save();
+    const fitted = fitFontSize(ctx, text, maxWidth - 12, size, 18, '900', false);
+    set(ctx, fitted, '900', false, 'center');
+    const chars = Array.from(String(text));
+    const widths = chars.map(char => measure(ctx, char));
+    let left = x - widths.reduce((sum, width) => sum + width, 0) / 2;
+    ctx.lineJoin = 'round';
+    chars.forEach((char, index) => {
+        const arc = Math.sin(index / Math.max(1, chars.length - 1) * Math.PI);
+        ctx.save();
+        ctx.translate(left + widths[index] / 2, y - arc * 4);
+        ctx.rotate((index - (chars.length - 1) / 2) * .012);
+        ctx.strokeStyle = '#78619C'; ctx.lineWidth = 9;
+        ctx.strokeText(char, 0, 2);
+        ctx.strokeStyle = '#FFF1DC'; ctx.lineWidth = 5;
+        ctx.strokeText(char, 0, 0);
+        ctx.strokeStyle = '#AC83B5'; ctx.lineWidth = 1.5;
+        ctx.strokeText(char, 0, 0);
+        ctx.fillStyle = '#FFFCED'; ctx.fillText(char, 0, 0);
+        ctx.restore();
+        left += widths[index];
+    });
+    ctx.restore();
+}
+
 function drawCentered(ctx, text, x, y, width, height, options) {
     const opts = options || {};
     opts.align = 'center';
@@ -59,5 +87,6 @@ module.exports = {
     measure: measure,
     fitFontSize: fitFontSize,
     drawFit: drawFit,
-    drawCentered: drawCentered
+    drawCentered: drawCentered,
+    drawDisplay: drawDisplay
 };

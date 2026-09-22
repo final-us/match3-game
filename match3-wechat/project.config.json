@@ -1,7 +1,7 @@
 {
   "description": "三消消消乐小游戏",
   "setting": {
-    "urlCheck": false,
+    "urlCheck": true,
     "es6": true,
     "postcss": true,
     "minified": true,
@@ -62,6 +62,22 @@
       {
         "type": "folder",
         "value": "levels"
+      },
+      {
+        "type": "file",
+        "value": "res/game-background-v2.jpg"
+      },
+      {
+        "type": "file",
+        "value": "res/ui/level-node-current-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/ui/level-node-done-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "res/ui/level-node-locked-v2.png"
       },
       {
         "type": "file",

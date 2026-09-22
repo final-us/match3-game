@@ -35,15 +35,15 @@ s = heart.getHeartState();
 allOk = assert('消耗3颗后剩2', s.count === 2) && allOk;
 allOk = assert('开始恢复计时', s.lastLossTime > 0) && allOk;
 
-// 3. 25 分钟后恢复 1 颗 → 3
-fakeNow += 25 * 60 * 1000;
+// 3. 10 分钟后恢复 1 颗 → 3
+fakeNow += 10 * 60 * 1000;
 s = heart.getHeartState();
-allOk = assert('25分钟后恢复1颗(3)', s.count === 3) && allOk;
+allOk = assert('10分钟后恢复1颗(3)', s.count === 3) && allOk;
 
-// 4. 再 50 分钟 → 恢复 2 颗 → 5（满）
-fakeNow += 50 * 60 * 1000;
+// 4. 再 20 分钟 → 恢复 2 颗 → 5（满）
+fakeNow += 20 * 60 * 1000;
 s = heart.getHeartState();
-allOk = assert('累计75分钟恢复满(5)', s.count === 5) && allOk;
+allOk = assert('累计30分钟恢复满(5)', s.count === 5) && allOk;
 allOk = assert('满心停止计时(lastLossTime=0)', s.lastLossTime === 0) && allOk;
 
 // 5. 满心时剩余恢复时间为 0
@@ -64,13 +64,19 @@ allOk = assert('补1心(1)', s.count === 1) && allOk;
 fakeNow += 5 * 60 * 1000; // 恢复计时已过5分钟
 const left = heart.getRecoverTimeLeft();
 const fmt = heart.formatTimeLeft();
-allOk = assert('倒计时剩余20分钟', left === 20 * 60 * 1000 && fmt === '20:00') && allOk;
+allOk = assert('倒计时剩余5分钟', left === 5 * 60 * 1000 && fmt === '05:00') && allOk;
 
 // 9. 离线恢复：模拟离开 100 分钟
 fakeNow += 100 * 60 * 1000;
 s = heart.getHeartState();
 allOk = assert('离线100分钟恢复(1→满5)', s.count === 5) && allOk;
 
+heart.consumeHeart(true);
+allOk = assert('成功返还预扣的一点', heart.refundConsumedHeart() && heart.getHeartState().count === 5) && allOk;
+heart.consumeHeart();
+allOk = assert('旧成功不能重复退款', !heart.refundConsumedHeart() && heart.getHeartState().count === 4) && allOk;
+heart.consumeHeart(true);
+allOk = assert('重载后仍仅返还本局一次', require('../js/core/heart').refundConsumedHeart() && !heart.refundConsumedHeart()) && allOk;
 Date.now = realNow;
 console.log('========================================');
 console.log('体力系统: ' + (allOk ? '全部通过 ✅' : '存在失败 ❌'));

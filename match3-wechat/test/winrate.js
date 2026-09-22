@@ -1,6 +1,6 @@
 /**
  * 关卡难度标定：固定种子 + 随机合法交换，每关至少跑 200 局。
- * 用法: node test/winrate.js [局数] [每步虚拟耗时毫秒]
+ * 用法: node test/winrate.js [局数] [每步虚拟耗时毫秒] [起始关] [结束关]
  */
 
 const GameCore = require('../js/core/game-core');
@@ -80,7 +80,10 @@ function goalDesc(level) {
     const parts = [];
     for (let i = 0; i < (level.goals || []).length; i++) {
         const g = level.goals[i];
-        parts.push(g.type === 'score' ? '分' + g.target : '果冻' + g.target);
+        if (g.type === 'score') parts.push('分' + g.target);
+        else if (g.type === 'jelly') parts.push('果冻' + g.target);
+        else if (g.type === 'collect') parts.push('收集' + g.pieceType + '×' + g.target);
+        else parts.push('未知目标');
     }
     if ((level.underlays || {}) && parts.length === 0) {
         let total = 0;
@@ -92,6 +95,8 @@ function goalDesc(level) {
 
 const rounds = Math.max(200, parseInt(process.argv[2], 10) || 200);
 const moveDurationMs = Math.max(1, parseInt(process.argv[3], 10) || 6000);
+const startLevel = Math.max(1, parseInt(process.argv[4], 10) || 1);
+const endLevel = Math.max(startLevel, parseInt(process.argv[5], 10) || 40);
 const seedBase = 0x5EED1234;
 // 新彩球与完整特殊组合会有意抬高随机玩家上限；仍严格阻止关卡变难，
 // 对“变容易”保留较宽回归带，避免测试反向削弱本次冻结玩法规则。
@@ -99,11 +104,18 @@ const harderTolerance = 12;
 const easierTolerance = 24;
 const deviations = [];
 const levelIds = [];
-for (let id = 1; id <= 40; id++) levelIds.push(id);
-for (let id = 100000; id < 100010; id++) levelIds.push(id);
+for (let id = startLevel; id <= endLevel; id++) levelIds.push(id);
 
 (async function () {
-    console.log('========== 关卡难度标定（固定种子随机合法交换 ' + rounds + ' 局/关，虚拟每步 ' + moveDurationMs + 'ms）==========');
+    console.log('========== 关卡难度标定（固定种子随机合法交换 ' + rounds + ' 局/关，虚拟每步 ' + moveDurationMs + 'ms，关卡 ' + startLevel + '–' + endLevel + '）==========');
+    const ranges = [
+        { label: '2–10', from: 2, to: 10, wins: 0, games: 0 },
+        { label: '11–20', from: 11, to: 20, wins: 0, games: 0 },
+        { label: '21–30', from: 21, to: 30, wins: 0, games: 0 },
+        { label: '31–40', from: 31, to: 40, wins: 0, games: 0 },
+        { label: '41–50', from: 41, to: 50, wins: 0, games: 0 },
+        { label: '2–50', from: 2, to: 50, wins: 0, games: 0 }
+    ];
 
     for (let index = 0; index < levelIds.length; index++) {
         const levelId = levelIds[index];
@@ -130,7 +142,17 @@ for (let id = 100000; id < 100010; id++) levelIds.push(id);
             ' 胜率' + winRate + '% 均分' + avgScore + ' 最高' + maxScore +
             ' 失败' + (rounds - wins) + '（其中超时' + timeout + '）' +
             ' 目标' + target + '%');
+        ranges.forEach(function (range) {
+            if (levelId >= range.from && levelId <= range.to) {
+                range.wins += wins;
+                range.games += rounds;
+            }
+        });
     }
+
+    ranges.forEach(function (range) {
+        if (range.games) console.log('汇总 ' + range.label + ' 胜率' + (range.wins / range.games * 100).toFixed(2) + '%（' + range.wins + '/' + range.games + '）');
+    });
 
     console.log('种子基准: 0x' + seedBase.toString(16) + '；合法步已排除冰块覆盖格');
     if (deviations.length) throw new Error('难度偏差超过变难-' + harderTolerance + '%/变易+' +

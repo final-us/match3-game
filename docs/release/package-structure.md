@@ -30,6 +30,10 @@ res/piece4-v2.png
 res/piece5-v2.png
 res/game-icon-144.png
 res/game-icon-source.png
+res/game-background-v2.jpg
+res/ui/level-node-current-v2.png
+res/ui/level-node-done-v2.png
+res/ui/level-node-locked-v2.png
 res/btnBack.png
 res/btnClose.png
 res/btnContinue.png
@@ -53,7 +57,7 @@ res/progressBar.png
 res/toolBar.png
 ```
 
-当前 `js/render/assets.js` 引用的 29 张活跃素材不在忽略规则中：`res/home/` 下 6 张、两张游戏场景、5 张运行时棋子，以及 `res/ui/` 下 16 张统一 UI 运行图（含 3 张关卡节点）。
+当前 `js/render/assets.js` 引用25张唯一活跃图片（26个用途键），均不在忽略规则中：`res/home/` 下6张、1张关卡场景、5张运行时棋子和 `res/ui/` 下13张UI图。首页与棋盘用途键共用 `res/home/moonlit-garden-bg.jpg`；旧棋盘背景与该文件逐字节相同。三张旧关卡节点PNG已退出注册，地图继续用原生Canvas绘制。上述4文件仍保留供回退，仅由精确file规则排除；加载器对每个用途键的就绪回调逻辑不变，预算按唯一发布路径计量。
 
 `res/audio/calm.mp3` 与 `res/audio/battle.mp3` 是运行时直接由 `wx.createInnerAudioContext` 播放的本地 BGM，不通过图片预加载器注册，也不在忽略规则中。`test/package-budget.js` 单独断言两文件均被打包且合计不超过 360 KiB；文件/API 播放失败时回退程序化 WebAudio BGM。旧 `calm.m4a`、`battle.m4a`、`sfx-acoustic.m4a` 只作 Git 可回滚历史，均由精确 file 规则排除。
 
@@ -63,12 +67,12 @@ res/toolBar.png
 
 ## 当前体积快照
 
-测量日期：2026-09-15（最终检查后）。
+测量日期：2026-09-23（无损引用清理后）。
 
-- 当前活跃素材共 3,181,224 字节；活跃素材预算为 `3.5 * 1024 * 1024 = 3,670,016` 字节，当前余量 488,792 字节。
+- 当前活跃图片共2,904,881字节；预算仍为3,670,016字节，余765,135字节。原图未重编码，三节点244,922字节与重复背景200,391字节共减少445,313字节资源。
 - 双 BGM 实际时长均约 48.065 秒；calm 与 battle 均为 144,196 字节，合计 288,392 字节，低于 360 KiB 独立预算 80,248 字节。
 - 2026-09-15采用完整横竖触发/通关尾音后，21cue音效精灵为61,022字节；独立预算由48KiB调整为64KiB，余4,514字节，保持32kbps质量。4MiB总上限不变。
-- 按当前工作树排除 `cloudfunctions/`、`test/`、`tools/`、`levels/`、项目配置文件、README 和精确文件规则后，客户端静态文件未压缩估算为3,842,756字节（57个文件，包含THIRD_PARTY_NOTICES.txt），距离4MiB预算尚余351,548字节。2026-09-15失败换位反馈修复增加1,397字节代码，无新图片/音频资源。
+- 按当前工作树排除开发/服务端目录、项目配置文件、README和精确文件规则后，客户端静态文件估算3,732,736字节（64个文件，包含THIRD_PARTY_NOTICES.txt），距离4MiB预算尚余461,568字节（约451KiB）。相比清理前4,178,174字节减少445,438字节，包含映射代码净减125字节。没有改音频、游戏逻辑或引入新依赖。
 - 精确字节数和剩余预算由 `node test/package-budget.js` 输出；每次素材或运行时代码变更后以该测试结果覆盖本节快照。
 
 以上是文件系统静态估算，不等同于微信开发者工具最终生成的主包大小；`node test/package-budget.js` 会同时校验活跃素材预算、4 MiB 静态主包预算和忽略覆盖，最终包体仍以开发者工具“预览/上传”的包体积与包内容详情为准。

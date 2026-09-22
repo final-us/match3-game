@@ -6,9 +6,12 @@
  */
 
 const COIN_KEY = 'match3_coin_v1';
+const COIN_RECEIPT_HISTORY_KEY = 'match3_coin_receipts_v1';
+const COIN_PENDING_CREDIT_KEY = 'match3_coin_pending_credit_v1';
 const ITEM_KEY = 'match3_items_v1';
 const REWARDED_ITEM_KEY = 'match3_rewarded_items_v1';
 const REWARDED_ITEM_DAILY_LIMIT = 10;
+const STAMINA_PRICE = 1000;
 
 // 金币奖励配置（改这里调数值）
 const COIN_CONFIG = {
@@ -60,33 +63,163 @@ function getStore() {
 
 // ===== 金币 =====
 
+function hasStorage(store) {
+    return !!store && typeof store.getStorageSync === 'function' && typeof store.setStorageSync === 'function';
+}
+
+function readStorage(store, key) {
+    if (!hasStorage(store)) return { ok: false, reason: 'storage_unavailable' };
+    try {
+        return { ok: true, value: store.getStorageSync(key) };
+    } catch (error) {
+        return { ok: false, reason: 'storage_read_failed' };
+    }
+}
+
+function writeStorage(store, key, value) {
+    if (!hasStorage(store)) return { ok: false, reason: 'storage_unavailable' };
+    try {
+        store.setStorageSync(key, value);
+        return { ok: true };
+    } catch (error) {
+        return { ok: false, reason: 'storage_write_failed' };
+    }
+}
+
+function readCoinsRaw(store) {
+    const saved = readStorage(store, COIN_KEY);
+    if (!saved.ok) return saved;
+    return { ok: true, value: typeof saved.value === 'number' ? saved.value : 0 };
+}
+
+function readReceiptHistory(store) {
+    const saved = readStorage(store, COIN_RECEIPT_HISTORY_KEY);
+    if (!saved.ok) return saved;
+    // wx.getStorageSync returns an empty string for a missing key.
+    if (saved.value == null || saved.value === '') return { ok: true, value: [] };
+    if (!Array.isArray(saved.value) || saved.value.some(function (id) { return typeof id !== 'string'; })) {
+        return { ok: false, reason: 'receipt_history_invalid' };
+    }
+    return { ok: true, value: saved.value };
+}
+
+function isPendingCredit(value) {
+    return !!value && typeof value.receiptId === 'string' &&
+        Number.isSafeInteger(value.amount) && value.amount > 0 &&
+        Number.isSafeInteger(value.balanceBefore) && Number.isSafeInteger(value.balanceAfter) &&
+        value.balanceAfter === value.balanceBefore + value.amount;
+}
+
+function appendReceipt(history, receiptId) {
+    return history.concat(receiptId);
+}
+
+/**
+ * Finishes an interrupted receipt credit before any balance operation.
+ * The pending intent holds both old and new balances, so recovery can tell
+ * whether the balance write happened before a crash without granting twice.
+ */
+function recoverPendingCredit() {
+    const store = getStore();
+    const pendingSaved = readStorage(store, COIN_PENDING_CREDIT_KEY);
+    if (!pendingSaved.ok) return pendingSaved;
+    if (pendingSaved.value == null || pendingSaved.value === '') return { ok: true };
+    if (!isPendingCredit(pendingSaved.value)) return { ok: false, reason: 'pending_credit_invalid' };
+
+    const pending = pendingSaved.value;
+    const historySaved = readReceiptHistory(store);
+    if (!historySaved.ok) return historySaved;
+    const history = historySaved.value;
+
+    if (history.indexOf(pending.receiptId) === -1) {
+        const balanceSaved = readCoinsRaw(store);
+        if (!balanceSaved.ok) return balanceSaved;
+        if (balanceSaved.value === pending.balanceBefore) {
+            const balanceWrite = writeStorage(store, COIN_KEY, pending.balanceAfter);
+            if (!balanceWrite.ok) return balanceWrite;
+        } else if (balanceSaved.value !== pending.balanceAfter) {
+            return { ok: false, reason: 'pending_credit_conflict' };
+        }
+
+        const historyWrite = writeStorage(store, COIN_RECEIPT_HISTORY_KEY, appendReceipt(history, pending.receiptId));
+        if (!historyWrite.ok) return historyWrite;
+    }
+
+    return writeStorage(store, COIN_PENDING_CREDIT_KEY, null);
+}
+
 function getCoins() {
     const store = getStore();
-    let coins = 0;
-    if (store && store.getStorageSync) {
-        coins = store.getStorageSync(COIN_KEY) || 0;
-    }
-    return typeof coins === 'number' ? coins : 0;
+    if (!store || !store.getStorageSync) return 0;
+    const recovered = recoverPendingCredit();
+    if (!recovered.ok) return null;
+    const saved = readCoinsRaw(store);
+    return saved.ok ? saved.value : null;
 }
 
 function addCoins(n) {
-    const total = getCoins() + (n || 0);
     const store = getStore();
-    if (store && store.setStorageSync) {
-        store.setStorageSync(COIN_KEY, total);
-    }
-    return total;
+    if (!store || !store.getStorageSync) return null;
+    const recovered = recoverPendingCredit();
+    if (!recovered.ok) return null;
+    const saved = readCoinsRaw(store);
+    if (!saved.ok) return null;
+    const total = saved.value + (n || 0);
+    return writeStorage(store, COIN_KEY, total).ok ? total : null;
 }
 
 /** 花费金币（返回是否成功） */
 function spendCoins(n) {
-    const coins = getCoins();
-    if (coins < n) return false;
     const store = getStore();
-    if (store && store.setStorageSync) {
-        store.setStorageSync(COIN_KEY, coins - n);
+    if (!store || !store.getStorageSync) return false;
+    const recovered = recoverPendingCredit();
+    if (!recovered.ok) return false;
+    const saved = readCoinsRaw(store);
+    if (!saved.ok || saved.value < n) return false;
+    return writeStorage(store, COIN_KEY, saved.value - n).ok;
+}
+
+/**
+ * Credits one server-issued settlement receipt exactly once within the local
+ * persisted receipt history. Storage failures always surface as non-success;
+ * callers may retry the same receipt after the next wallet operation recovers.
+ */
+function creditOnce(receiptId, amount) {
+    if (typeof receiptId !== 'string' || !receiptId || receiptId.length > 160) {
+        return { ok: false, credited: false, reason: 'invalid_receipt' };
     }
-    return true;
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+        return { ok: false, credited: false, reason: 'invalid_amount' };
+    }
+
+    const store = getStore();
+    const recovered = recoverPendingCredit();
+    if (!recovered.ok) return { ok: false, credited: false, reason: recovered.reason };
+
+    const historySaved = readReceiptHistory(store);
+    if (!historySaved.ok) return { ok: false, credited: false, reason: historySaved.reason };
+    const balanceSaved = readCoinsRaw(store);
+    if (!balanceSaved.ok) return { ok: false, credited: false, reason: balanceSaved.reason };
+
+    if (historySaved.value.indexOf(receiptId) !== -1) {
+        return { ok: true, credited: false, balance: balanceSaved.value };
+    }
+    if (!Number.isSafeInteger(balanceSaved.value) || balanceSaved.value + amount > Number.MAX_SAFE_INTEGER) {
+        return { ok: false, credited: false, reason: 'invalid_balance' };
+    }
+
+    const pending = {
+        receiptId: receiptId,
+        amount: amount,
+        balanceBefore: balanceSaved.value,
+        balanceAfter: balanceSaved.value + amount
+    };
+    const pendingWrite = writeStorage(store, COIN_PENDING_CREDIT_KEY, pending);
+    if (!pendingWrite.ok) return { ok: false, credited: false, reason: pendingWrite.reason };
+
+    const completed = recoverPendingCredit();
+    if (!completed.ok) return { ok: false, credited: false, reason: completed.reason };
+    return { ok: true, credited: true, balance: pending.balanceAfter };
 }
 
 // ===== 道具 =====
@@ -177,11 +310,15 @@ module.exports = {
     COIN_CONFIG: COIN_CONFIG,
     STAR_CONFIG: STAR_CONFIG,
     ITEM_DEFS: ITEM_DEFS,
+    COIN_RECEIPT_HISTORY_KEY: COIN_RECEIPT_HISTORY_KEY,
+    COIN_PENDING_CREDIT_KEY: COIN_PENDING_CREDIT_KEY,
     REWARDED_ITEM_KEY: REWARDED_ITEM_KEY,
     REWARDED_ITEM_DAILY_LIMIT: REWARDED_ITEM_DAILY_LIMIT,
+    STAMINA_PRICE: STAMINA_PRICE,
     getCoins: getCoins,
     addCoins: addCoins,
     spendCoins: spendCoins,
+    creditOnce: creditOnce,
     getItems: getItems,
     addItem: addItem,
     useItem: useItem,

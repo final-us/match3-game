@@ -12,7 +12,18 @@ function fixture() {
     const clock = { now: 5000 };
     const requests = [];
     const notices = [];
+    const modals = [];
+    const receipts = new Set();
+    const wallet = { fail: false, balance: 0, addCoins(n) { this.balance += n; },
+        creditOnce(id, n) {
+            if (this.fail) return { ok: false };
+            if (!receipts.has(id)) { receipts.add(id); this.balance += n; }
+            return { ok: true };
+        } };
+    const wx = { showModal: function (options) { modals.push(options); },
+        showToast: function (options) { notices.push(options.title); } };
     const cloud = {
+        describeCreateFailure: require('../js/net/cloud-battle').describeCreateFailure,
         isValidRoomId: function (id) { return /^R[0-9a-z]{8,10}[0-9a-f]{10}$/.test(id); },
         call: function (action, data) {
             return new Promise(function (resolve, reject) { requests.push({ action, data, resolve, reject }); });
@@ -25,9 +36,10 @@ function fixture() {
         Date: Clock,
         setInterval: function () { return 1; },
         clearInterval: function () {},
-        wx: {},
+        wx: wx,
         require: function (name) {
             if (name === './net/cloud-battle') return cloud;
+            if (name === './core/coin') return wallet;
             if (name === './audio') return new Proxy({}, { get: function () { return function () {}; } });
             if (name === './core/analytics') return { track: function () {} };
             if (name === './core/runtime') return { applyReadyUpdate: function () { return false; } };
@@ -49,7 +61,7 @@ function fixture() {
         app.battleBoard = { onTouchStart: function () {}, onTouchMove: function () {}, onTouchEnd: function () {} };
         return b;
     }
-    return { app, clock, requests, notices, playing };
+    return { app, clock, requests, notices, modals, wx, playing, wallet };
 }
 
 (async function () {
@@ -57,6 +69,56 @@ function fixture() {
     const onUnhandled = function (error) { unhandled.push(error); };
     process.on('unhandledRejection', onUnhandled);
     try {
+        {
+            const f = fixture();
+            f.app.startBattle();
+            f.requests[0].reject({ errCode: -501000, errMsg: 'permission denied openid=PRIVATE' });
+            await flush();
+            assert.strictEqual(f.app.battle, null);
+            assert.strictEqual(f.app.battleCreating, false);
+            assert.strictEqual(f.app.state, 'menu');
+            assert.strictEqual(f.modals.length, 1);
+            assert(f.modals[0].content.includes('D1/CALL/-501000/PERMISSION'));
+            assert(!f.modals[0].content.includes('PRIVATE'));
+            assert.strictEqual(f.modals[0].showCancel, false);
+            f.modals[0].fail();
+            assert(f.notices[0].includes('D1/CALL/'));
+            f.app.startBattle();
+            f.requests[1].resolve({ ok: true, roomId: 'R12345678abcdef0123' });
+            await flush();
+            assert.strictEqual(f.app.state, 'battle_wait', '失败后仍可重试建房');
+            assert.strictEqual(f.modals.length, 1, '成功不弹诊断');
+        }
+        for (const result of [{ ok: false, err: '身份校验失败' }, { ok: false, err: '服务异常' }, {}]) {
+            const f = fixture();
+            f.app.startBattle(); f.requests[0].resolve(result);
+            await flush();
+            assert.strictEqual(f.modals.length, 1);
+            assert(f.modals[0].content.includes('D1/SERVER/'));
+            assert.strictEqual(f.app.battleCreating, false);
+        }
+        {
+            const f = fixture();
+            f.app.startBattle(); f.requests[0].resolve({ ok: false, err: '创建太频繁，请稍后再试' });
+            await flush();
+            assert.strictEqual(f.modals.length, 0, '限流保留原有提示');
+            assert.strictEqual(f.notices[0], '创建太频繁，请稍后再试');
+        }
+        {
+            const f = fixture();
+            f.wx.showModal = function () { throw new Error('modal unavailable'); };
+            f.app.startBattle(); f.requests[0].reject({ errCode: -1 });
+            await flush();
+            assert.strictEqual(f.notices.length, 1, '弹窗不可用时降级提示');
+            assert(f.notices[0].includes('D1/CALL/-1/'));
+        }
+        {
+            const f = fixture();
+            f.app.startBattle(); f.app.battleCancel();
+            f.requests[0].reject({ errCode: -1 });
+            await flush();
+            assert.strictEqual(f.modals.length, 0, '取消后迟到失败不弹窗');
+        }
         {
             const f = fixture();
             f.app.state = 'playing';
@@ -172,6 +234,80 @@ function fixture() {
             await flush();
             assert.strictEqual(f.app.battle, null, action + '取消后不得重新进入旧房间');
             assert.strictEqual(f.app.state, 'menu');
+        }
+        {
+            const f = fixture(); f.app.startBattle();
+            assert.strictEqual(f.requests[0].data.protocolVersion, 2);
+            f.requests[0].resolve({ok:true, roomId:'R12345678abcdef0123',protocolVersion:2,roundId:3});
+            await flush();
+            assert.strictEqual(f.app.battle.roundId,3);
+            f.app.battleReady();
+            assert.strictEqual(f.requests[1].data.roundId,3);
+            assert.strictEqual(f.requests[1].data.ready,true);
+        }
+        {
+            const f = fixture(), b = f.playing(); b.protocolVersion=2; b.roundId=1;
+            const finished = {ok:true,protocolVersion:2,roundId:1,status:'finished',myWins:1,oppWins:0,
+                opp:{nickname:'好友',score:900,online:true},canRematch:true,
+                result:{result:'win',myScore:1000,oppScore:900,roundId:1,settlementId:'stable-1',coinReward:150}};
+            f.app.applyPoll(finished); f.app.applyPoll(finished);
+            assert.strictEqual(f.wallet.balance,150,'重复结算不能重复入账');
+            assert.strictEqual(f.app.state,'battle_result');
+            f.app.pollRoom();
+            assert.strictEqual(f.requests.length,1,'v2结算继续轮询');
+            f.requests[0].resolve({...finished,oppRematch:true}); await flush();
+            assert.strictEqual(b.oppRematch,true);
+            f.app.battleAgain(); f.app.battleAgain();
+            assert.strictEqual(f.requests.length,2,'确认请求防重复');
+            assert.strictEqual(f.requests[1].data.accept,true);
+            f.requests[1].resolve({...finished,myRematch:true}); await flush();
+            f.app.battleAgain();
+            assert.strictEqual(f.requests[2].data.accept,false,'等待时可以取消');
+            f.requests[2].resolve({...finished,myRematch:false}); await flush();
+            b.frozenUntil=99999; b.disturbUntil=99999; b.inputClosed=true;
+            f.app.effectSeen=3; f.app.castSeen=2;
+            f.app.applyPoll({...finished,status:'waiting',roundId:2,result:null,myRematch:false,oppRematch:false,
+                myReady:false,myItems:{freeze:1,disturb:2},effects:[],casts:[]});
+            const next=f.app.battle;
+            assert.notStrictEqual(next,b,'新局换对象，隔离旧回调');
+            assert.strictEqual(next.roundId,2); assert.strictEqual(next.myWins,1);
+            assert.strictEqual(next.myScore,0); assert.strictEqual(next.frozenUntil,0);
+            assert.strictEqual(next.disturbUntil,0); assert.strictEqual(next.inputClosed,false);
+            assert.strictEqual(f.app.battleCore,null); assert.strictEqual(f.app.effectSeen,0);
+            f.app.applyPoll(finished);
+            assert.strictEqual(f.app.state,'battle_wait','旧局结果不得覆盖新局');
+            assert.strictEqual(f.wallet.balance,150);
+        }
+        {
+            const f=fixture(),b=f.playing(); b.protocolVersion=2;
+            f.app.battleUseItem('freeze');
+            assert.strictEqual(f.requests[0].data.roundId,1);
+            f.app.applyPoll({ok:true,protocolVersion:2,roundId:2,status:'waiting',myWins:1,oppWins:0});
+            f.requests[0].resolve({ok:true,items:{freeze:0,disturb:0},activeEffectUntil:99999});
+            await flush();
+            assert.strictEqual(f.app.battle.items.freeze,1,'迟到道具回调不得污染第二局');
+            assert.strictEqual(f.app.battle.activeEffectUntil,0);
+        }
+        {
+            const f=fixture(),b=f.playing(); b.protocolVersion=2; f.wallet.fail=true;
+            f.app.applyPoll({ok:true,protocolVersion:2,roundId:1,status:'finished',myWins:1,oppWins:0,
+                result:{result:'win',myScore:1000,oppScore:900,roundId:1,settlementId:'storage-1',coinReward:150}});
+            assert.strictEqual(b.rewardPending,true); assert.strictEqual(b.coinReward,0);
+            f.app.battleBackToMenu(); assert.strictEqual(f.app.state,'battle_result','奖励保存失败不默默丢失');
+            f.app.battleCancel(); assert.strictEqual(f.app.battle,b,'所有退出路径保留未持久化凭证');
+            assert.strictEqual(f.requests.length,0);
+            f.wallet.fail=false; assert.strictEqual(f.app.creditBattleReward(),true);
+            assert.strictEqual(b.rewardPending,false); assert.strictEqual(f.wallet.balance,150);
+            f.app.creditBattleReward(); assert.strictEqual(f.wallet.balance,150);
+            f.app.pollRoom(); f.requests[0].reject(new Error('offline')); await flush();
+            assert.strictEqual(b.offline,true);
+            f.app.battleAgain(); assert.strictEqual(f.requests[1].action,'query','离线先同步，不猜确认状态');
+            f.requests[1].resolve({ok:false,err:'续局已失效'}); await flush();
+            assert.strictEqual(b.expired,true); assert.strictEqual(f.app.state,'battle_result','过期保留本局结果');
+            f.app.battleAgain();
+            assert.strictEqual(f.requests[2].action,'leave');
+            assert.strictEqual(f.requests[2].data.roundId,1);
+            assert.strictEqual(f.requests[3].action,'create','失效房间可重新邀请');
         }
         assert.strictEqual(unhandled.length, 0, '网络失败不得产生未处理拒绝');
         console.log('battle client lifecycle tests passed');

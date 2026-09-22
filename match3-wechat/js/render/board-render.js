@@ -600,6 +600,7 @@ class BoardRenderer {
 
         const goals = this.core.level.goals || [];
         const goalText = [];
+        const collectGoal = goals.find(function (goal) { return goal.type === 'collect'; });
         for (let i = 0; i < goals.length; i++) {
             if (goals[i].type === 'jelly') goalText.push('果冻剩余 ' + this.core.getJellyLeft());
             if (goals[i].type === 'score') goalText.push('目标分 ' + goals[i].target);
@@ -611,14 +612,33 @@ class BoardRenderer {
         const goalH = 50;
         moon.panel(ctx,this.screen,goalX,goalY,goalW,goalH);
 
+        function drawGoals(x, width) {
+            if (!collectGoal) {
+                typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', x + width / 2, goalY + goalH / 2, width, {
+                    size: 15, minSize: 9, weight: 'bold', align: 'center', numbers: true
+                });
+                return;
+            }
+            const counts = self.core.collectedCounts || {};
+            const remaining = Math.max(0, collectGoal.target - (counts[collectGoal.pieceType] || 0));
+            const firstY = goalY + (goalText.length ? 14 : goalH / 2);
+            drawImageContain(ctx, assets.get('piece' + collectGoal.pieceType), x + 2, firstY - 13, 26, 26);
+            typography.drawFit(ctx, remaining ? '还需 ' + remaining + ' 只' : '收集完成', x + 34, firstY, width - 36, {
+                size: 14, minSize: 11, weight: 'bold', numbers: true
+            });
+            if (goalText.length) {
+                typography.drawFit(ctx, goalText.join(' · '), x + 2, goalY + 36, width - 4, {
+                    size: 12, minSize: 10, numbers: true
+                });
+            }
+        }
+
         if (timed) {
             const warning = Number(this.core.timeLeftMs) <= 10000;
             const timerW = Math.min(124, Math.max(112, goalW * 0.34));
             const timerX = goalX + goalW - timerW;
             ctx.fillStyle = THEME.textScene;
-            typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', goalX + 10, goalY + goalH / 2, goalW - timerW - 18, {
-                size: 15, minSize: 9, weight: 'bold', align: 'left', numbers: true
-            });
+            drawGoals(goalX + 10, goalW - timerW - 18);
             ctx.fillStyle = warning ? '#A92D52' : THEME.textScene;
             typography.drawFit(ctx, '时间', timerX + timerW / 2, goalY + 15, timerW - 8, {
                 size: 12, minSize: 8, weight: 'bold', align: 'center'
@@ -628,9 +648,7 @@ class BoardRenderer {
             });
         } else {
             ctx.fillStyle = THEME.textScene;
-            typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', goalX + goalW / 2, goalY + goalH / 2, goalW - 16, {
-                size: 15, minSize: 9, weight: 'bold', align: 'center', numbers: true
-            });
+            drawGoals(goalX + 8, goalW - 16);
         }
     }
 

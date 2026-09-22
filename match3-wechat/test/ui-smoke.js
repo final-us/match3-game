@@ -93,7 +93,7 @@ assert('原稿首页层级与短屏触控', function () {
         const s={width,height,safeTop:24,safeBottom:20};
         drawnImages.length = 0;
         const b=UI.drawMenu(ctx,s,5,{count:5,timeLeftText:'12:34',canPlay:true},{coins:1000});
-        for (const [key, src] of [['battle','res/home/duel-heads.png'],['shop','res/ui/shop.png'],['settings','res/ui/settings.png']]) {
+        for (const [key, src] of [['shop','res/ui/shop.png'],['settings','res/ui/settings.png']]) {
             const image = imageRecords(src)[0];
             if (!image) throw new Error('缺少精修按钮图标 ' + key);
             const [,ix,iy,iw,ih] = image.args;
@@ -101,6 +101,10 @@ assert('原稿首页层级与短屏触控', function () {
             if (ix < target.x || iy < target.y || ix + iw > target.x + target.w || iy + ih > target.y + target.h) throw new Error('图标溢出按钮 ' + key);
         }
         if(b.start.w>=b.battle.w) throw new Error('副入口宽度不得压过主入口');
+        for(const [key,label] of [['battle','好友对战'],['start','单人闯关']]) {
+            const labelDraw=drawnText.filter(item=>item.text===label).pop(),target=b[key];
+            if(!labelDraw||labelDraw.align!=='center'||Math.abs(labelDraw.x-(target.x+target.w/2))>.01||Math.abs(labelDraw.y-(target.y+target.h/2))>.01) throw new Error('按钮文字未完整居中 '+key);
+        }
         for(const key of ['battle','start','shop','settings']) {
             const r=b[key];
             if(r.w<44||r.h<44||r.x<0||r.x+r.w>width||r.y<0||r.y+r.h>height) throw new Error('触控范围异常 '+key);
@@ -118,26 +122,54 @@ assert('商店页', function () {
     drawnText.length = 0;
     drawnImages.length = 0;
     const shopButtons = UI.drawShop(ctx, screen, 999999999, { hammer: 9999, bomb: 0, color: 2 }, {
-        canReward: true, count: 3, limit: 10, pending: false
+        canReward: true, count: 3, limit: 10, pending: false, heartCount: 2, heartMax: 5
     });
     const coinImages = imageRecords('res/ui/coin.png');
-    ['900', '1300', '1100'].forEach(function (price, index) {
+    ['900', '1300', '1100', '1000'].forEach(function (price, index) {
         const priceText = drawnText.find(function (item) { return item.text === price; });
         const priceIcon = coinImages[index + 1];
         if (!priceText || !priceIcon || priceText.align !== 'left' || priceText.x <= priceIcon.args[1] + priceIcon.args[3]) {
             throw new Error('商店价格未与金币图标分离 ' + price);
         }
     });
-    if (!shopButtons.reward_hammer || !shopButtons.reward_bomb || !shopButtons.reward_color) {
-        throw new Error('真实广告可用时缺少三种道具领取入口');
+    if (!shopButtons.reward_hammer || !shopButtons.reward_bomb || !shopButtons.reward_color || !shopButtons.reward_heart) {
+        throw new Error('真实广告可用时缺少商品领取入口');
     }
+    if (!shopButtons.buy_heart) throw new Error('商店缺少1000金币体力商品');
     const hidden = UI.drawShop(ctx, screen, 0, { hammer: 0, bomb: 0, color: 0 }, { canReward: false });
-    if (hidden.reward_hammer || hidden.reward_bomb || hidden.reward_color) throw new Error('广告不可用时仍显示领取入口');
+    if (hidden.reward_hammer || hidden.reward_bomb || hidden.reward_color || hidden.reward_heart) {
+        throw new Error('广告不可用时仍显示领取入口');
+    }
+    drawnText.length = 0;
+    UI.drawShop(ctx, screen, 1000, { hammer: 0, bomb: 0, color: 0 }, {
+        canReward: true, count: 10, limit: 10, heartCount: 5, heartMax: 5
+    });
+    if (!textValues().includes('已满')) throw new Error('体力已满时广告入口未禁用');
 });
 assert('设置页（音乐/音效/隐私）', function () {
     const buttons = UI.drawSettings(ctx, screen, { musicEnabled: true, sfxEnabled: false });
     if (!buttons.music || !buttons.sfx || !buttons.privacy || !buttons.back) throw new Error('设置按钮不完整');
     UI.drawSettings(ctx, screen, { musicEnabled: false, sfxEnabled: true });
+});
+assert('体力耗尽提醒', function () {
+    for (const dimensions of [[320,568],[375,812],[430,932]]) {
+        const s = { width: dimensions[0], height: dimensions[1], safeTop: 24, safeBottom: 20, contentTop: 72 };
+        drawnText.length = 0;
+        const shown = UI.drawStaminaEmpty(ctx, s, { timeLeftText: '12:34', canBuy: true, canAd: true });
+        if (!shown.buy || !shown.ad || !shown.close) throw new Error('双补充入口或关闭入口缺失');
+        if (!textValues().includes('体力耗尽') || !textValues().includes('广告 · +1')) {
+            throw new Error('提醒文案缺失');
+        }
+        Object.keys(shown).forEach(function (key) {
+            const button = shown[key];
+            if (button.w < 44 || button.h < 44 || button.x < 0 || button.y < s.safeTop ||
+                button.x + button.w > s.width || button.y + button.h > s.height - s.safeBottom) {
+                throw new Error('提醒触控溢出 ' + key);
+            }
+        });
+        const hidden = UI.drawStaminaEmpty(ctx, s, { timeLeftText: '12:34', canBuy: false, canAd: false });
+        if (hidden.ad) throw new Error('广告不可用时仍显示补体力入口');
+    }
 });
 assert('设置页（320×568 不溢出）', function () {
     const small = { width: 320, height: 568, safeTop: 0, safeBottom: 0, reduceEffects: false };
@@ -161,7 +193,7 @@ assert('B商店与设置：三档状态、触控与独立开关', function () {
             if (!textValues().includes('金币不足')) throw new Error('未显示金币不足原因');
             if (options.pending && !textValues().includes('领取中')) throw new Error('未显示领取中');
             if (options.count===10 && !textValues().includes('今日已满')) throw new Error('未显示领取上限');
-            for (const type of ['hammer','bomb','color']) {
+            for (const type of ['hammer','bomb','color','heart']) {
                 const a=b['buy_'+type],r=b['reward_'+type];
                 if (r && a.x+a.w>=r.x) throw new Error('购买与领取命中范围重叠');
             }
@@ -407,6 +439,27 @@ assert('B对战准备/结算状态：安全区、44px控件、互不交叠', fun
             const hint=drawnText.find(t=>t.text.startsWith('双方准备后'));
             if(hint.y+7>buttons.ready.y) throw new Error('短屏提示压住准备按钮');
         }
+        for (const [state, text] of [
+            [{actionPending:true,pendingAction:'items'}, '正在保存道具配置…'],
+            [{actionPending:true,pendingAction:'ready'}, '正在同步准备状态…'],
+            [{offline:true}, '状态尚未确认，请点击重试连接'],
+            [{offline:true,pollPending:true}, '正在重连并核对房间状态…']
+        ]) {
+            drawnText.length=0;
+            const buttons=BattleUI.drawWait(ctx,s,{roomId:'room',items:{freeze:1,disturb:2},canChangeAvatar:false,...state});
+            check(buttons);
+            if(buttons.freezePlus||buttons.disturbMinus||!buttons.cancel||!buttons.ready) throw new Error('待确认时道具应禁用、退出和重连应保留');
+            if(!textValues().includes(text)) throw new Error('缺失具体同步状态');
+            if(textValues().some(t=>t.includes('点头像'))) throw new Error('不可用头像仍显示更换提示');
+        }
+        for(const state of [{},{myRematch:true},{oppRematch:true},{oppLeft:true},{expired:true},{offline:true},{rewardPending:true},{actionPending:true}]) {
+            drawnText.length=0;
+            const buttons=BattleUI.drawResult(ctx,s,{protocolVersion:2,roundNumber:2,myWins:1,oppWins:0,oppOnline:true,result:'win',myScore:4000,oppScore:3200,coinReward:150,...state});
+            check(buttons);
+            if(!textValues().some(t=>t.includes('第 2 局')&&t.includes('1 : 0'))) throw new Error('续局局次与战绩缺失');
+            if(state.rewardPending&&(!buttons.reward||textValues().some(t=>t.includes('奖励 +150')))) throw new Error('未入账不得声称领奖');
+            if(state.myRematch&&!textValues().includes('取消等待')) throw new Error('等待无法取消');
+        }
         for(const result of ['win','draw','lose']) {
             drawnText.length=0;drawnImages.length=0;
             check(BattleUI.drawResult(ctx,s,{result,myScore:999999999,oppScore:888888888,coinReward:result==='lose'?0:150}));
@@ -436,12 +489,39 @@ assert('B对战HUD：提示不遮棋盘，冷却/生效/耗尽可辨', function 
     }
 });
 
+assert('每日详情样板：三档状态、安全区与首页入口', function () {
+    const DailyUI=require('../js/render/daily-ui');
+    const challenge=require('../js/core/daily-challenge').challengeForDate('2026-09-22');
+    const overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+    for(const [width,height] of [[320,568],[375,812],[430,932]]) {
+        const s={width,height,contentTop:91,safeTop:47,safeBottom:34};
+        for(const state of [{},{loading:true},{error:'网络未连接，请重试'},{starting:true},{claimed:true,best:2130},{completed:true,best:1500},{active:{runId:'same'}},{pending:true}]) {
+            drawnText.length=0;
+            const buttons=DailyUI.drawDetail(ctx,s,{challenge,...state});
+            for(const b of Object.values(buttons)) if(b.w<44||b.h<44||b.y<91||b.y+b.h>height-34) throw new Error('每日控件不满足安全区');
+            if(buttons.start&&overlap(buttons.start,buttons.back)) throw new Error('每日控件重叠');
+            if((state.loading||state.starting||state.completed||state.claimed)&&buttons.start) throw new Error('加载中可重复开局');
+            if(!textValues().includes('25步内达到2000分')||!textValues().includes('每日一局 · 不耗体力 · 不限时')) throw new Error('每日规则缺失');
+            if(buttons.start) {
+                const label=drawnText.find(t=>['开始挑战','继续挑战','确认成绩','重试'].includes(t.text));
+                if(!label||Math.abs(label.x-(buttons.start.x+buttons.start.w/2))>1||Math.abs(label.y-(buttons.start.y+buttons.start.h/2))>1) throw new Error('每日按钮文字未居中');
+                if(buttons.start.y+buttons.start.h>height-s.safeBottom-24) throw new Error('每日按钮底部留白不足');
+            }
+        }
+        const b=UI.drawMenu(ctx,s,42,{count:5,canPlay:true,timeLeftText:'00:00'},{coins:100});
+        if(b.daily.h<44||overlap(b.daily,b.shop)||overlap(b.daily,b.settings)||overlap(b.daily,b.start)) throw new Error('每日入口挤占原入口');
+        if(b.daily.w>=b.battle.w||b.daily.h>=b.battle.h) throw new Error('每日入口压过PvP');
+    }
+});
 assert('正式视觉资源全部指向运行时素材', function () {
-    if (assets.ASSETS.gameBackground !== 'res/game-background-v2.jpg') throw new Error('游戏背景未切换');
+    if (assets.ASSETS.gameBackground !== 'res/home/moonlit-garden-bg.jpg') throw new Error('游戏背景未复用首页文件');
+    if (!assets.isReady() || assets.get('gameBackground').src !== assets.get('homeBackground').src) {
+        throw new Error('共用背景加载未就绪');
+    }
     if (assets.ASSETS.levelBackground !== 'res/level-background-v2.jpg') throw new Error('关卡背景未切换');
     ['Current', 'Done', 'Locked'].forEach(function (state) {
-        if (assets.ASSETS['levelNode' + state] !== 'res/ui/level-node-' + state.toLowerCase() + '-v2.png') {
-            throw new Error('关卡节点素材未切换: ' + state);
+        if (assets.ASSETS['levelNode' + state] !== undefined) {
+            throw new Error('原生关卡节点不应加载旧图片: ' + state);
         }
     });
     for (let i = 1; i <= 5; i++) {

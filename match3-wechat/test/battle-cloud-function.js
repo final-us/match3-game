@@ -57,8 +57,9 @@ const database = {
         lt: function (value) { return { lt: value }; }
     },
     collection: function (name) {
-        assert.strictEqual(name, 'battle_rooms');
-        return rooms;
+        if (name === 'battle_rooms') return rooms;
+        assert(name === 'daily_runs' || name === 'daily_progress');
+        return { where: function () { return { remove: function () { return Promise.resolve({ stats: { removed: 0 } }); } }; } };
     },
     runTransaction: function (handler) {
         transactionCalls++;

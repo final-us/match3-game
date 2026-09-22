@@ -7,7 +7,9 @@ const GUIDE_KEYS = Object.freeze({
     SPECIAL: 'special_piece',
     OBSTACLE: 'obstacle',
     SOLO_ITEM: 'solo_item',
-    PVP_WAIT: 'pvp_wait'
+    PVP_WAIT: 'pvp_wait',
+    COLLECT: 'collect_cats',
+    SPECIAL_COMBO: 'special_combo'
 });
 const KNOWN_KEYS = Object.keys(GUIDE_KEYS).map(function (name) { return GUIDE_KEYS[name]; });
 

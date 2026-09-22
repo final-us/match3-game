@@ -15,11 +15,15 @@ const config = require('./core/config');
 const runtime = require('./core/runtime');
 const analytics = require('./core/analytics');
 const onboarding = require('./core/onboarding');
+const strategyFeedback = require('./core/strategy-feedback');
 const assets = require('./render/assets');
 const cloudBattle = require('./net/cloud-battle');
 const BattleUI = require('./render/battle-ui');
 const OnboardingUI = require('./render/onboarding');
 const userProfile = require('./platform/user-profile');
+const dailyEngine = require('./core/daily-challenge');
+const dailyProgress = require('./core/daily-progress');
+const DailyUI = require('./render/daily-ui');
 
 // 存档 key
 const STORAGE_KEY = 'match3_progress_infinite_v1';
@@ -42,6 +46,8 @@ const BATTLE_CREATE_RATE_LIMIT_MESSAGE = '创建太频繁，请稍后再试';
 const SOLO_REVIVE_TIME_MS = 30000;
 const BATTLE_ITEM_ALLOWLIST = ['freeze', 'disturb'];
 const BATTLE_ITEM_BUDGET = 3;
+const BATTLE_WAIT_REQUEST = { timeoutMs: 8000 };
+const DAILY_REQUEST = { timeoutMs: 12000 };
 
 function soloAssistanceFor(failureCount) {
     if (failureCount >= 4) return { moves: 5, timeMs: 35000, text: '+5步 · +35秒' };
@@ -146,6 +152,9 @@ class Main {
         this.resultButtons = null;
         this.shopButtons = null;
         this.shopRewardPending = false;
+        this.staminaDialog = false;
+        this.staminaDialogButtons = null;
+        this.heartAdPending = false;
         this.levelSelectButtons = null;
         this.levelMapOffset = 0;
         this.levelMapTouch = null;
@@ -154,6 +163,7 @@ class Main {
         this.privacyButtons = null;
         this.privacyOffset = 0;
         this.privacyTouch = null;
+        this.privacyRequest = null;
         this.resultLeaving = false;
         this.soloFailureRecorded = false;
         this.soloCompletionTracked = false;
@@ -195,6 +205,10 @@ class Main {
             wx.onShareAppMessage(function () {
                 return { title: '快来和我一起玩' + config.GAME_CONFIG.title + '！' };
             });
+        }
+        // 注册分享文案不会启用菜单，需要显式打开“发送给朋友”。
+        if (typeof wx.showShareMenu === 'function') {
+            wx.showShareMenu({ menus: ['shareAppMessage'] });
         }
 
         // 主循环
@@ -238,18 +252,42 @@ class Main {
         return true;
     }
 
-    /** 开始一局（消耗 1 体力） */
+    guideContext() {
+        if (!this.guide || !this.core || !this.board || this.state !== 'playing') return null;
+        const key = this.guide.key;
+        const cells = key === onboarding.GUIDE_KEYS.COLLECT ? strategyFeedback.collectCells(this.core) :
+            (key === onboarding.GUIDE_KEYS.SPECIAL_COMBO ? strategyFeedback.specialPair(this.core) : []);
+        return {
+            spots: cells.map((cell) => {
+                const center = this.board.pieceCenter(cell.row, cell.column);
+                return { x: center.x, y: center.y, size: this.board.tileSize };
+            }),
+            goal: strategyFeedback.collectGoal(this.core.level)
+        };
+    }
+
+    /** 开始一局（预扣1点，通关返还；失败/退出不返还） */
     startGame(levelId) {
         const level = levelData.getLevel(levelId);
         if (!level) return;
 
         // 消耗体力（不足则不进入）
-        if (!heart.consumeHeart()) return;
+        if (!heart.consumeHeart(true)) {
+            this.showStaminaDialog();
+            return;
+        }
+
+        if (strategyFeedback.syncContentRevision(this.progress, level)) {
+            wx.setStorageSync(STORAGE_KEY, this.progress);
+        }
+        this.guide = null;
+        this.guideQueue = [];
 
         this.resultLeaving = false;
         this.soloFailureRecorded = false;
         this.soloCompletionTracked = false;
         this.soloReviveCount = 0;
+        this.soloPendingResult = null;
         this.soloRunStartedAt = Date.now();
         analytics.track('solo_start', { level: level.id });
 
@@ -298,6 +336,7 @@ class Main {
         };
         this.state = 'playing';
         this.showGuide(onboarding.GUIDE_KEYS.SOLO);
+        if (strategyFeedback.collectGoal(level)) this.showGuide(onboarding.GUIDE_KEYS.COLLECT);
         if (Object.keys(level.underlays || {}).length || Object.keys(level.obstacles || {}).length) {
             this.showGuide(onboarding.GUIDE_KEYS.OBSTACLE);
         }
@@ -307,6 +346,8 @@ class Main {
     }
 
     backToMenu() {
+        this.guide = null;
+        this.guideQueue = [];
         this.state = 'menu';
         this.core = null;
         this.board = null;
@@ -315,21 +356,40 @@ class Main {
 
     handleLevelEnd(result) {
         if (this.soloCompletionTracked) return;
-        this.soloCompletionTracked = true;
-        // 结算音效（胜利上行音 / 失败下行音）
+        // 旧存档的已解锁前置关和有星关都视为已通关，内容升级不重发金币。
+        const firstClear = result.win && !(this.progress.stars && this.progress.stars[this.core.level.id] > 0) &&
+            this.core.level.id >= this.progress.unlockedLevel;
+        let firstReward = 0;
         if (result.win) {
-            AudioFX.win();
-        } else {
-            AudioFX.lose();
+            try {
+                heart.refundConsumedHeart();
+                if (firstClear) {
+                    const amount = coin.calcWinCoins(result.movesLeft, coin.calcStars(result.movesLeft, this.core.level.moveCount));
+                    const credit = coin.creditOnce('solo:first:' + this.core.level.id, amount);
+                    if (!credit.ok) throw new Error('solo_reward_storage');
+                    firstReward = credit.credited ? amount : 0;
+                }
+            } catch (e) {
+                this.soloPendingResult = result;
+                this.result = { win: true, score: result.score, coinReward: 0, star: 0, rewardPending: true };
+                this.state = 'result'; this.guide = null; this.guideQueue = [];
+                return;
+            }
         }
+        try {
+            // 结算音效（胜利上行音 / 失败下行音）
+            if (result.win) {
+                AudioFX.win();
+            } else {
+                AudioFX.lose();
+            }
 
         // 胜利：评星 + 发放金币（基础 + 步数奖励 + 星级加成）+ 解锁下一关
         let coinReward = 0;
         let star = 0;
         if (result.win) {
             star = coin.calcStars(result.movesLeft, this.core.level.moveCount);
-            coinReward = coin.calcWinCoins(result.movesLeft, star);
-            coin.addCoins(coinReward);
+            coinReward = firstReward;
 
             // 存档最高星级
             if (!this.progress.stars) this.progress.stars = {};
@@ -367,6 +427,8 @@ class Main {
             hasNext: true,
             coinReward: coinReward,
             star: star,
+            maxCascade: this.core.maxCascade || 0,
+            specialComboCount: this.core.specialComboCount || 0,
             // 只要激励视频可用，失败后可重复观看广告复活
             canRevive: !result.win && ad.isRewardedAvailable()
         };
@@ -380,7 +442,21 @@ class Main {
             reviveCount: this.soloReviveCount
         });
 
-        this.state = 'result';
+            this.soloPendingResult = null;
+            this.soloCompletionTracked = true;
+            this.state = 'result';
+            this.guide = null;
+            this.guideQueue = [];
+        } catch (e) {
+            // Progress writes are part of settlement. Keep the result retryable if
+            // storage fails after the wallet/heart receipt has already committed.
+            this.soloCompletionTracked = false;
+            this.soloPendingResult = result;
+            this.result = { win: !!result.win, score: result.score, coinReward: 0, star: 0, rewardPending: true };
+            this.state = 'result';
+            this.guide = null;
+            this.guideQueue = [];
+        }
     }
 
     /** 购买道具 */
@@ -393,6 +469,27 @@ class Main {
         } else {
             AudioFX.invalid(); // 金币不足
         }
+    }
+
+    showStaminaDialog() {
+        this.staminaDialog = true;
+        this.staminaDialogButtons = null;
+    }
+
+    closeStaminaDialog() {
+        this.staminaDialog = false;
+        this.staminaDialogButtons = null;
+    }
+
+    buyHeart() {
+        const state = heart.getHeartState();
+        if (state.count >= heart.HEART_CONFIG.maxHeart || !coin.spendCoins(coin.STAMINA_PRICE)) {
+            AudioFX.invalid();
+            return;
+        }
+        heart.addHeart(1);
+        AudioFX.reward();
+        this.closeStaminaDialog();
     }
 
     /** 商店真实激励视频领取：禁止 debug mock，三种道具共享本地自然日上限。 */
@@ -443,21 +540,39 @@ class Main {
         });
     }
 
-    /** 看广告补体力（30 分钟冷却限频） */
-    handleAddHeart() {
-        if (!heart.canAdHeart()) {
-            AudioFX.invalid(); // 冷却中
-            return;
+    /** 看广告补体力（无冷却、无次数上限） */
+    handleAddHeart(source) {
+        if (this.heartAdPending) return Promise.resolve(false);
+        if (heart.getHeartState().count >= heart.HEART_CONFIG.maxHeart) {
+            AudioFX.invalid();
+            return Promise.resolve(false);
         }
+        this.heartAdPending = true;
         const self = this;
-        ad.showRewarded('heart_refill').then(function (completed) {
+        return ad.showRewarded('heart_refill').then(function (completed) {
             if (completed) {
-                heart.markAdHeart();
                 heart.addHeart(1);
                 ad.markRewardGranted('heart_refill');
                 AudioFX.reward();
+                if (source === 'dialog') self.closeStaminaDialog();
             }
+            self.heartAdPending = false;
+        }).catch(function () {
+            self.heartAdPending = false;
         });
+    }
+
+    handleStaminaDialogTouch(x, y) {
+        if (!this.staminaDialog) return false;
+        const buttons = this.staminaDialogButtons;
+        if (!buttons) return true;
+        if (UI.hitTest(x, y, buttons.buy)) this.buyHeart();
+        else if (buttons.ad && UI.hitTest(x, y, buttons.ad)) this.handleAddHeart('dialog');
+        else if (UI.hitTest(x, y, buttons.close)) {
+            AudioFX.click();
+            this.closeStaminaDialog();
+        }
+        return true;
     }
 
     /** 看广告复活（+步数继续玩） */
@@ -489,6 +604,226 @@ class Main {
         ad.onSoloResultExit().then(finish).catch(finish);
     }
 
+    // ===== 每日挑战：详情样板与真实固定棋盘 =====
+    openDaily() {
+        this.state = 'daily_detail';
+        this.dailyButtons = null;
+        if (!this.daily || !this.daily.unsaved) this.daily = { challenge: null, loading: false, starting: false, error: '', pending: false };
+        if (this.daily.unsaved) { this.daily.error = '成绩暂未保存，请点击重试'; return; }
+        this.loadDailyInfo();
+    }
+
+    loadDailyInfo() {
+        const d = this.daily;
+        if (!d || d.loading || d.starting) return;
+        const saved = dailyProgress.read();
+        d.error = ''; d.pending = saved.ok && !!saved.pending;
+        d.active = saved.ok && saved.active;
+        if (!saved.ok) { d.error = '记录暂时无法读取，请重试'; return; }
+        d.loading = true;
+        cloudBattle.call('dailyInfo', {}, DAILY_REQUEST).then(res => {
+            if (this.daily !== d) return;
+            d.loading = false;
+            if (!res || !res.ok) { d.error = cloudBattle.describeDailyFailure(res, true); return; }
+            if (!(res.runId || res.claimed ? dailyEngine.isRecordedChallenge(res.challenge) : dailyEngine.isChallenge(res.challenge))) {
+                d.error = '挑战内容暂时不匹配，请稍后重试'; return;
+            }
+            d.challenge = res.challenge;
+            if (res.claimed) {
+                const credit = dailyProgress.rememberReceipt(res.challenge.date, res.settlementId, res.coinReward);
+                if (!credit.ok) { d.error = '奖励暂未保存，请重试'; return; }
+            }
+            const local = dailyProgress.read();
+            if (!local.ok) { d.error = '记录暂时无法读取，请重试'; return; }
+            d.best = Math.max(local.best[d.challenge.date] || 0, Number(res.score) || 0);
+            d.completed = !!res.completed || !!res.claimed;
+            d.attempted = !!res.attempted;
+            d.refreshDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+            if (local.active && res.completed && local.active.runId === res.runId) {
+                if (!dailyProgress.discardActive(local.active.runId).ok) { d.error = '进度暂未保存，请重试'; return; }
+                d.active = null;
+            } else d.active = local.active;
+            d.claimed = !!local.claimed[d.challenge.date];
+            d.pending = !!local.pending;
+        }).catch(error => {
+            if (this.daily !== d) return;
+            d.loading = false; d.error = cloudBattle.describeDailyFailure(error, false);
+        });
+    }
+
+    dailyPrimary() {
+        const d = this.daily;
+        if (!d || d.loading || d.starting) return;
+        if (d.activeUnavailable && d.active) {
+            wx.showModal({title:'清除过期进度？',content:'这局已过期，无法继续。清除后可查询今日挑战。',confirmText:'清除记录',success:res=>{
+                if (!res.confirm || this.daily !== d) return;
+                if (!dailyProgress.discardActive(d.active.runId).ok) { d.error = '记录暂时无法保存，请重试'; return; }
+                d.activeUnavailable = false; d.active = null; this.loadDailyInfo();
+            }});
+            return;
+        }
+        if (d.pendingUnavailable) {
+            if (typeof wx.showModal !== 'function') { this.showBattleNotice('上次记录已过期，请重新打开小游戏后处理'); return; }
+            const pending = dailyProgress.read().pending;
+            if (!pending) { d.pendingUnavailable = false; this.loadDailyInfo(); return; }
+            wx.showModal({title:'清除已过期成绩？',content:'这次成绩已超出领取期限，无法领取奖励。清除后可开始今日挑战。',confirmText:'清除记录',success:res=>{
+                if (!res.confirm || this.daily !== d) return;
+                if (!dailyProgress.discardPending(pending.runId).ok) { d.error='记录暂时无法保存，请重试'; return; }
+                d.pendingUnavailable=false; d.pending=false; this.loadDailyInfo();
+            }});
+            return;
+        }
+        if (d.unsaved || d.pending) { this.retryDailyResult(); return; }
+        if (d.error || !d.challenge) { this.loadDailyInfo(); return; }
+        if (d.completed && !d.active) return;
+        this.startDailyRun();
+    }
+
+    async startDailyRun() {
+        const d = this.daily;
+        d.starting = true;
+        try {
+            const res = await cloudBattle.call('dailyStart', d.active ? {runId:d.active.runId} : {}, DAILY_REQUEST);
+            if (this.daily !== d || this.state !== 'daily_detail') return;
+            if (!res || !res.ok) {
+                if (res && (res.err === '今日挑战已完成' || res.err === '挑战已完成')) {
+                    // A stale local run can finish on another device or after midnight. Clear only
+                    // the local pointer, then re-read the server's current-date state.
+                    if (d.active && dailyProgress.discardActive(d.active.runId).ok) d.active = null;
+                    d.completed = res.err === '今日挑战已完成';
+                    this.loadDailyInfoAfterStart(d); return;
+                }
+                d.activeUnavailable = !!d.active && res && (res.err === '挑战已过期' || res.err === '挑战记录不存在');
+                d.error = d.activeUnavailable ? '上次进度已过期，点击处理' : cloudBattle.describeDailyFailure(res, true);
+                return;
+            }
+            if (!res.runId || !dailyEngine.isRecordedChallenge(res.challenge) || !Array.isArray(res.moves)) {
+                d.error = '挑战内容暂时不匹配，请稍后重试'; return;
+            }
+            let moves = res.moves;
+            const saved = dailyProgress.read();
+            if (!saved.ok) { d.error = '记录暂时无法读取，请重试'; return; }
+            // 本机已写、服务器回执未到的最后一步先确认；另一设备已有后续进度则以服务器为准。
+            const active = saved.active;
+            if (active && active.runId === res.runId && active.moves.length > moves.length &&
+                JSON.stringify(active.moves.slice(0, moves.length)) === JSON.stringify(moves)) {
+                const confirmed = await cloudBattle.call('dailyCheckpoint', {runId:res.runId,moves:active.moves}, DAILY_REQUEST);
+                if (this.daily !== d || this.state !== 'daily_detail') return;
+                if (!confirmed || !confirmed.ok) { d.error = '进度同步失败，请重试'; return; }
+                moves = confirmed.moves;
+            }
+            const run = {runId:res.runId,challenge:res.challenge,moves:moves};
+            if (!dailyProgress.saveActive(run).ok) { d.error = '进度暂未保存，请重试'; return; }
+            const core = dailyEngine.createCore(res.challenge);
+            for (const move of moves) {
+                if (!await core.trySwap(move.from,move.to)) throw new Error('invalid_daily_resume');
+            }
+            if (this.daily !== d || this.state !== 'daily_detail') return;
+            d.challenge = res.challenge; d.lastCompleted = null; d.run = run; d.active = run;
+            d.best = saved.best[res.challenge.date] || 0; d.claimed = !!saved.claimed[res.challenge.date];
+            if (core.ended) { this.finishDailyRun(d, run, core); return; }
+            const board = new BoardRenderer(this.ctx, this.screen);
+            board.battleMode = true;
+            core.callbacks = {
+                onSwap: (from,to) => board.animateSwap(from,to),
+                onInvalidSwap: (from,to) => { AudioFX.invalid(); return board.animateInvalidSwap(from,to); },
+                onMatch: data => { AudioFX.match(data); return board.animateMatch(data); },
+                onGravity: data => board.animateGravity(data),
+                onFill: data => board.animateFill(data),
+                onColorChange: data => board.animateColorChange(data),
+                onReshuffle: () => board.animateReshuffle()
+            };
+            const swap = core.trySwap.bind(core);
+            let syncing = false;
+            core.trySwap = async (from,to) => {
+                if (syncing || this.daily !== d || d.run !== run) return false;
+                if (core.processing || core.preferredGenerationPositions.length || core.ended) return false;
+                if (core.isBlocked(from) || core.isBlocked(to) || !core.validateMove(from,to)) return swap(from,to);
+                const move = {from:{row:from.row,column:from.column},to:{row:to.row,column:to.column}};
+                const next = Object.assign({},run,{moves:run.moves.concat(move)});
+                if (!dailyProgress.saveActive(next).ok) { this.pauseDailySync(d, '进度暂未保存，请重试'); return false; }
+                syncing = true; d.syncing = true;
+                try {
+                    const accepted = await swap(from,to);
+                    if (!accepted) throw new Error('daily_move_rejected');
+                    run.moves = next.moves;
+                    const response = await cloudBattle.call('dailyCheckpoint',{runId:run.runId,moves:run.moves},DAILY_REQUEST);
+                    if (this.daily !== d || d.run !== run) return accepted;
+                    if (!response || !response.ok) { this.pauseDailySync(d, '进度同步失败，请重试'); return accepted; }
+                    if (core.ended) this.finishDailyRun(d, run, core);
+                    return accepted;
+                } catch (e) {
+                    if (this.daily === d && d.run === run) this.pauseDailySync(d, '进度已保留，联网后继续');
+                    return false;
+                } finally { syncing = false; d.syncing = false; }
+            };
+            this.dailyCore = core; this.dailyBoard = board;
+            board.setGame(core); this.dailyButtons = null; this.state = 'daily_playing';
+        } catch (error) {
+            if (this.daily === d) d.error = cloudBattle.describeDailyFailure(error, false);
+        } finally { if (this.daily === d) d.starting = false; }
+    }
+
+    loadDailyInfoAfterStart(d) {
+        d.starting = false;
+        this.loadDailyInfo();
+    }
+
+    pauseDailySync(d, message) {
+        d.run = null; this.dailyCore = null; this.dailyBoard = null;
+        this.state = 'daily_detail'; this.dailyButtons = null;
+        d.active = dailyProgress.read().active; d.error = message;
+    }
+
+    finishDailyRun(d, run, core) {
+        d.unsaved = Object.assign({},run,{score:core.score,maxCascade:core.maxCascade,specialComboCount:core.specialComboCount});
+        d.run = null; this.state = 'daily_detail'; this.dailyButtons = null;
+        this.retryDailyResult();
+    }
+
+    retryDailyResult() {
+        const d = this.daily;
+        if (!d || d.loading) return;
+        if (d.unsaved) {
+            if (!dailyProgress.savePending(d.unsaved).ok) { d.error = '成绩暂未保存，请点击重试'; return; }
+            d.unsaved = null;
+        }
+        const saved = dailyProgress.read();
+        if (!saved.ok) { d.error = '记录暂时无法读取，请重试'; return; }
+        if (!saved.pending) { d.pending = false; this.loadDailyInfo(); return; }
+        d.pending = true; d.loading = true; d.error = '';
+        const pending = saved.pending;
+        cloudBattle.call('dailySubmit', {runId:pending.runId,moves:pending.moves}, DAILY_REQUEST).then(res => {
+            if (this.daily !== d) return;
+            d.loading = false;
+            if (!res.ok) {
+                d.pendingUnavailable = res.err === '挑战已过期' || res.err === '挑战记录不存在';
+                d.error = d.pendingUnavailable ? '上次成绩已过期，点击处理' : cloudBattle.describeDailyFailure(res, true); return;
+            }
+            const stored = dailyProgress.finishPending(Object.assign({},res,{runId:pending.runId}));
+            if (!stored.ok) { d.error = '奖励或纪录暂未保存，请重试'; return; }
+            d.pending = false; d.lastCompleted = {date:res.date,score:res.score};
+            this.loadDailyInfo();
+        }).catch(error => {
+            if (this.daily !== d) return;
+            d.loading = false; d.error = '成绩已保存，联网后可重试';
+        });
+    }
+
+    leaveDaily() {
+        const d = this.daily;
+        if (this.state === 'daily_detail') {
+            if (d && d.unsaved) { this.showBattleNotice('成绩暂未保存，请先点击重试'); return; }
+            this.state = 'menu'; return;
+        }
+        if (!d || !d.run || d.syncing || !this.dailyCore || this.dailyCore.processing || this.dailyCore.preferredGenerationPositions.length) return;
+        if (typeof wx.showModal !== 'function') { this.showBattleNotice('完成剩余步数后即可返回'); return; }
+        wx.showModal({title:'暂存本次挑战？',content:'今日只有这一局，进度已保存，回来后继续剩余步数。',confirmText:'暂存离开',cancelText:'继续挑战',success:res=>{
+            if (!res.confirm || this.daily !== d || this.state !== 'daily_playing') return;
+            d.run = null; this.dailyCore = null; this.dailyBoard = null; this.openDaily();
+        }});
+    }
+
     // ===== 双人对战 =====
 
     /** 启动轮询（每 1 秒查询房间状态） */
@@ -514,18 +849,22 @@ class Main {
         if (!this.battle || !this.battle.roomId) return;
         const self = this;
         const b = this.battle;
-        if (b.pollPending || b.completedTracked) return;
+        if (b.pollPending || b.actionPending || b.expired || (b.completedTracked && b.protocolVersion !== 2)) return;
         b.pollPending = true;
         const revision = b.pollRevision;
-        cloudBattle.call('query', { roomId: b.roomId }).then(function (res) {
+        cloudBattle.call('query', { roomId: b.roomId, protocolVersion: 2 }, BATTLE_WAIT_REQUEST).then(function (res) {
             b.pollPending = false;
-            if (self.battle !== b || b.completedTracked || b.actionPending || revision !== b.pollRevision) return;
+            if (self.battle !== b || b.actionPending || revision !== b.pollRevision) return;
             if (!res.ok) {
                 if (self.battle && !self.battle.queryErrorTracked) {
                     self.battle.queryErrorTracked = true;
                     analytics.track('pvp_error', { category: 'query', reason: battleErrorReason(res, 'query') });
                 }
-                if (res.err === '邀请已失效' || res.err === '房间不存在' || res.err === '不在房间') {
+                b.offline = true;
+                if (res.err === '邀请已失效' || res.err === '续局已失效' || res.err === '房间不存在' || res.err === '不在房间') {
+                    if (b.completedTracked && b.protocolVersion === 2) {
+                        b.expired = true; b.offline = false; self.stopPolling(); return;
+                    }
                     self.stopPolling();
                     self.battle = null;
                     self.battleCore = null;
@@ -535,20 +874,42 @@ class Main {
                 }
                 return;
             }
+            b.offline = false;
             self.applyPoll(res);
-        }).catch(function () {
+        }).catch(function (error) {
             b.pollPending = false;
-            if (self.battle === b && !b.completedTracked && !b.queryErrorTracked) {
-                self.battle.queryErrorTracked = true;
-                analytics.track('pvp_error', { category: 'query', reason: 'network' });
+            if (self.battle !== b || b.actionPending || revision !== b.pollRevision) return;
+            b.offline = true;
+            if (!b.queryErrorTracked) {
+                b.queryErrorTracked = true;
+                analytics.track('pvp_error', { category: 'query', reason: self.battleRequestFailureReason(error) });
             }
         });
     }
 
     /** 应用轮询结果 */
     applyPoll(res) {
-        if (!this.battle || this.battle.completedTracked) return;
-        const b = this.battle;
+        if (!this.battle) return;
+        let b = this.battle;
+        if (b.protocolVersion === 2) {
+            if (res.protocolVersion !== 2 || !Number.isSafeInteger(res.roundId) || res.roundId < b.roundId) return;
+            if (res.roundId > b.roundId) {
+                if (b.rewardPending && !this.creditBattleReward()) return;
+                if (this.battleBoard) this.battleBoard.onTouchEnd();
+                const next = this.newBattleState(b.isHost);
+                next.roomId = b.roomId; next.protocolVersion = 2; next.roundId = res.roundId;
+                this.battle = b = next;
+                this.battleCore = null; this.battleBoard = null; this.battleButtons = null;
+                this.effectSeen = 0; this.castSeen = 0; this.guide = null;
+                this.state = 'battle_wait';
+            }
+            b.roundNumber = res.roundNumber || 1;
+            b.myWins = res.myWins || 0; b.oppWins = res.oppWins || 0;
+            b.myRematch = !!res.myRematch; b.oppRematch = !!res.oppRematch;
+            b.canRematch = !!res.canRematch; b.oppLeft = !!res.oppLeft;
+            b.oppOnline = !!(res.opp && res.opp.online);
+        }
+        if (b.completedTracked) return;
         if (Number.isFinite(res.myScore)) b.syncedScore = Math.max(b.syncedScore, res.myScore);
 
         // 对手信息
@@ -626,17 +987,61 @@ class Main {
         this.battle.myScore = result.myScore;
         this.battle.oppScore = result.oppScore;
         const reward = result.result === 'win' ? 150 : (result.result === 'draw' ? 50 : 30);
-        coin.addCoins(reward);
-        this.battle.coinReward = reward;
+        if (this.battle.protocolVersion === 2) {
+            this.battle.rewardReceipt = result.settlementId;
+            this.battle.rewardAmount = result.coinReward;
+            this.battle.rewardPending = true;
+            this.creditBattleReward();
+        } else {
+            coin.addCoins(reward);
+            this.battle.coinReward = reward;
+        }
         analytics.track('pvp_complete', {
             result: result.result,
             durationBucket: durationBucket(Date.now() - this.battle.startTime)
         });
-        this.stopPolling();
+        if (this.battle.protocolVersion !== 2) this.stopPolling();
         this.state = 'battle_result';
         if (result.result === 'win') AudioFX.win();
         else if (result.result === 'lose') AudioFX.lose();
         else AudioFX.reward();
+    }
+
+    creditBattleReward() {
+        const b = this.battle;
+        if (!b || !b.rewardPending) return true;
+        const credit = coin.creditOnce(b.rewardReceipt, b.rewardAmount);
+        if (!credit.ok) return false;
+        b.rewardPending = false;
+        b.coinReward = b.rewardAmount;
+        return true;
+    }
+
+    battleRequestData(b, fields) {
+        return Object.assign({ roomId: b.roomId }, b.protocolVersion === 2
+            ? { protocolVersion: 2, roundId: b.roundId } : {}, fields || {});
+    }
+
+    battleAgain() {
+        const b = this.battle;
+        if (!b || b.actionPending) return;
+        if (!this.creditBattleReward()) {
+            this.showBattleNotice('金币暂未保存，请点击奖励重试'); return;
+        }
+        if (b.protocolVersion !== 2 || b.expired || b.oppLeft) {
+            this.battleCancel(); this.startBattle(); return;
+        }
+        if (b.offline) { this.pollRoom(); return; }
+        b.actionPending = true; b.pollRevision++;
+        cloudBattle.call('rematch', this.battleRequestData(b, { accept: !b.myRematch })).then((res) => {
+            if (this.battle !== b) return;
+            b.actionPending = false; b.pollRevision++;
+            if (res.ok) this.applyPoll(res);
+            else { b.offline = true; this.showBattleNotice('续局状态待同步，请重试'); this.pollRoom(); }
+        }).catch(() => {
+            if (this.battle !== b) return;
+            b.actionPending = false; b.pollRevision++; b.offline = true;
+        });
     }
 
     /** 创建房间 + 分享邀请卡片 + 进等待页 */
@@ -646,17 +1051,36 @@ class Main {
         }
     }
 
+    showBattleCreateError(error, service) {
+        const content = cloudBattle.describeCreateFailure(error, service);
+        const fallback = function () {
+            if (typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
+                wx.showToast({ title: content, icon: 'none', duration: 8000 });
+            }
+        };
+        if (typeof wx !== 'undefined' && typeof wx.showModal === 'function') {
+            try {
+                wx.showModal({ title: '暂时无法创建对局', content: content,
+                    showCancel: false, confirmText: '知道了', fail: fallback });
+            } catch (e) { fallback(); }
+        } else fallback();
+    }
+
     startBattle() {
-        if (this.battleCreating || this.state === 'playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
+        if (this.battleCreating || this.state === 'playing' || this.state === 'daily_playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
+        this.battleExitRequest = null;
         this.battleCreating = true;
         analytics.track('pvp_click');
         const self = this;
         const b = this.battle = this.newBattleState(true);
-        cloudBattle.call('create', { nickname: '房主猫' }).then(function (res) {
+        cloudBattle.call('create', { nickname: '房主猫', protocolVersion: 2 }).then(function (res) {
             if (self.battle !== b) return;
             self.battleCreating = false;
             if (res.ok && res.roomId) {
                 self.battle.roomId = res.roomId;
+                b.protocolVersion = res.protocolVersion === 2 ? 2 : 1;
+                b.roundId = res.roundId || 1;
+                b.roundNumber = res.roundNumber || 1;
                 self.state = 'battle_wait';
                 analytics.track('pvp_create', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
@@ -666,36 +1090,46 @@ class Main {
                 AudioFX.invalid();
                 analytics.track('pvp_create', { result: 'failure', reason: battleErrorReason(res, 'create') });
                 self.battle = null;
-                self.showBattleNotice(res && res.err === BATTLE_CREATE_RATE_LIMIT_MESSAGE
-                    ? BATTLE_CREATE_RATE_LIMIT_MESSAGE : '暂时无法创建对局，请稍后重试');
+                if (res && res.err === BATTLE_CREATE_RATE_LIMIT_MESSAGE) {
+                    self.showBattleNotice(BATTLE_CREATE_RATE_LIMIT_MESSAGE);
+                } else self.showBattleCreateError(res, true);
             }
-        }).catch(function () {
+        }).catch(function (error) {
             if (self.battle !== b) return;
             self.battleCreating = false;
             AudioFX.invalid();
             analytics.track('pvp_create', { result: 'failure', reason: 'network' });
             self.battle = null;
-            self.showBattleNotice('暂时无法创建对局，请稍后重试');
+            self.showBattleCreateError(error, false);
         });
     }
 
     /** 好友点卡片进入 → 加入房间 */
     joinBattle(roomId) {
-        if (this.battleCreating || this.state === 'playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
+        if (this.battleCreating || this.state === 'playing' || this.state === 'daily_playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
+        this.privacyRequest = null; // 新邀请接管交互，即使入房失败也不恢复旧协议请求。
         if (!cloudBattle.isValidRoomId(roomId)) {
             AudioFX.invalid();
             analytics.track('pvp_error', { category: 'join', reason: 'expired' });
             this.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
             return;
         }
+        if (this.battle) {
+            if (!this.creditBattleReward()) { this.showBattleNotice('金币暂未保存，请点击奖励重试'); return; }
+            this.battleCancel();
+        }
         const self = this;
         this.battleCreating = true;
+        this.battleExitRequest = null;
         const b = this.battle = this.newBattleState(false);
         b.roomId = roomId;
-        cloudBattle.call('join', { roomId: roomId, nickname: '挑战猫' }).then(function (res) {
+        cloudBattle.call('join', { roomId: roomId, nickname: '挑战猫', protocolVersion: 2 }).then(function (res) {
             if (self.battle !== b) return;
             self.battleCreating = false;
             if (res.ok) {
+                b.protocolVersion = res.protocolVersion === 2 ? 2 : 1;
+                b.roundId = res.roundId || 1;
+                b.roundNumber = res.roundNumber || 1;
                 self.state = 'battle_wait';
                 analytics.track('pvp_join', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
@@ -719,6 +1153,9 @@ class Main {
     newBattleState(isHost) {
         return {
             roomId: null,
+            protocolVersion: 1, roundId: 1, roundNumber: 1, myWins: 0, oppWins: 0,
+            myRematch: false, oppRematch: false, canRematch: false, oppOnline: true,
+            offline: false, expired: false, rewardPending: false,
             myName: '我',
             oppName: '',
             myReady: false,
@@ -774,6 +1211,7 @@ class Main {
     /** 处理 onShow（好友点卡片进入时拿参数加入房间） */
     handleShow(res) {
         this.lastTime = Date.now();
+        if (this.state === 'daily_detail') this.loadDailyInfo();
         if (this.state === 'playing' && this.core && !this.guide) this.core.resumeTimer();
 
         let query = res && typeof res === 'object' ? res.query : null;
@@ -787,8 +1225,8 @@ class Main {
         }
         if (!query || typeof query !== 'object' || query.invite !== '1' ||
             this.state === 'battle_wait' || this.state === 'battle_playing') return;
-        if (this.state === 'playing') {
-            this.showBattleNotice('请先完成当前闯关，再打开好友邀请');
+        if (this.state === 'playing' || this.state === 'daily_playing') {
+            this.showBattleNotice('请先完成当前挑战，再打开好友邀请');
             return;
         }
         if (this.battleCreating) return;
@@ -813,14 +1251,15 @@ class Main {
     startBattleBoard() {
         this.battleBoard = new BoardRenderer(this.ctx, this.screen);
         this.battleBoard.battleMode = true;
+        const board = this.battleBoard;
         this.battleCore = new GameCore(BATTLE_LEVEL, {
-            onSwap: (from, to) => this.battleBoard.animateSwap(from, to),
-            onInvalidSwap: (from, to) => { AudioFX.invalid(); return this.battleBoard.animateInvalidSwap(from, to); },
-            onMatch: (data) => { AudioFX.match(data); return this.battleBoard.animateMatch(data); },
-            onGravity: (data) => this.battleBoard.animateGravity(data),
-            onFill: (data) => this.battleBoard.animateFill(data),
-            onColorChange: (data) => this.battleBoard.animateColorChange(data),
-            onReshuffle: () => this.battleBoard.animateReshuffle(),
+            onSwap: (from, to) => board.animateSwap(from, to),
+            onInvalidSwap: (from, to) => { AudioFX.invalid(); return board.animateInvalidSwap(from, to); },
+            onMatch: (data) => { AudioFX.match(data); return board.animateMatch(data); },
+            onGravity: (data) => board.animateGravity(data),
+            onFill: (data) => board.animateFill(data),
+            onColorChange: (data) => board.animateColorChange(data),
+            onReshuffle: () => board.animateReshuffle(),
             onLevelEnd: () => {}
         });
         if (this.battle.disturbUntil > Date.now()) {
@@ -829,33 +1268,49 @@ class Main {
         this.battleBoard.setGame(this.battleCore);
     }
 
+    battleRequestFailureReason(error) {
+        const diagnostic = error && error.battleDiagnostic;
+        return diagnostic && diagnostic.error && diagnostic.error.kind === 'TIMEOUT' ? 'timeout' : 'network';
+    }
+
+    battleWaitFailure(b, action, error, service) {
+        b.actionPending = false;
+        b.pendingAction = '';
+        b.pollRevision++;
+        b.offline = true;
+        const reason = service ? battleErrorReason(error, action) : this.battleRequestFailureReason(error);
+        analytics.track('pvp_error', { category: action, reason: reason });
+        AudioFX.invalid();
+        const label = action === 'configure_items' ? '道具' : '准备状态';
+        this.showBattleNotice(error && error.err === '邀请已失效' ? BATTLE_INVITE_EXPIRED_MESSAGE :
+            label + (reason === 'timeout' ? '同步超时' : '尚未确认') + '，请重试连接');
+    }
+
     /** 等待页：准备 */
     battleReady() {
         if (!this.battle || !this.battle.roomId || this.state !== 'battle_wait' || this.battle.actionPending) return;
+        if (this.battle.offline) { this.pollRoom(); return; }
         AudioFX.click();
         const self = this;
         const b = this.battle;
         b.actionPending = true;
         b.pollRevision++;
-        cloudBattle.call('ready', { roomId: b.roomId }).then(function (res) {
+        b.pendingAction = 'ready';
+        cloudBattle.call('ready', this.battleRequestData(b, b.protocolVersion === 2 ? { ready: !b.myReady } : {}), BATTLE_WAIT_REQUEST).then(function (res) {
             if (self.battle !== b || b.completedTracked) return;
-            b.actionPending = false;
-            b.pollRevision++;
             if (!res.ok) {
-                AudioFX.invalid();
-                analytics.track('pvp_error', { category: 'ready', reason: battleErrorReason(res, 'ready') });
-                if (res.err === '邀请已失效') self.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
+                self.battleWaitFailure(b, 'ready', res, true);
                 return;
             }
+            b.actionPending = false;
+            b.pendingAction = '';
+            b.pollRevision++;
             self.battle.myReady = !!res.ready;
             if (res.items) self.battle.items = res.items;
             analytics.track('pvp_ready', { status: res.ready ? 'ready' : 'cancelled' });
-        }).catch(function () {
+        }).catch(function (error) {
             if (self.battle !== b || b.completedTracked) return;
-            b.actionPending = false;
-            b.pollRevision++;
-            AudioFX.invalid();
-            analytics.track('pvp_error', { category: 'ready', reason: 'network' });
+            self.battleWaitFailure(b, 'ready', error, false);
         });
     }
 
@@ -863,6 +1318,7 @@ class Main {
     battleAdjustItem(item, delta) {
         if (!this.battle || this.state !== 'battle_wait' || this.battle.actionPending ||
             this.battle.myReady || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
+        if (this.battle.offline) { this.pollRoom(); return; }
         const next = {};
         for (let i = 0; i < BATTLE_ITEM_ALLOWLIST.length; i++) {
             const key = BATTLE_ITEM_ALLOWLIST[i];
@@ -889,30 +1345,37 @@ class Main {
         const b = this.battle;
         b.actionPending = true;
         b.pollRevision++;
-        cloudBattle.call('configureItems', { roomId: b.roomId, items: next }).then(function (res) {
+        b.pendingAction = 'items';
+        cloudBattle.call('configureItems', this.battleRequestData(b, { items: next }), BATTLE_WAIT_REQUEST).then(function (res) {
             if (self.battle !== b || b.completedTracked) return;
-            b.actionPending = false;
-            b.pollRevision++;
             if (res.ok && res.items) {
+                b.actionPending = false;
+                b.pendingAction = '';
+                b.pollRevision++;
                 self.battle.items = res.items;
                 AudioFX.click();
             } else {
-                AudioFX.invalid();
+                self.battleWaitFailure(b, 'configure_items', res, true);
             }
-        }).catch(function () {
+        }).catch(function (error) {
             if (self.battle !== b || b.completedTracked) return;
-            b.actionPending = false;
-            b.pollRevision++;
-            AudioFX.invalid();
+            self.battleWaitFailure(b, 'configure_items', error, false);
         });
     }
 
     /** 等待页：取消/退出 */
     battleCancel() {
         if (!this.battle) return;
+        if (!this.creditBattleReward()) {
+            this.showBattleNotice('金币暂未保存，请点击奖励重试'); return;
+        }
         const self = this;
+        const exiting = this.battleExitRequest = this.battle;
         if (this.battle.roomId) {
-            cloudBattle.call('leave', { roomId: this.battle.roomId }).catch(function () {
+            cloudBattle.call('leave', this.battleRequestData(this.battle), BATTLE_WAIT_REQUEST).then(function (res) {
+                if (!res.ok) throw new Error('leave unconfirmed');
+            }).catch(function () {
+                if (self.battleExitRequest !== exiting) return;
                 analytics.track('pvp_error', { category: 'leave', reason: 'network' });
                 if (self.state === 'menu' && !self.battle) {
                     self.showBattleNotice('退出尚未同步，请网络恢复后重新创建对局');
@@ -940,7 +1403,7 @@ class Main {
         const b = this.battle;
         b.actionPending = true;
         b.pollRevision++;
-        cloudBattle.call('useItem', { roomId: b.roomId, item: item }).then(function (res) {
+        cloudBattle.call('useItem', this.battleRequestData(b, { item: item })).then(function (res) {
             if (self.battle !== b || b.completedTracked) return;
             b.actionPending = false;
             b.pollRevision++;
@@ -1006,7 +1469,7 @@ class Main {
         b.scorePending = true;
         b.lastScoreSyncAt = now;
         b.lastSentScore = score;
-        cloudBattle.call('syncScore', { roomId: b.roomId, score: score }).then(function (res) {
+        cloudBattle.call('syncScore', this.battleRequestData(b, { score: score })).then(function (res) {
             b.scorePending = false;
             if (self.battle !== b || b.completedTracked) return;
             if (res.ok) b.syncedScore = Math.max(b.syncedScore, score);
@@ -1023,42 +1486,73 @@ class Main {
     }
 
     battleBackToMenu() {
-        this.stopPolling();
-        this.battle = null;
-        this.battleCore = null;
-        this.battleBoard = null;
-        this.state = 'menu';
+        if (!this.creditBattleReward()) {
+            this.showBattleNotice('金币暂未保存，请点击奖励重试'); return;
+        }
+        this.battleCancel();
+    }
+
+    // 官方协议优先；离线说明仅作阅读兜底，不充当同意授权。
+    openPrivacyNotice() {
+        if (this.state !== 'settings' || this.privacyRequest) {
+            runtime.privacyDiagnostic('request_ignored');
+            return;
+        }
+        const request = this.privacyRequest = {};
+        runtime.openPrivacyContract((opened) => {
+            if (this.privacyRequest !== request) return;
+            this.privacyRequest = null;
+            if (opened || this.state !== 'settings' || this.battleCreating) return;
+            runtime.privacyDiagnostic('local_fallback');
+            this.privacyOffset = 0;
+            this.privacyTouch = null;
+            this.privacyButtons = null;
+            this.state = 'privacy';
+        });
     }
 
     // ===== 触摸处理 =====
 
     handleTouchStart(e) {
         if (!e.touches || !e.touches.length) return;
+        if (this.state === 'settings') runtime.privacyDiagnostic('settings_touch');
         AudioFX.unlock();
         const x = e.touches[0].clientX;
         const y = e.touches[0].clientY;
         if (this.handleGuideTouch(x, y)) return;
         if (this.battleCreating) return;
+        if (this.handleStaminaDialogTouch(x, y)) return;
 
-        if (this.state === 'playing' && this.board) {
+        if (this.state === 'daily_detail' && this.dailyButtons) {
+            if (UI.hitTest(x,y,this.dailyButtons.start)) this.dailyPrimary();
+            else if (UI.hitTest(x,y,this.dailyButtons.back)) this.leaveDaily();
+        } else if (this.state === 'daily_playing' && this.dailyBoard) {
+            if (UI.hitTest(x,y,this.dailyButtons && this.dailyButtons.back)) this.leaveDaily();
+            else this.dailyBoard.onTouchStart(x,y);
+        } else if (this.state === 'playing' && this.board) {
             this.board.onTouchStart(x, y);
         } else if (this.state === 'menu' && this.menuButtons) {
             if (UI.hitTest(x, y, this.menuButtons.battle)) {
                 AudioFX.click();
                 this.startBattle();
             } else if (UI.hitTest(x, y, this.menuButtons.start)) {
-                // 进入关卡地图（体力不足也可先看地图）
                 AudioFX.click();
-                this.levelMapOffset = Math.max(0, this.progress.unlockedLevel - 3);
-                this.levelMapTouch = null;
-                this.levelMapDragged = false;
-                this.state = 'levelselect';
+                if (heart.getHeartState().count <= 0) {
+                    this.showStaminaDialog();
+                } else {
+                    this.levelMapOffset = Math.max(0, this.progress.unlockedLevel - 3);
+                    this.levelMapTouch = null;
+                    this.levelMapDragged = false;
+                    this.state = 'levelselect';
+                }
             } else if (UI.hitTest(x, y, this.menuButtons.addHeart)) {
                 AudioFX.click();
                 this.handleAddHeart();
             } else if (UI.hitTest(x, y, this.menuButtons.shop)) {
                 AudioFX.click();
                 this.state = 'shop';
+            } else if (UI.hitTest(x, y, this.menuButtons.daily)) {
+                AudioFX.click(); this.openDaily();
             } else if (UI.hitTest(x, y, this.menuButtons.settings)) {
                 AudioFX.click();
                 this.state = 'settings';
@@ -1073,13 +1567,12 @@ class Main {
                 AudioFX.setSfxEnabled(next);
                 if (next) AudioFX.click();
             } else if (UI.hitTest(x, y, this.settingsButtons.privacy)) {
+                runtime.privacyDiagnostic('button_hit');
                 AudioFX.click();
-                this.privacyOffset = 0;
-                this.privacyTouch = null;
-                this.privacyButtons = null;
-                this.state = 'privacy';
+                this.openPrivacyNotice();
             } else if (UI.hitTest(x, y, this.settingsButtons.back)) {
                 AudioFX.click();
+                this.privacyRequest = null;
                 this.state = 'menu';
             }
         } else if (this.state === 'privacy' && this.privacyButtons) {
@@ -1100,7 +1593,9 @@ class Main {
             this.levelMapTouch = { x: x, y: y, lastY: y };
             this.levelMapDragged = false;
         } else if (this.state === 'shop' && this.shopButtons) {
-            if (UI.hitTest(x, y, this.shopButtons.buy_hammer)) {
+            if (UI.hitTest(x, y, this.shopButtons.buy_heart)) {
+                this.buyHeart();
+            } else if (UI.hitTest(x, y, this.shopButtons.buy_hammer)) {
                 this.buyItem('hammer');
             } else if (UI.hitTest(x, y, this.shopButtons.buy_bomb)) {
                 this.buyItem('bomb');
@@ -1112,17 +1607,25 @@ class Main {
                 this.claimShopAdItem('bomb');
             } else if (UI.hitTest(x, y, this.shopButtons.reward_color)) {
                 this.claimShopAdItem('color');
+            } else if (UI.hitTest(x, y, this.shopButtons.reward_heart)) {
+                this.handleAddHeart('shop');
             } else if (UI.hitTest(x, y, this.shopButtons.back)) {
                 AudioFX.click();
                 this.state = 'menu';
             }
         } else if (this.state === 'result' && this.resultButtons) {
+            if (this.soloPendingResult) {
+                if (UI.hitTest(x, y, this.resultButtons.main) || UI.hitTest(x, y, this.resultButtons.menu)) {
+                    this.handleLevelEnd(this.soloPendingResult);
+                }
+                return;
+            }
             if (UI.hitTest(x, y, this.resultButtons.revive)) {
                 AudioFX.click();
                 this.reviveGame();
             } else if (UI.hitTest(x, y, this.resultButtons.main)) {
                 if (heart.getHeartState().count <= 0) {
-                    AudioFX.invalid();
+                    this.showStaminaDialog();
                     return;
                 }
                 AudioFX.click();
@@ -1171,9 +1674,10 @@ class Main {
             this.battleBoard.onTouchStart(x, y);
         } else if (this.state === 'battle_result' && this.battleButtons) {
             if (BattleUI.hitTest(x, y, this.battleButtons.again)) {
-                // 再来一局：返回菜单（简化，需重新建房）
                 AudioFX.click();
-                this.battleBackToMenu();
+                this.battleAgain();
+            } else if (BattleUI.hitTest(x, y, this.battleButtons.reward)) {
+                if (!this.creditBattleReward()) this.showBattleNotice('存储暂不可用，请稍后重试');
             } else if (BattleUI.hitTest(x, y, this.battleButtons.menu)) {
                 AudioFX.click();
                 this.battleBackToMenu();
@@ -1189,6 +1693,8 @@ class Main {
             this.privacyOffset = Math.max(0, Math.min(this.privacyButtons.maxScroll,
                 this.privacyOffset + this.privacyTouch.lastY - y));
             this.privacyTouch.lastY = y;
+        } else if (this.state === 'daily_playing' && this.dailyBoard) {
+            this.dailyBoard.onTouchMove(e.touches[0].clientX,e.touches[0].clientY);
         } else if (this.state === 'playing' && this.board) {
             this.board.onTouchMove(e.touches[0].clientX, e.touches[0].clientY);
         } else if (this.state === 'levelselect' && this.levelMapTouch && this.levelSelectButtons) {
@@ -1209,6 +1715,8 @@ class Main {
         if (this.guide) return;
         if (this.state === 'privacy') {
             this.privacyTouch = null;
+        } else if (this.state === 'daily_playing' && this.dailyBoard) {
+            this.dailyBoard.onTouchEnd();
         } else if (this.state === 'playing' && this.board) {
             this.board.onTouchEnd();
         } else if (this.state === 'levelselect' && this.levelMapTouch && this.levelSelectButtons) {
@@ -1242,6 +1750,7 @@ class Main {
                 this.startGame(targetLevel);
             } else {
                 AudioFX.invalid();
+                this.showStaminaDialog();
             }
         } else if (UI.hitTest(x, y, this.levelSelectButtons.back)) {
             AudioFX.click();
@@ -1273,6 +1782,13 @@ class Main {
         if (this.state === 'playing' && this.board) {
             if (this.core) this.core.updateTime(dt);
             if (this.state === 'playing') this.board.update(dt);
+            if (this.state === 'playing' && !this.guide && this.core && this.core.isPlaying() &&
+                onboarding.shouldShow(onboarding.GUIDE_KEYS.SPECIAL_COMBO) &&
+                strategyFeedback.specialPair(this.core).length) {
+                this.showGuide(onboarding.GUIDE_KEYS.SPECIAL_COMBO);
+            }
+        } else if (this.state === 'daily_playing' && this.dailyBoard) {
+            this.dailyBoard.update(dt);
         } else if (this.state === 'battle_playing' && this.battleBoard) {
             this.battleBoard.update(dt);
             this.updateBattle(Date.now());
@@ -1286,26 +1802,36 @@ class Main {
             this.audioScene = audioScene;
             AudioFX.setScene(audioScene);
         }
-        if (this.state === 'menu') {
+        if (this.state === 'menu' || this.state === 'daily_detail') {
             const heartState = heart.getHeartState();
             const unlocked = this.progress.unlockedLevel;
             this.menuButtons = UI.drawMenu(this.ctx, this.screen, unlocked, {
                 count: heartState.count,
                 timeLeftText: heart.formatTimeLeft(),
                 canPlay: heartState.count > 0,
-                canAd: ad.isRewardedAvailable() && heart.canAdHeart()
+                canAd: ad.isRewardedAvailable()
             }, { coins: coin.getCoins() });
+            if (this.state === 'daily_detail') {
+                this.dailyButtons = DailyUI.drawDetail(this.ctx,this.screen,this.daily || {loading:true});
+            }
+        } else if (this.state === 'daily_playing' && this.dailyBoard) {
+            this.dailyBoard.draw();
+            this.dailyButtons = DailyUI.drawPlaying(this.ctx,this.screen,this.dailyCore,this.daily.challenge,this.daily);
         } else if (this.state === 'playing' && this.board) {
             this.board.draw();
         } else if (this.state === 'result') {
             this.resultButtons = UI.drawResult(this.ctx, this.screen, this.result);
         } else if (this.state === 'shop') {
             const rewardState = coin.getRewardedItemState();
+            const heartState = heart.getHeartState();
             this.shopButtons = UI.drawShop(this.ctx, this.screen, coin.getCoins(), coin.getItems(), {
                 canReward: ad.isRealRewardedAvailable(),
                 count: rewardState.count,
                 limit: coin.REWARDED_ITEM_DAILY_LIMIT,
-                pending: this.shopRewardPending
+                pending: this.shopRewardPending,
+                heartCount: heartState.count,
+                heartMax: heart.HEART_CONFIG.maxHeart,
+                heartPending: this.heartAdPending
             });
         } else if (this.state === 'levelselect') {
             this.levelSelectButtons = UI.drawLevelSelect(
@@ -1321,10 +1847,13 @@ class Main {
         } else if (this.state === 'settings') {
             this.settingsButtons = UI.drawSettings(this.ctx, this.screen, {
                 musicEnabled: AudioFX.isMusicEnabled(),
-                sfxEnabled: AudioFX.isSfxEnabled()
+                sfxEnabled: AudioFX.isSfxEnabled(),
+                privacyPending: !!this.privacyRequest
             });
         } else if (this.state === 'battle_wait' && this.battle) {
             this.battleButtons = BattleUI.drawWait(this.ctx, this.screen, {
+                protocolVersion: this.battle.protocolVersion, roundNumber: this.battle.roundNumber,
+                myWins: this.battle.myWins, oppWins: this.battle.oppWins,
                 roomId: this.battle.roomId || '...',
                 myName: this.battle.myName,
                 myReady: this.battle.myReady,
@@ -1333,7 +1862,9 @@ class Main {
                 oppJoined: this.battle.oppJoined,
                 items: this.battle.items,
                 isHost: this.battle.isHost,
-                myAvatar: userProfile.getAvatarImage()
+                offline: this.battle.offline, actionPending: this.battle.actionPending,
+                pendingAction: this.battle.pendingAction, pollPending: this.battle.pollPending,
+                myAvatar: userProfile.getAvatarImage(), canChangeAvatar: userProfile.canChangeAvatar()
             });
             userProfile.ensureButton(this.battleButtons.avatar);
         } else if (this.state === 'battle_playing' && this.battleBoard && this.battle) {
@@ -1341,6 +1872,8 @@ class Main {
             this.battleBoard.draw();
             const timeLeft = Math.max(0, Math.ceil((this.battle.endTime - now) / 1000));
             BattleUI.drawTop(this.ctx, this.screen, {
+                protocolVersion: this.battle.protocolVersion, roundNumber: this.battle.roundNumber,
+                myWins: this.battle.myWins, oppWins: this.battle.oppWins,
                 timeLeft: timeLeft,
                 myScore: this.battle.myScore,
                 oppScore: this.battle.oppScore,
@@ -1379,10 +1912,25 @@ class Main {
                 result: this.battle.result,
                 myScore: this.battle.myScore,
                 oppScore: this.battle.oppScore,
-                coinReward: this.battle.coinReward
+                coinReward: this.battle.coinReward,
+                protocolVersion: this.battle.protocolVersion, roundNumber: this.battle.roundNumber,
+                myWins: this.battle.myWins, oppWins: this.battle.oppWins,
+                myRematch: this.battle.myRematch, oppRematch: this.battle.oppRematch,
+                oppLeft: this.battle.oppLeft, oppOnline: this.battle.oppOnline,
+                offline: this.battle.offline, expired: this.battle.expired,
+                actionPending: this.battle.actionPending, rewardPending: this.battle.rewardPending
             });
         }
-        this.guideButtons = this.guide ? OnboardingUI.draw(this.ctx, this.screen, this.guide.key) : null;
+        if (this.staminaDialog) {
+            const heartState = heart.getHeartState();
+            this.staminaDialogButtons = UI.drawStaminaEmpty(this.ctx, this.screen, {
+                timeLeftText: heart.formatTimeLeft(),
+                canBuy: heartState.count < heart.HEART_CONFIG.maxHeart && coin.getCoins() >= coin.STAMINA_PRICE,
+                canAd: ad.isRewardedAvailable() && !this.heartAdPending,
+                staminaPrice: coin.STAMINA_PRICE
+            });
+        }
+        this.guideButtons = this.guide ? OnboardingUI.draw(this.ctx, this.screen, this.guide.key, this.guideContext()) : null;
     }
 }
 
