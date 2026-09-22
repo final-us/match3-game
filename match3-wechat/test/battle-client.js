@@ -13,6 +13,7 @@ function fixture() {
     const requests = [];
     const notices = [];
     const modals = [];
+    const shares = [];
     const receipts = new Set();
     const wallet = { fail: false, balance: 0, addCoins(n) { this.balance += n; },
         creditOnce(id, n) {
@@ -21,6 +22,7 @@ function fixture() {
             return { ok: true };
         } };
     const wx = { showModal: function (options) { modals.push(options); },
+        shareAppMessage: function (options) { shares.push(options); },
         showToast: function (options) { notices.push(options.title); } };
     const cloud = {
         describeCreateFailure: require('../js/net/cloud-battle').describeCreateFailure,
@@ -51,7 +53,6 @@ function fixture() {
         lastScoreSync: 0, effectSeen: 0, castSeen: 0, guide: null, guideQueue: [] });
     app.showGuide = function () {};
     app.showBattleNotice = function (message) { notices.push(message); };
-    app.shareBattleInvite = function () {};
     function playing() {
         const b = app.battle = app.newBattleState(true);
         b.roomId = 'R12345678abcdef0123';
@@ -61,7 +62,7 @@ function fixture() {
         app.battleBoard = { onTouchStart: function () {}, onTouchMove: function () {}, onTouchEnd: function () {} };
         return b;
     }
-    return { app, clock, requests, notices, modals, wx, playing, wallet };
+    return { app, clock, requests, notices, modals, shares, wx, playing, wallet };
 }
 
 (async function () {
@@ -69,6 +70,40 @@ function fixture() {
     const onUnhandled = function (error) { unhandled.push(error); };
     process.on('unhandledRejection', onUnhandled);
     try {
+        {
+            const f = fixture();
+            f.app.startBattle(); f.app.startBattle();
+            assert.strictEqual(f.requests.length, 1, '重复点击只建一个房间');
+            f.requests[0].resolve({ ok: true, roomId: 'R12345678abcdef0123', protocolVersion: 2 });
+            await flush();
+            assert.strictEqual(f.app.state, 'battle_wait');
+            assert.strictEqual(f.shares.length, 0, '建房成功不得自动打开分享');
+            const b = f.app.battle;
+            f.app.battleButtons = { invite: { x: 10, y: 10, w: 130, h: 44 } };
+            const tapInvite = () => f.app.handleTouchStart({ touches: [{ clientX: 30, clientY: 30 }] });
+            tapInvite();
+            assert.strictEqual(f.shares.length, 1, '仅主动点击邀请打开微信分享');
+            assert.strictEqual(f.shares[0].query, 'roomId=' + b.roomId + '&invite=1');
+            assert.strictEqual(f.app.state, 'battle_wait', '微信不回调/取消分享仍留等待页');
+            assert.strictEqual(f.app.battle, b);
+            assert.strictEqual(b.oppJoined, false, '调起分享不能视为好友加入');
+            assert.strictEqual(b.actionPending, false, '分享不锁定道具和准备');
+            tapInvite();
+            assert.strictEqual(f.shares.length, 2, '取消后可再次邀请同一房间');
+            for (const key of ['oppJoined', 'offline', 'actionPending']) {
+                b[key] = true; tapInvite(); b[key] = false;
+                assert.strictEqual(f.shares.length, 2, key + '必须拦住旧邀请热区');
+            }
+            b.isHost = false; tapInvite(); b.isHost = true;
+            assert.strictEqual(f.shares.length, 2, '非房主不能邀请');
+            delete f.wx.shareAppMessage; tapInvite();
+            assert(f.notices.pop().includes('暂时无法打开分享'));
+            f.wx.shareAppMessage = () => { throw new Error('PRIVATE'); }; tapInvite();
+            assert(f.notices.pop().includes('暂时无法打开分享'));
+            assert.strictEqual(f.app.battle, b, '接口失败不丢失房间');
+            f.app.state = 'menu'; f.app.battleInvite();
+            assert.strictEqual(f.notices.length, 0, '离开等待页后不得再分享');
+        }
         {
             const f = fixture();
             f.app.startBattle();

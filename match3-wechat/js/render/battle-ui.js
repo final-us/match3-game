@@ -93,7 +93,7 @@ function drawAvatar(ctx, cx, cy, r, image, fallbackKey) {
 /**
  * 房间等待页
  * @param data { roomId, myName, myReady, oppName, oppReady, oppJoined, items, isHost, myAvatar }
- * @returns { ready, cancel, avatar }
+ * @returns { ready, cancel, avatar, invite? }
  */
 BattleUI.drawWait = function (ctx, screen, data) {
     const cx = screen.width / 2, compact = screen.height < 700;
@@ -118,6 +118,7 @@ BattleUI.drawWait = function (ctx, screen, data) {
     const avatarTop=top+headerH+10, avatarH=compact?132:154;
     const playerW=(width-22)/2, r=compact?30:39, avatarY=avatarTop+(compact?36:47);
     const buttons={};
+    const awaitingInvite = data.isHost && !data.oppJoined;
     for (const [index,name,ready,image,key] of [
         [0,data.myName||'我',data.myReady,data.myAvatar,'piece1'],
         [1,data.oppJoined?(data.oppName||'对手'):'等待加入',data.oppReady,null,data.oppJoined?'piece2':'piece5']
@@ -125,6 +126,13 @@ BattleUI.drawWait = function (ctx, screen, data) {
         const x=16+index*(playerW+22), pc=x+playerW/2;
         moon.panel(ctx,screen,x,avatarTop,playerW,avatarH);
         drawAvatar(ctx,pc,avatarY,r,image,key);
+        if (index === 1 && awaitingInvite) {
+            const invite = { x: x + 8, y: avatarTop + avatarH - 56, w: playerW - 16, h: 44 };
+            const enabled = !data.offline && !data.actionPending;
+            moon.button(ctx,invite.x,invite.y,invite.w,invite.h,'邀请好友',enabled?'pink':'muted',18);
+            if (enabled) buttons.invite = invite;
+            continue;
+        }
         ctx.fillStyle=THEME.textDark;
         typography.drawFit(ctx,name,pc,avatarY+r+17,playerW-12,{size:14,minSize:9,weight:'bold',align:'center'});
         const label=index===1&&!data.oppJoined?'等待好友':ready?'已准备':'配置中';
@@ -156,9 +164,9 @@ BattleUI.drawWait = function (ctx, screen, data) {
     }
     ctx.fillStyle=THEME.textDark;
     const hintY=configY+configH+16;
-    typography.drawFit(ctx,data.offline?(data.pollPending?'正在重连并核对房间状态…':'状态尚未确认，请点击重试连接'):data.actionPending?(data.pendingAction==='items'?'正在保存道具配置…':'正在同步准备状态…'):'双方准备后 3 秒开局'+(!data.myAvatar&&data.canChangeAvatar!==false?' · 点头像可更换':''),cx,hintY,width,{size:11,minSize:8,align:'center',numbers:true});
+    typography.drawFit(ctx,data.offline?(data.pollPending?'正在重连并核对房间状态…':'状态尚未确认，请点击重试连接'):data.actionPending?(data.pendingAction==='items'?'正在保存道具配置…':'正在同步准备状态…'):awaitingInvite?'邀请好友加入，再一起准备':'双方准备后 3 秒开局'+(!data.myAvatar&&data.canChangeAvatar!==false?' · 点头像可更换':''),cx,hintY,width,{size:11,minSize:8,align:'center',numbers:true});
     const footerY=Math.min(bottom-48,hintY+24), gap=12, bw=(width-gap)/2;
-    moon.button(ctx,16,footerY,bw,48,data.actionPending?'同步中…':data.offline?(data.pollPending?'重连中…':'重试连接'):data.myReady?'取消准备':'准备',data.myReady?'blue':'pink',18);
+    moon.button(ctx,16,footerY,bw,48,data.actionPending?'同步中…':data.offline?(data.pollPending?'重连中…':'重试连接'):data.myReady?'取消准备':'准备',data.myReady||awaitingInvite?'blue':'pink',18);
     moon.button(ctx,16+bw+gap,footerY,bw,48,data.isHost?'取消房间':'退出房间','blue',15);
     buttons.ready={x:16,y:footerY,w:bw,h:48};
     buttons.cancel={x:16+bw+gap,y:footerY,w:bw,h:48};

@@ -18,13 +18,13 @@ const html = `<!doctype html><meta charset="utf-8"><title>等待房间 · 本地
 <style>body{margin:12px;background:#e7eafa;color:#182654;font:14px system-ui}canvas{display:block;touch-action:none}nav{margin-bottom:8px}button,select{font:inherit;padding:8px}output{display:block;margin:6px 0}#toast{min-height:22px}</style>
 <nav><a href="/?width=320&height=568">320</a> · <a href="/?width=390&height=844">390</a> · <a href="/?width=430&height=932">430</a>
 <label>网络 <select id="network"><option value="ok">正常</option><option value="stall">不回调</option><option value="fail">立即失败</option></select></label>
-<button id="late">释放迟到回包</button></nav><output id="status"></output><output id="toast"></output><canvas></canvas><script src="/fixture.js"></script>`;
+<button id="late">释放迟到回包</button><label><input id="joined" type="checkbox">模拟好友加入</label></nav><output id="status"></output><output id="toast"></output><canvas></canvas><script src="/fixture.js"></script>`;
 const script = `
 const sources=${JSON.stringify(sources)},cache={},params=new URLSearchParams(location.search);
 const width=+(params.get('width')||390),height=+(params.get('height')||844);
 const canvas=document.querySelector('canvas'),status=document.querySelector('#status'),toast=document.querySelector('#toast');
 const memory={match3_music_enabled_v1:false,match3_sfx_enabled_v1:false},events={},pending=[];
-let avatarCalls=0,frameCount=0,room={items:{freeze:1,disturb:2},ready:false};
+let avatarCalls=0,frameCount=0,shareCalls=0,room={items:{freeze:1,disturb:2},ready:false};
 const originalRAF=requestAnimationFrame.bind(window);window.requestAnimationFrame=fn=>originalRAF(t=>{frameCount++;fn(t);});
 window.wx={createCanvas:()=>canvas,createImage:()=>new Image(),
  getStorageSync:key=>memory[key],setStorageSync:(key,value)=>memory[key]=value,removeStorageSync:key=>delete memory[key],
@@ -35,14 +35,14 @@ window.wx={createCanvas:()=>canvas,createImage:()=>new Image(),
  onShow:fn=>events.show=fn,onHide:fn=>events.hide=fn,onError:()=>{},onUnhandledRejection:()=>{},
  showToast:o=>toast.textContent=o.title,showModal:o=>toast.textContent=o.content,
  createUserInfoButton:()=>{avatarCalls++;throw Error('synthetic avatar API unavailable');},
- shareAppMessage:()=>{},onShareAppMessage:()=>{},
+ shareAppMessage:()=>{shareCalls++;toast.textContent='本地分享模拟：已调起后取消，未发送邀请';},onShareAppMessage:()=>{},
  cloud:{init:()=>{},callFunction:o=>{
   const action=o.data.action,mode=document.querySelector('#network').value;
   function respond(){
    if(action==='create'){room={items:{freeze:1,disturb:2},ready:false};o.success({result:{ok:true,roomId:'R12345678abcdef0123'}});return;}
    if(action==='configureItems')room.items={...o.data.items};
    if(action==='ready')room.ready=!room.ready;
-   o.success({result:action==='query'?{ok:true,status:'waiting',myReady:room.ready,myItems:{...room.items}}:{ok:true,ready:room.ready,items:{...room.items}}});
+   o.success({result:action==='query'?{ok:true,status:'waiting',myReady:room.ready,myItems:{...room.items},opp:document.querySelector('#joined').checked?{nickname:'好友猫',ready:false}:null}:{ok:true,ready:room.ready,items:{...room.items}}});
   }
   if(action!=='create'&&action!=='leave'&&mode==='stall'){pending.push(respond);return;}
   setTimeout(()=>mode==='fail'?o.fail({errMsg:'network offline'}):respond(),350);
@@ -56,7 +56,7 @@ canvas.onpointermove=e=>{if(e.buttons)events.move({touches:[point(e)]});};
 canvas.onpointerup=e=>events.end({changedTouches:[point(e)]});
 const app=new (load('js/main.js'))();canvas.style.width=width+'px';canvas.style.height=height+'px';
 document.querySelector('#late').onclick=()=>pending.splice(0).forEach(fn=>fn());
-setInterval(()=>{const b=app.battle;status.textContent='仅本地模拟 | 帧 '+frameCount+' | 头像尝试 '+avatarCalls+' | '+app.state+(b?' | 道具 '+b.items.freeze+'/'+b.items.disturb+' | 同步 '+!!b.actionPending+' | 离线 '+!!b.offline:'');},200);
+setInterval(()=>{const b=app.battle;status.textContent='仅本地模拟 | 分享 '+shareCalls+' | 头像尝试 '+avatarCalls+' | '+app.state+(b?' | 道具 '+b.items.freeze+'/'+b.items.disturb+' | 同步 '+!!b.actionPending+' | 离线 '+!!b.offline:'');},200);
 `;
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');

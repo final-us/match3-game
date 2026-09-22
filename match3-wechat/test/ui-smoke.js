@@ -436,7 +436,9 @@ assert('B对战准备/结算状态：安全区、44px控件、互不交叠', fun
             const buttons=BattleUI.drawWait(ctx,s,{roomId:'long-room-123456',myName:'很长的猫咪玩家名字',oppName:'另一个猫咪玩家',myReady,oppReady:myReady,oppJoined:myReady,items:{freeze:0,disturb:3},isHost:!myReady});
             check(buttons);
             if(!!buttons.freezePlus===myReady) throw new Error('准备锁定配额契约改变');
-            const hint=drawnText.find(t=>t.text.startsWith('双方准备后'));
+            if (!!buttons.invite === myReady) throw new Error('房主空位需邀请入口，好友加入后隐藏');
+            if (!myReady && !textValues().includes('邀请好友')) throw new Error('邀请按钮文字缺失');
+            const hint=drawnText.find(t=>t.text.startsWith('双方准备后') || t.text === '邀请好友加入，再一起准备');
             if(hint.y+7>buttons.ready.y) throw new Error('短屏提示压住准备按钮');
         }
         for (const [state, text] of [
@@ -446,8 +448,9 @@ assert('B对战准备/结算状态：安全区、44px控件、互不交叠', fun
             [{offline:true,pollPending:true}, '正在重连并核对房间状态…']
         ]) {
             drawnText.length=0;
-            const buttons=BattleUI.drawWait(ctx,s,{roomId:'room',items:{freeze:1,disturb:2},canChangeAvatar:false,...state});
+            const buttons=BattleUI.drawWait(ctx,s,{roomId:'room',isHost:true,oppJoined:false,items:{freeze:1,disturb:2},canChangeAvatar:false,...state});
             check(buttons);
+            if(buttons.invite) throw new Error('离线或状态未确认时不得邀请');
             if(buttons.freezePlus||buttons.disturbMinus||!buttons.cancel||!buttons.ready) throw new Error('待确认时道具应禁用、退出和重连应保留');
             if(!textValues().includes(text)) throw new Error('缺失具体同步状态');
             if(textValues().some(t=>t.includes('点头像'))) throw new Error('不可用头像仍显示更换提示');

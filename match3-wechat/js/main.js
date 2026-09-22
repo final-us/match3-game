@@ -1044,7 +1044,7 @@ class Main {
         });
     }
 
-    /** 创建房间 + 分享邀请卡片 + 进等待页 */
+    /** 创建房间并进入等待页；邀请由房主主动点击。 */
     showBattleNotice(message) {
         if (typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
             wx.showToast({ title: message, icon: 'none', duration: 2200 });
@@ -1084,7 +1084,6 @@ class Main {
                 self.state = 'battle_wait';
                 analytics.track('pvp_create', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
-                self.shareBattleInvite(res.roomId);
                 self.startPolling();
             } else {
                 AudioFX.invalid();
@@ -1195,17 +1194,32 @@ class Main {
         };
     }
 
-    /** 分享邀请卡片（带 roomId） */
+    /** 等待页主动邀请；旧热区或迟到状态不能分享无效房间。 */
+    battleInvite() {
+        const b = this.battle;
+        if (this.state !== 'battle_wait' || !b || !b.isHost || b.oppJoined ||
+            b.offline || b.actionPending || !cloudBattle.isValidRoomId(b.roomId)) return;
+        AudioFX.click();
+        this.shareBattleInvite(b.roomId);
+    }
+
+    /** 分享邀请卡片（带 roomId），不据分享调用判定好友已加入。 */
     shareBattleInvite(roomId) {
-        if (typeof wx !== 'undefined' && wx.shareAppMessage) {
-            analytics.track('pvp_invite_share', { status: 'requested' });
-            wx.shareAppMessage({
-                title: '来和我 PK ' + config.GAME_CONFIG.title + '，60 秒见胜负！',
-                query: 'roomId=' + roomId + '&invite=1'
-            });
+        if (typeof wx !== 'undefined' && typeof wx.shareAppMessage === 'function') {
+            try {
+                analytics.track('pvp_invite_share', { status: 'requested' });
+                wx.shareAppMessage({
+                    title: '来和我 PK ' + config.GAME_CONFIG.title + '，60 秒见胜负！',
+                    query: 'roomId=' + roomId + '&invite=1'
+                });
+                return;
+            } catch (e) {
+                analytics.track('pvp_error', { category: 'share', reason: 'api_failed' });
+            }
         } else {
             analytics.track('pvp_error', { category: 'share', reason: 'api_unavailable' });
         }
+        this.showBattleNotice('暂时无法打开分享，请稍后再点“邀请好友”');
     }
 
     /** 处理 onShow（好友点卡片进入时拿参数加入房间） */
@@ -1642,7 +1656,9 @@ class Main {
                 this.leaveSoloResult(this.backToMenu.bind(this));
             }
         } else if (this.state === 'battle_wait' && this.battleButtons) {
-            if (BattleUI.hitTest(x, y, this.battleButtons.freezeMinus)) {
+            if (BattleUI.hitTest(x, y, this.battleButtons.invite)) {
+                this.battleInvite();
+            } else if (BattleUI.hitTest(x, y, this.battleButtons.freezeMinus)) {
                 this.battleAdjustItem('freeze', -1);
             } else if (BattleUI.hitTest(x, y, this.battleButtons.freezePlus)) {
                 this.battleAdjustItem('freeze', 1);
