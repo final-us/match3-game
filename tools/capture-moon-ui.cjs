@@ -49,7 +49,7 @@ const server = http.createServer((req,res) => {
     },sources);
     for(const [width,height] of [[320,568],[375,812],[430,932]]) {
       await page.setViewportSize({width,height});
-      for(const mode of ['home','home-empty','home-safe','home-empty-safe','stamina-empty','stamina-empty-no-ad','board','board-tools','board-timed','settings','settings-off','shop','shop-safe','shop-empty','shop-pending','shop-no-ad','result','result-win','result-timeout','result-no-ad','map','map-states','map-scroll','map-scroll-end','battle-wait','battle-wait-empty','battle-wait-ready','battle-result','battle-result-draw','battle-result-lose','battle-board','battle-cooldown','battle-active','battle-countdown','battle-effects','content-collect','content-mixed','content-guide-collect','content-guide-combo','content-result-win','content-result-timeout','content-result-zero','rematch-wait','rematch-result','rematch-confirmed','rematch-invited','rematch-left','rematch-offline','rematch-expired','rematch-reward','daily-redesign','daily-redesign-loading','daily-redesign-error','daily-redesign-claimed','daily-redesign-pending']) {
+      for(const mode of ['home','home-press','home-empty','home-safe','home-empty-safe','stamina-empty','stamina-empty-no-ad','board','board-reshuffle-mid','board-tools','board-timed','settings','settings-off','shop','shop-safe','shop-empty','shop-pending','shop-no-ad','result','result-win','result-timeout','result-no-ad','map','map-states','map-scroll','map-scroll-end','battle-wait','battle-wait-empty','battle-wait-ready','battle-result','battle-result-draw','battle-result-lose','battle-board','battle-cooldown','battle-active','battle-countdown','battle-effects','content-collect','content-mixed','content-guide-collect','content-guide-combo','content-result-win','content-result-timeout','content-result-zero','rematch-wait','rematch-result','rematch-confirmed','rematch-invited','rematch-left','rematch-offline','rematch-expired','rematch-reward','daily-redesign','daily-redesign-loading','daily-redesign-error','daily-redesign-claimed','daily-redesign-pending']) {
         if (modes.length && !modes.includes(mode)) continue;
         await page.evaluate(({width,height,mode})=>{
           const c=document.querySelector('canvas');c.width=width*2;c.height=height*2;c.style.width=width+'px';c.style.height=height+'px';
@@ -98,6 +98,7 @@ const server = http.createServer((req,res) => {
           if(mode==='battle-result-draw') Battle.drawResult(ctx,{...screen,contentTop:72},{result:'draw',myScore:4000,oppScore:4000,coinReward:50});
           if(mode==='battle-result-lose') Battle.drawResult(ctx,{...screen,contentTop:72},{result:'lose',myScore:3200,oppScore:4000,coinReward:0});
           if(mode==='home') UI.drawMenu(ctx,screen,5,{count:5,timeLeftText:'12:34',canPlay:true},{coins:1000});
+          if(mode==='home-press') UI.drawMenu(ctx,screen,5,{count:5,timeLeftText:'12:34',canPlay:true},{coins:1000,battlePress:1});
           if(mode==='home-safe'||mode==='home-empty-safe') UI.drawMenu(ctx,{...screen,contentTop:91,safeBottom:34},5,{count:mode==='home-safe'?5:0,timeLeftText:'12:34',canPlay:mode==='home-safe',canAd:true},{coins:1000});
           if(mode==='home-empty') UI.drawMenu(ctx,screen,5,{count:0,timeLeftText:'12:34',canPlay:false,canAd:true},{coins:0});
           if(mode==='stamina-empty') { UI.drawLevelSelect(ctx,screen,8,800,{6:3,7:2},{offset:5}); UI.drawStaminaEmpty(ctx,screen,{timeLeftText:'12:34',canBuy:true,canAd:true}); }
@@ -117,13 +118,17 @@ const server = http.createServer((req,res) => {
           if(mode==='map-states') UI.drawLevelSelect(ctx,{...screen,contentTop:72},8,1000,{6:3,7:2},{offset:5});
           if(mode==='map-scroll') UI.drawLevelSelect(ctx,{...screen,contentTop:72},8,1000,{6:3,7:2},{offset:5.5});
           if(mode==='map-scroll-end') UI.drawLevelSelect(ctx,{...screen,contentTop:72},8,1000,{6:3,7:2},{offset:5.9});
-          if(['board','board-tools','board-timed','battle-board','battle-cooldown','battle-active','battle-countdown','battle-effects'].includes(mode)) {
+          if(['board','board-reshuffle-mid','board-tools','board-timed','battle-board','battle-cooldown','battle-active','battle-countdown','battle-effects'].includes(mode)) {
             // Visual fixture exercises all five production pieces, not the default four-color easy mode.
             load('js/core/config.js').GAME_CONFIG.mode='normal';
             const Core=load('js/core/game-core.js'), Board=load('js/render/board-render.js');
             const board=new Board(ctx,{...screen,contentTop:72});
             board.battleMode=mode.startsWith('battle-');
             board.setGame(new Core({id:5,rows:8,columns:8,moveCount:25,timeLimitSec:mode==='board-timed'?180:0,goals:[{type:'score',target:3600}]},{}));
+            if(mode==='board-reshuffle-mid') {
+              board.core.grid[0][0]=board.core.grid[0][0]===1?2:1;
+              board.animateReshuffle();board.update(100);
+            }
             if(mode==='board-timed') {board.core.timeLeftMs=9000;board.core.movesLeft=4;}
             if(mode==='board-tools') { board.setTools({hammer:2,bomb:1,color:0});board.selectedTool='hammer'; }
             board.draw();

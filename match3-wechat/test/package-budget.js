@@ -8,14 +8,18 @@ const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
 const resRoot = path.join(projectRoot, 'res');
-const assets = require('../js/render/assets').ASSETS;
+const assetModule = require('../js/render/assets');
+const assets = assetModule.ASSETS;
+const catalogAssets = assetModule.CATALOG_ASSETS;
 const config = require('../project.config.json');
+const gameConfig = require('../game.json');
 const vm = require('vm');
 const maxActiveBytes = 3.5 * 1024 * 1024;
 const maxBgmBytes = 360 * 1024;
 // Full accepted rocket/win tails add ~15KB; overall 4MiB package cap is unchanged.
 const maxSfxBytes = 64 * 1024;
 const maxEstimatedMainPackageBytes = 4 * 1024 * 1024;
+const maxEstimatedTotalPackageBytes = 30 * 1024 * 1024;
 const bgmPaths = ['res/audio/calm.mp3', 'res/audio/battle.mp3'];
 const sfxPath = 'res/audio/sfx-acoustic.mp3';
 const developerMetadata = new Set([
@@ -82,6 +86,31 @@ Object.keys(assets).forEach(function (key) {
     assert(!isIgnored(relative), '活跃素材被忽略: ' + relative);
 });
 
+const packages = (gameConfig.subpackages || []).map(function (entry) {
+    assert(entry && typeof entry.name === 'string' && typeof entry.root === 'string', '分包声明无效');
+    const root = entry.root.replace(/\/$/, '');
+    assert(root && !path.isAbsolute(root) && !root.split('/').includes('..'), '分包根目录无效: ' + entry.root);
+    assert(fs.existsSync(path.join(projectRoot, root)) && fs.statSync(path.join(projectRoot, root)).isDirectory(), '分包目录不存在: ' + root);
+    return { name: entry.name, root: root };
+});
+const catalogPackage = packages.find(function (entry) { return entry.name === 'catalog' && entry.root === 'catalog'; });
+assert(catalogPackage, '图鉴须声明普通 catalog/ 分包');
+assert(catalogAssets && Object.keys(catalogAssets).length === 16, '图鉴须注册 16 张成长原画');
+const catalogPaths = new Set();
+Object.keys(catalogAssets).forEach(function (key) {
+    const relative = catalogAssets[key];
+    assert(typeof relative === 'string' && relative.startsWith(catalogPackage.root + '/') &&
+        !relative.split('/').includes('..'), '图鉴素材须位于已声明的 catalog/ 分包: ' + key);
+    const file = path.resolve(projectRoot, relative);
+    assert(fs.existsSync(file) && fs.statSync(file).isFile(), '图鉴素材文件不存在: ' + key + ' → ' + relative);
+    assert(!isIgnored(relative), '活跃图鉴素材被忽略: ' + relative);
+    assert(!catalogPaths.has(relative), '图鉴素材重复注册: ' + relative);
+    catalogPaths.add(relative);
+});
+walk(path.join(projectRoot, catalogPackage.root)).map(projectRelative).forEach(function (relative) {
+    assert(relative === 'catalog/game.js' || catalogPaths.has(relative), '图鉴分包存在未注册文件: ' + relative);
+});
+
 let bgmBytes = 0;
 bgmPaths.forEach(function (relative) {
     const file = path.join(projectRoot, relative);
@@ -137,20 +166,32 @@ for (const failOne of [false, true]) {
     assert(loader.get('homeBackground').src === loader.get('gameBackground').src, '两种背景入口须加载同一发布文件');
 }
 
-const estimatedMainFiles = walk(projectRoot).map(function (file) {
+const estimatedPackageFiles = walk(projectRoot).map(function (file) {
     return { file: file, relative: projectRelative(file) };
 }).filter(function (item) {
     return !developerMetadata.has(item.relative) && !isIgnored(item.relative);
+});
+const isSubpackageFile = function (relative) {
+    return packages.some(function (entry) { return relative.startsWith(entry.root + '/'); });
+};
+const estimatedMainFiles = estimatedPackageFiles.filter(function (item) {
+    return !isSubpackageFile(item.relative);
 });
 const estimatedMainBytes = estimatedMainFiles.reduce(function (total, item) {
     return total + fs.statSync(item.file).size;
 }, 0);
 assert(estimatedMainBytes <= maxEstimatedMainPackageBytes,
     '静态主包估算超过 4 MiB: ' + estimatedMainBytes + ' > ' + maxEstimatedMainPackageBytes);
+const estimatedTotalBytes = estimatedPackageFiles.reduce(function (total, item) {
+    return total + fs.statSync(item.file).size;
+}, 0);
+assert(estimatedTotalBytes <= maxEstimatedTotalPackageBytes,
+    '静态总包估算超过 30 MiB: ' + estimatedTotalBytes + ' > ' + maxEstimatedTotalPackageBytes);
 
 console.log('包体预算: 通过');
 console.log('活跃素材: ' + activeBytes + ' bytes / ' + maxActiveBytes + ' bytes');
 console.log('双 BGM: ' + bgmBytes + ' bytes / ' + maxBgmBytes + ' bytes');
 console.log('音效精灵: ' + sfxBytes + ' bytes / ' + maxSfxBytes + ' bytes');
 console.log('静态主包估算: ' + estimatedMainBytes + ' bytes / ' + maxEstimatedMainPackageBytes + ' bytes (' + estimatedMainFiles.length + ' files)');
+console.log('静态总包估算: ' + estimatedTotalBytes + ' bytes / ' + maxEstimatedTotalPackageBytes + ' bytes (' + estimatedPackageFiles.length + ' files)');
 console.log('未引用 res 文件: ' + unreferenced.length + ' 个，均由精确 file 规则覆盖');

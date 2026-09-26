@@ -9,11 +9,13 @@ const cloud = require('wx-server-sdk');
 const crypto = require('crypto');
 const logic = require('./logic');
 const daily = require('./daily');
+const retention = require('./retention');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database({ throwOnNotFound: false });
 const rooms = db.collection('battle_rooms');
 const CONFIG = logic.CONFIG;
+const QUERY_HEARTBEAT_MS = 3 * 1000;
 
 function genRoomId() {
     return 'R' + Date.now().toString(36) + crypto.randomBytes(5).toString('hex');
@@ -21,6 +23,11 @@ function genRoomId() {
 
 function now() { return Date.now(); }
 const dailyService = daily.createService(db, crypto, now);
+const retentionService = retention.createService(db, crypto, now);
+
+function retentionCleanupEnabled() {
+    return typeof process !== 'undefined' && process && process.env && process.env.RETENTION_CLEANUP_ENABLED === '1';
+}
 
 function createLimitDocId(openid) {
     return logic.CREATE_LIMIT_DOCUMENT_PREFIX + crypto.createHash('sha256')
@@ -35,13 +42,13 @@ function safeNickname(value) {
     return trimmed || '玩家';
 }
 
-function newPlayer(openid, nickname, at, protocolVersion) {
+function newPlayer(openid, nickname, at, protocolVersion, itemRulesVersion) {
     const player = {
         openid: openid,
         nickname: safeNickname(nickname),
         score: 0,
         ready: false,
-        items: { ...CONFIG.INITIAL_ITEMS },
+        items: { ...(itemRulesVersion === 3 ? CONFIG.V3_ITEMS : CONFIG.INITIAL_ITEMS) },
         itemCooldownUntil: 0,
         activeEffectUntil: 0,
         online: true,
@@ -51,6 +58,16 @@ function newPlayer(openid, nickname, at, protocolVersion) {
         player.wins = 0;
         player.rematchAccepted = false;
         player.left = false;
+    }
+    if (itemRulesVersion === 3) {
+        player.rawScore = 0;
+        player.scoreSeq = 0;
+        player.lastScoreAt = 0;
+        player.cheerWindows = [];
+        player.frozenUntil = 0;
+        player.frozenAt = 0;
+        player.reflectUntil = 0;
+        player.cheerUntil = 0;
     }
     return player;
 }
@@ -65,8 +82,21 @@ async function runRoomTransaction(roomId, handler) {
     return db.runTransaction(async function (transaction) {
         const ref = transaction.collection('battle_rooms').doc(roomId);
         const room = await getRoom(ref);
-        return handler(room, ref);
+        return handler(room, ref, transaction);
     });
+}
+
+function settledQuitter(room) {
+    if (!room || room.finishReason !== 'leave' || !room.result) return '';
+    const players = Array.isArray(room.players) ? room.players : [];
+    const quitter = players.find(function (player) {
+        return room.result[player.openid] && room.result[player.openid].result === 'lose';
+    });
+    return quitter ? quitter.openid : '';
+}
+
+async function captureRetentionEvidence(transaction, room, roomId, quitterOpenid) {
+    await retentionService.captureBattleEvidence(transaction, room, roomId, quitterOpenid || settledQuitter(room));
 }
 
 function settlementId(roomId, roundId, openid) {
@@ -124,11 +154,11 @@ function buildQueryResponse(room, openid, at) {
             online: opponentOnline
         } : null,
         effects: logic.effectsForPlayer(room.effects, openid).map(function (effect) {
-            return { id: effect.id, item: effect.item, duration: effect.duration, at: effect.at, until: effect.until };
+            return publicEffect(effect);
         }),
         casts: Array.isArray(room.casts) ? room.casts.filter(function (cast) {
             return cast && cast.fromOpenid === openid;
-        }).map(function (cast) { return { id: cast.id, item: cast.item, at: cast.at }; }) : [],
+        }).map(function (cast) { return publicCast(cast); }) : [],
         result: room.result && room.result[openid] ? room.result[openid] : null
     };
     if (room.protocolVersion === 2) {
@@ -144,7 +174,32 @@ function buildQueryResponse(room, openid, at) {
             !logic.isRematchRoomExpired(room, at) &&
             !logic.isHeartbeatExpired(opponent, at, CONFIG.OFFLINE_GRACE_MS);
     }
+    if (room.itemRulesVersion === 3) {
+        response.itemRulesVersion = 3;
+        response.serverTime = at;
+        response.myRawScore = me.rawScore || 0;
+        response.myScoreSeq = me.scoreSeq || 0;
+        response.myFrozenUntil = me.frozenUntil || 0;
+        response.myReflectUntil = me.reflectUntil || 0;
+        response.myCheerUntil = me.cheerUntil || 0;
+    }
     return response;
+}
+
+function publicEffect(effect) {
+    const result = { id: effect.id, item: effect.item, duration: effect.duration, at: effect.at, until: effect.until };
+    if (effect.status) result.status = effect.status;
+    if (effect.reflected) result.reflected = true;
+    if (effect.sourceEffectId) result.sourceEffectId = effect.sourceEffectId;
+    return result;
+}
+
+function publicCast(cast) {
+    const result = { id: cast.id, item: cast.item, at: cast.at };
+    if (cast.status) result.status = cast.status;
+    if (cast.reflectedEffectId) result.reflectedEffectId = cast.reflectedEffectId;
+    if (cast.requestId) result.requestId = cast.requestId;
+    return result;
 }
 
 function isV2(room) { return room && room.protocolVersion === 2; }
@@ -154,7 +209,13 @@ function staleRound(room, event) {
     if (event.protocolVersion !== 2 || !Number.isSafeInteger(event.roundId) || event.roundId !== room.roundId) {
         return { ok: false, err: 'STALE_ROUND' };
     }
+    if (room.itemRulesVersion === 3 && event.itemRulesVersion !== 3) return { ok: false, err: 'UPDATE_REQUIRED' };
     return null;
+}
+
+function ruleResponse(room, response) {
+    if (room.itemRulesVersion === 3) response.itemRulesVersion = 3;
+    return response;
 }
 
 function updateV2Room(room, at, keepWins) {
@@ -174,30 +235,45 @@ function updateV2Room(room, at, keepWins) {
     room.players.forEach(function (player) {
         player.score = 0;
         player.ready = false;
-        player.items = { ...CONFIG.INITIAL_ITEMS };
+        player.items = { ...(room.itemRulesVersion === 3 ? CONFIG.V3_ITEMS : CONFIG.INITIAL_ITEMS) };
         player.itemCooldownUntil = 0;
         player.activeEffectUntil = 0;
+        if (room.itemRulesVersion === 3) {
+            player.rawScore = 0;
+            player.scoreSeq = 0;
+            player.lastScoreAt = 0;
+            player.lastScoreSample = null;
+            player.cheerWindows = [];
+            player.frozenUntil = 0;
+            player.frozenAt = 0;
+            player.reflectUntil = 0;
+            player.cheerUntil = 0;
+        }
         player.rematchAccepted = false;
         player.left = false;
         if (!keepWins) player.wins = 0;
     });
 }
 
-async function cleanupExpiredRooms(at) {
+async function cleanupExpiredRooms(at, includeRetention) {
     // 建房计数器也是带 createdAt 的控制文档；它们不匹配房间 ID，永远不会进入普通房间事务。
     const res = await rooms.where({
         createdAt: db.command.lt(at - CONFIG.ROOM_RETENTION_MS)
     }).remove();
     const removed = res && res.stats ? Number(res.stats.removed) : 0;
     const dailyRemoved = await dailyService.cleanup(at);
-    const total = (Number.isSafeInteger(removed) && removed >= 0 ? removed : 0) + dailyRemoved;
+    const retentionRemoved = includeRetention ? await retentionService.cleanup(at) : 0;
+    const total = (Number.isSafeInteger(removed) && removed >= 0 ? removed : 0) + dailyRemoved + retentionRemoved;
     return { ok: true, deleted: total };
 }
 
 /** 创建房间。 */
 async function create(openid, event) {
+    if (event.itemRulesVersion !== undefined && event.itemRulesVersion !== 3) return { ok: false, err: 'UPDATE_REQUIRED' };
+    if (event.itemRulesVersion === 3 && event.protocolVersion !== 2) return { ok: false, err: 'UPDATE_REQUIRED' };
     const at = now();
     const protocolVersion = event.protocolVersion === 2 ? 2 : 1;
+    const itemRulesVersion = protocolVersion === 2 && event.itemRulesVersion === 3 ? 3 : 0;
     return db.runTransaction(async function (transaction) {
         const limitRef = transaction.collection('battle_rooms').doc(createLimitDocId(openid));
         const counter = await getRoom(limitRef);
@@ -210,13 +286,15 @@ async function create(openid, event) {
             status: 'waiting',
             startTime: 0,
             createdAt: at,
-            players: [newPlayer(openid, event.nickname, at, protocolVersion)],
+            players: [newPlayer(openid, event.nickname, at, protocolVersion, itemRulesVersion)],
             effects: [],
             casts: [],
             result: {}
         };
         if (protocolVersion === 2) {
             room.protocolVersion = 2;
+            if (itemRulesVersion === 3) room.itemRulesVersion = 3;
+            room.retentionEnabled = event.retentionEnabled === true;
             room.roundId = 1;
             room.roundNumber = 1;
             room.waitingAt = at;
@@ -225,7 +303,7 @@ async function create(openid, event) {
         await limitRef.set({ data: Object.assign({ kind: 'create_rate_limit' }, allowance.next) });
         await roomRef.set({ data: room });
         return protocolVersion === 2
-            ? { ok: true, roomId: roomId, protocolVersion: 2, roundId: 1, roundNumber: 1 }
+            ? ruleResponse(room, { ok: true, roomId: roomId, protocolVersion: 2, roundId: 1, roundNumber: 1 })
             : { ok: true, roomId: roomId };
     });
 }
@@ -235,10 +313,12 @@ async function join(openid, event) {
     return runRoomTransaction(event.roomId, async function (room, ref) {
         if (!room) return { ok: false, err: '房间不存在' };
         if (isV2(room) && event.protocolVersion !== 2) return { ok: false, err: 'UPDATE_REQUIRED' };
+        if (room.itemRulesVersion === 3 && event.itemRulesVersion !== 3) return { ok: false, err: 'UPDATE_REQUIRED' };
         if (logic.isWaitingRoomExpired(room, at)) return { ok: false, err: '邀请已失效' };
         if (room.status !== 'waiting') return { ok: false, err: '对局已开始' };
 
         const players = Array.isArray(room.players) ? room.players : [];
+        if (isV2(room) && event.retentionEnabled === true) room.retentionEnabled = true;
         const index = players.findIndex(function (player) { return player.openid === openid; });
         if (index >= 0) {
             players[index].online = true;
@@ -247,16 +327,17 @@ async function join(openid, event) {
             if (players.length >= 2) return { ok: false, err: '房间已满' };
             // 换了对手后，留下的玩家也要重新确认准备。
             players.forEach(function (candidate) { candidate.ready = false; });
-            players.push(newPlayer(openid, event.nickname, at, room.protocolVersion));
+            players.push(newPlayer(openid, event.nickname, at, room.protocolVersion, room.itemRulesVersion));
             if (isV2(room)) updateV2Room(room, at, false);
         }
         await ref.update({ data: isV2(room) ? {
             players: room.players, status: room.status, startTime: room.startTime, waitingAt: room.waitingAt,
             finishedAt: room.finishedAt, finishReason: room.finishReason, result: room.result, effects: room.effects,
-            casts: room.casts, settledRoundId: room.settledRoundId, roundId: room.roundId, roundNumber: room.roundNumber
+            casts: room.casts, settledRoundId: room.settledRoundId, roundId: room.roundId, roundNumber: room.roundNumber,
+            retentionEnabled: room.retentionEnabled === true
         } : { players: players } });
         return isV2(room)
-            ? { ok: true, roomId: event.roomId, protocolVersion: 2, roundId: room.roundId, roundNumber: room.roundNumber }
+            ? ruleResponse(room, { ok: true, roomId: event.roomId, protocolVersion: 2, roundId: room.roundId, roundNumber: room.roundNumber })
             : { ok: true, roomId: event.roomId };
     });
 }
@@ -275,7 +356,7 @@ async function ready(openid, event) {
         const requestedReady = isV2(room) ? event.ready : !player.ready;
         if (isV2(room) && typeof event.ready !== 'boolean') return { ok: false, err: '准备状态非法' };
         if (requestedReady && !player.ready) {
-            const validation = logic.validateItemConfig(player.items, CONFIG);
+            const validation = logic.validateRoomItemConfig(room, player.items, true, CONFIG);
             if (!validation.ok) return validation;
             player.items = validation.items;
         }
@@ -293,7 +374,7 @@ async function ready(openid, event) {
         }
         await ref.update({ data: update });
         return isV2(room)
-            ? { ok: true, ready: player.ready, items: player.items, protocolVersion: 2, roundId: room.roundId }
+            ? ruleResponse(room, { ok: true, ready: player.ready, items: player.items, protocolVersion: 2, roundId: room.roundId })
             : { ok: true, ready: player.ready, items: player.items };
     });
 }
@@ -304,7 +385,7 @@ async function configureItems(openid, event) {
         if (!room) return { ok: false, err: '房间不存在' };
         const stale = staleRound(room, event);
         if (stale) return stale;
-        const validation = logic.validateItemConfig(event.items, CONFIG);
+        const validation = logic.validateRoomItemConfig(room, event.items, false, CONFIG);
         if (!validation.ok) return validation;
         if (logic.isWaitingRoomExpired(room, at)) return { ok: false, err: '邀请已失效' };
         if (room.status !== 'waiting') return { ok: false, err: '对局已开始' };
@@ -316,7 +397,7 @@ async function configureItems(openid, event) {
         player.lastSeen = at;
         await ref.update({ data: { players: room.players } });
         return isV2(room)
-            ? { ok: true, items: player.items, protocolVersion: 2, roundId: room.roundId }
+            ? ruleResponse(room, { ok: true, items: player.items, protocolVersion: 2, roundId: room.roundId })
             : { ok: true, items: player.items };
     });
 }
@@ -330,6 +411,16 @@ async function syncScore(openid, event) {
         const player = room.players.find(function (candidate) { return candidate.openid === openid; });
         if (!player) return { ok: false, err: '不在房间' };
 
+        if (room.itemRulesVersion === 3) {
+            if (!Array.isArray(event.samples) || event.samples.length === 0) return { ok: false, err: '分数样本格式非法' };
+            const sampleResult = acceptScoreSamples(room, player, event.samples, at);
+            if (!sampleResult.ok) return sampleResult;
+            player.online = true;
+            player.lastSeen = at;
+            await ref.update({ data: { players: room.players } });
+            return v3ScoreResponse(room, player, at);
+        }
+
         const validation = logic.validateScoreSync(room, player, event.score, at, CONFIG);
         if (!validation.ok) return validation;
 
@@ -341,6 +432,113 @@ async function syncScore(openid, event) {
     });
 }
 
+function acceptScoreSamples(room, player, samples, at) {
+    const result = logic.validateRawScoreSamples(room, player, samples, at, CONFIG);
+    if (!result.ok) return result;
+    player.scoreSeq = result.scoreSeq;
+    player.rawScore = result.rawScore;
+    player.score = result.score;
+    player.lastScoreAt = result.lastScoreAt;
+    player.lastScoreSample = result.lastScoreSample;
+    return result;
+}
+
+function v3ScoreResponse(room, player, at) {
+    return { ok: true, protocolVersion: 2, itemRulesVersion: 3, roundId: room.roundId,
+        ackSeq: player.scoreSeq || 0, rawScore: player.rawScore || 0, myScore: player.score || 0,
+        myFrozenUntil: player.frozenUntil || 0, myReflectUntil: player.reflectUntil || 0,
+        myCheerUntil: player.cheerUntil || 0, serverTime: at };
+}
+
+function newEffectId() { return 'e' + crypto.randomBytes(12).toString('hex'); }
+
+function consumeReflect(player, effects, at, blockedEffectId) {
+    if (!(Number(player.reflectUntil) > at)) return false;
+    const shield = effects.find(function (effect) {
+        return effect.item === 'reflect' && effect.toOpenid === player.openid && effect.status === 'active' && effect.until > at;
+    });
+    if (!shield) return false;
+    shield.status = 'triggered';
+    shield.until = at;
+    shield.duration = Math.max(0, at - shield.at);
+    shield.blockedEffectId = blockedEffectId;
+    player.reflectUntil = at;
+    player.activeEffectUntil = Math.min(Number(player.activeEffectUntil) || at, at);
+    return true;
+}
+
+function applyAttack(room, caster, target, item, at, effects, cast) {
+    const duration = item === 'freeze' ? CONFIG.FREEZE_DURATION_MS : CONFIG.DISTURB_DURATION_MS;
+    const attack = { id: newEffectId(), item: item, duration: duration, fromOpenid: caster.openid,
+        toOpenid: target.openid, at: at, until: at + duration, status: 'active' };
+    if (consumeReflect(target, effects, at, attack.id)) {
+        attack.status = 'blocked';
+        attack.until = at;
+        attack.duration = 0;
+        effects.push(attack);
+        const returned = { id: newEffectId(), item: item, duration: duration, fromOpenid: target.openid,
+            toOpenid: caster.openid, at: at, until: at + duration, status: 'active',
+            reflected: true, sourceEffectId: attack.id };
+        if (consumeReflect(caster, effects, at, returned.id)) {
+            returned.status = 'blocked';
+            returned.until = at;
+            returned.duration = 0;
+        } else if (item === 'freeze') {
+            caster.frozenAt = at;
+            caster.frozenUntil = Math.max(Number(caster.frozenUntil) || 0, returned.until);
+        }
+        effects.push(returned);
+        cast.status = 'reflected';
+        cast.reflectedEffectId = returned.id;
+        return attack;
+    }
+    if (item === 'freeze') {
+        target.frozenAt = at;
+        target.frozenUntil = Math.max(Number(target.frozenUntil) || 0, attack.until);
+    }
+    effects.push(attack);
+    cast.status = 'active';
+    return attack;
+}
+
+function useV3Item(room, player, opponent, event, at) {
+    const samples = event.samples === undefined ? [] : event.samples;
+    const accepted = acceptScoreSamples(room, player, samples, at);
+    if (!accepted.ok) return accepted;
+    const item = event.item;
+    const duration = item === 'freeze' ? CONFIG.FREEZE_DURATION_MS :
+        item === 'disturb' ? CONFIG.DISTURB_DURATION_MS :
+            item === 'reflect' ? CONFIG.REFLECT_DURATION_MS : CONFIG.CHEER_DURATION_MS;
+    const effects = Array.isArray(room.effects) ? room.effects : [];
+    const casts = Array.isArray(room.casts) ? room.casts : [];
+    const cast = { id: newEffectId(), item: item, fromOpenid: player.openid, at: at, status: 'active',
+        requestId: event.requestId };
+    let effect;
+    if (item === 'freeze' || item === 'disturb') {
+        effect = applyAttack(room, player, opponent, item, at, effects, cast);
+        cast.id = effect.id;
+    } else {
+        effect = { id: cast.id, item: item, duration: duration, fromOpenid: player.openid,
+            toOpenid: player.openid, at: at, until: at + duration, status: 'active' };
+        effects.push(effect);
+        if (item === 'reflect') player.reflectUntil = effect.until;
+        else {
+            player.cheerUntil = effect.until;
+            player.cheerWindows = Array.isArray(player.cheerWindows) ? player.cheerWindows : [];
+            player.cheerWindows.push({ at: at, until: effect.until });
+        }
+    }
+    player.items[item]--;
+    player.itemCooldownUntil = at + CONFIG.ITEM_COOLDOWN_MS;
+    player.activeEffectUntil = at + duration;
+    player.online = true;
+    player.lastSeen = at;
+    casts.push(cast);
+    room.effects = effects;
+    room.casts = casts;
+    return { ok: true, effect: effect, cast: cast };
+}
+
 async function useItem(openid, event) {
     const at = now();
 
@@ -349,13 +547,41 @@ async function useItem(openid, event) {
         const stale = staleRound(room, event);
         if (stale) return stale;
         const item = event.item;
-        if (CONFIG.ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
+        if (logic.itemRules(room, CONFIG).ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
         const player = room.players.find(function (candidate) { return candidate.openid === openid; });
         if (!player) return { ok: false, err: '不在房间' };
+        if (room.itemRulesVersion === 3) {
+            if (typeof event.requestId !== 'string' || !/^[A-Za-z0-9_-]{12,64}$/.test(event.requestId)) {
+                return { ok: false, err: '道具请求编号非法' };
+            }
+            const prior = Array.isArray(room.casts) && room.casts.find(function (cast) {
+                return cast.fromOpenid === openid && cast.requestId === event.requestId;
+            });
+            if (prior) {
+                if (prior.item !== item) return { ok: false, err: '道具请求冲突' };
+                const priorEffect = Array.isArray(room.effects) && room.effects.find(function (effect) { return effect.id === prior.id; });
+                return Object.assign(v3ScoreResponse(room, player, at), {
+                    items: player.items, itemCooldownUntil: player.itemCooldownUntil,
+                    activeEffectUntil: player.activeEffectUntil, effect: priorEffect ? publicEffect(priorEffect) : null,
+                    cast: publicCast(prior), serverTime: at
+                });
+            }
+        }
         const validation = logic.validateItemUse(room, player, item, at, CONFIG);
         if (!validation.ok) return validation;
         const opponent = room.players.find(function (candidate) { return candidate.openid !== openid; });
         if (!opponent) return { ok: false, err: '对手不存在' };
+
+        if (room.itemRulesVersion === 3) {
+            const used = useV3Item(room, player, opponent, event, at);
+            if (!used.ok) return used;
+            await ref.update({ data: { players: room.players, effects: room.effects, casts: room.casts } });
+            return Object.assign(v3ScoreResponse(room, player, at), {
+                items: player.items, itemCooldownUntil: player.itemCooldownUntil,
+                activeEffectUntil: player.activeEffectUntil, effect: publicEffect(used.effect), cast: publicCast(used.cast),
+                serverTime: at
+            });
+        }
 
         player.items[item]--;
         const duration = item === 'freeze' ? CONFIG.FREEZE_DURATION_MS : CONFIG.DISTURB_DURATION_MS;
@@ -395,7 +621,7 @@ async function useItem(openid, event) {
 
 async function leave(openid, event) {
     const at = now();
-    return runRoomTransaction(event.roomId, async function (room, ref) {
+    return runRoomTransaction(event.roomId, async function (room, ref, transaction) {
         if (!room) return { ok: true };
         const stale = staleRound(room, event);
         if (stale) return stale;
@@ -430,16 +656,17 @@ async function leave(openid, event) {
                 update.finishReason = 'leave';
             }
             await ref.update({ data: update });
-            return isV2(room) ? { ok: true, protocolVersion: 2, roundId: room.roundId } : { ok: true };
+            return isV2(room) ? ruleResponse(room, { ok: true, protocolVersion: 2, roundId: room.roundId }) : { ok: true };
         }
 
         if (isV2(room) && room.status === 'finished') {
+            await captureRetentionEvidence(transaction, room, event.roomId, settledQuitter(room));
             player.left = true;
             player.online = false;
             player.lastSeen = at;
             room.opponentLeft = true;
             await ref.update({ data: { players: room.players, opponentLeft: true } });
-            return { ok: true, protocolVersion: 2, roundId: room.roundId };
+            return ruleResponse(room, { ok: true, protocolVersion: 2, roundId: room.roundId });
         }
 
         player.online = false;
@@ -448,6 +675,7 @@ async function leave(openid, event) {
         const update = { players: room.players };
         if (room.status === 'playing' && room.players.length === 2) {
             finishRoom(room, event.roomId, at, 'leave', openid);
+            await captureRetentionEvidence(transaction, room, event.roomId, openid);
             update.status = room.status;
             update.finishedAt = room.finishedAt;
             update.finishReason = room.finishReason;
@@ -455,13 +683,13 @@ async function leave(openid, event) {
             if (isV2(room)) update.settledRoundId = room.settledRoundId;
         }
         await ref.update({ data: update });
-        return isV2(room) ? { ok: true, protocolVersion: 2, roundId: room.roundId } : { ok: true };
+        return isV2(room) ? ruleResponse(room, { ok: true, protocolVersion: 2, roundId: room.roundId }) : { ok: true };
     });
 }
 
 async function query(openid, event) {
     const at = now();
-    return runRoomTransaction(event.roomId, async function (room, ref) {
+    return runRoomTransaction(event.roomId, async function (room, ref, transaction) {
         if (!room) return { ok: false, err: '房间不存在' };
         if (logic.isWaitingRoomExpired(room, at)) return { ok: false, err: '邀请已失效' };
         if (isV2(room) && room.status === 'finished' && logic.isRematchRoomExpired(room, at)) {
@@ -469,17 +697,35 @@ async function query(openid, event) {
         }
         const me = room.players.find(function (candidate) { return candidate.openid === openid; });
         if (!me || me.left) return { ok: false, err: '不在房间' };
+        if (room.itemRulesVersion === 3) {
+            if (event.protocolVersion !== 2 || event.itemRulesVersion !== 3) return { ok: false, err: 'UPDATE_REQUIRED' };
+            if (event.roundId !== room.roundId) return buildQueryResponse(room, openid, at);
+        }
 
-        me.lastSeen = at;
-        me.online = true;
+        // Both clients poll every second. Persisting every poll makes their reads compete
+        // with item configuration and ready writes on the same room document.
+        const heartbeatDue = me.online !== true || !Number.isFinite(me.lastSeen) ||
+            at - me.lastSeen >= QUERY_HEARTBEAT_MS;
+        if (heartbeatDue) {
+            me.lastSeen = at;
+            me.online = true;
+        }
 
         const finish = logic.determineFinish(room, openid, at, CONFIG);
-        if (finish.finished && room.status !== 'finished') {
+        const becameFinished = finish.finished && room.status !== 'finished';
+        let repairedSettlement = false;
+        if (becameFinished) {
             finishRoom(room, event.roomId, at, finish.reason, finish.loserOpenid);
         } else if (room.status === 'finished') {
             // Repair legacy rooms that persisted only one player's result.
+            const previousResult = room.result;
+            const previousSettledRoundId = room.settledRoundId;
             room.result = logic.ensureSettlementResults(room, finish.loserOpenid);
             settleV2Round(room, event.roomId);
+            repairedSettlement = room.result !== previousResult || room.settledRoundId !== previousSettledRoundId;
+        }
+        if (room.status === 'finished') {
+            await captureRetentionEvidence(transaction, room, event.roomId, finish.loserOpenid || settledQuitter(room));
         }
 
         const update = {
@@ -495,14 +741,14 @@ async function query(openid, event) {
             update.settledRoundId = room.settledRoundId;
             update.finishedAt = room.finishedAt || 0;
         }
-        await ref.update({ data: update });
+        if (heartbeatDue || becameFinished || repairedSettlement) await ref.update({ data: update });
         return buildQueryResponse(room, openid, at);
     });
 }
 
 async function rematch(openid, event) {
     const at = now();
-    return runRoomTransaction(event.roomId, async function (room, ref) {
+    return runRoomTransaction(event.roomId, async function (room, ref, transaction) {
         if (!room) return { ok: false, err: '房间不存在' };
         const stale = staleRound(room, event);
         if (stale) return stale;
@@ -518,6 +764,7 @@ async function rematch(openid, event) {
         player.lastSeen = at;
         if (event.accept && opponent && !opponent.left && opponent.rematchAccepted &&
             !logic.isHeartbeatExpired(opponent, at, CONFIG.OFFLINE_GRACE_MS)) {
+            await captureRetentionEvidence(transaction, room, event.roomId, settledQuitter(room));
             updateV2Room(room, at, true);
         }
         await ref.update({ data: {
@@ -535,7 +782,7 @@ exports.main = async function (event) {
     try {
         const context = cloud.getWXContext() || {};
         const openid = context.OPENID;
-        if (logic.isCleanupTimerEvent(input, openid)) return await cleanupExpiredRooms(now());
+        if (logic.isCleanupTimerEvent(input, openid)) return await cleanupExpiredRooms(now(), retentionCleanupEnabled());
         if (!openid) return { ok: false, err: '身份校验失败' };
         switch (action) {
             case 'create': return await create(openid, input);
@@ -551,6 +798,11 @@ exports.main = async function (event) {
             case 'dailyStart': return await dailyService.start(openid, input);
             case 'dailyCheckpoint': return await dailyService.checkpoint(openid, input);
             case 'dailySubmit': return await dailyService.submit(openid, input);
+            case 'retentionInfo': return await retentionService.info(openid);
+            case 'retentionSign': return await retentionService.sign(openid, input);
+            case 'retentionRecord': return await retentionService.record(openid, input);
+            case 'retentionClaim': return await retentionService.claim(openid, input);
+            case 'retentionAck': return await retentionService.ack(openid, input);
             default: return { ok: false, err: '未知操作' };
         }
     } catch (error) {

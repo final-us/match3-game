@@ -1,0 +1,5030 @@
+{
+  "date": "2026-09-26",
+  "scope": "Local production Main/Board browser replay and headless stability; no live service or human data",
+  "generator": "curated-v6 + infinite-v5",
+  "roundsPerBatch": 200,
+  "independentBatches": 3,
+  "games": 48600,
+  "replay": {
+    "version": "replay-v1",
+    "cases": [
+      {
+        "levelId": 1,
+        "seed": 1930604274,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 13,
+        "win": true,
+        "reason": "goal"
+      },
+      {
+        "levelId": 1,
+        "seed": 1930669811,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 12,
+        "win": true,
+        "reason": "goal"
+      },
+      {
+        "levelId": 6,
+        "seed": 1930609319,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 27,
+        "win": false,
+        "reason": "moves"
+      },
+      {
+        "levelId": 6,
+        "seed": 1930674856,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 9,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 10,
+        "seed": 1930613355,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 25,
+        "win": false,
+        "reason": "moves"
+      },
+      {
+        "levelId": 10,
+        "seed": 1930678892,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 8,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 20,
+        "seed": 1930623445,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 21,
+        "win": true,
+        "reason": "goal"
+      },
+      {
+        "levelId": 20,
+        "seed": 1930688982,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 7,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 21,
+        "seed": 1930624454,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 22,
+        "win": true,
+        "reason": "goal"
+      },
+      {
+        "levelId": 21,
+        "seed": 1930689991,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 9,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 30,
+        "seed": 1930633535,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 24,
+        "win": false,
+        "reason": "moves"
+      },
+      {
+        "levelId": 30,
+        "seed": 1930699072,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 8,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 121,
+        "seed": 1930725354,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 23,
+        "win": false,
+        "reason": "moves"
+      },
+      {
+        "levelId": 121,
+        "seed": 1930790891,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 9,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 130,
+        "seed": 1930734435,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 23,
+        "win": false,
+        "reason": "moves"
+      },
+      {
+        "levelId": 130,
+        "seed": 1930799972,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 8,
+        "win": false,
+        "reason": "timeout"
+      },
+      {
+        "levelId": 421,
+        "seed": 1931028054,
+        "strategy": "special",
+        "thinkMs": 3000,
+        "reduceEffects": false,
+        "steps": 23,
+        "win": false,
+        "reason": "moves"
+      },
+      {
+        "levelId": 421,
+        "seed": 1931093591,
+        "strategy": "goal",
+        "thinkMs": 20000,
+        "reduceEffects": true,
+        "steps": 9,
+        "win": false,
+        "reason": "timeout"
+      }
+    ],
+    "errors": [],
+    "passed": true
+  },
+  "methodology": {
+    "thinkingMs": [
+      3000,
+      6000,
+      10000
+    ],
+    "animationTiming": "Production BoardRenderer normal waits, virtual 16ms ticks; timer also runs during cascades",
+    "noAssistance": true,
+    "noTools": true,
+    "noRevival": true,
+    "boardAndPolicyRandomIndependent": true,
+    "seeds": [
+      396544323,
+      2377593317,
+      3288791593
+    ],
+    "statistics": "Wilson 95% interval per cell; chi-square df=2 for 3 batches when all expected counts >=5; familywise alpha .01/81, sparse cells descriptive only",
+    "clocks": "First move completes before timer begins; thinking before later swaps can time out; no global Math.random replacement",
+    "limitations": [
+      "Same production rule engine, integration equivalence rather than independent rules proof",
+      "Virtual animation waits, no WeChat device frame timing",
+      "Synthetic policies, not calibrated human players",
+      "Finite representative levels, not every level"
+    ]
+  },
+  "configs": [
+    {
+      "id": 6,
+      "name": "草莓收集",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 165,
+      "moveCount": 27,
+      "goals": [
+        {
+          "type": "collect",
+          "pieceType": 1,
+          "target": 42
+        }
+      ],
+      "underlays": {},
+      "obstacles": {},
+      "targetWinRate": 85,
+      "generatorVersion": "curated-v6",
+      "contentRevision": "curated-v6-five-colors"
+    },
+    {
+      "id": 10,
+      "name": "月夜收集",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 135,
+      "moveCount": 25,
+      "goals": [
+        {
+          "type": "collect",
+          "pieceType": 1,
+          "target": 28
+        },
+        {
+          "type": "jelly",
+          "target": 10
+        }
+      ],
+      "underlays": {
+        "3:2": 1,
+        "4:2": 1,
+        "3:3": 1,
+        "4:3": 1,
+        "3:4": 1,
+        "4:4": 1,
+        "3:5": 1,
+        "4:5": 1,
+        "3:6": 1,
+        "4:6": 1
+      },
+      "obstacles": {},
+      "targetWinRate": 58,
+      "generatorVersion": "curated-v6",
+      "contentRevision": "curated-v6-five-colors"
+    },
+    {
+      "id": 20,
+      "name": "月夜挑战",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 120,
+      "moveCount": 24,
+      "goals": [
+        {
+          "type": "collect",
+          "pieceType": 2,
+          "target": 28
+        },
+        {
+          "type": "jelly",
+          "target": 8
+        }
+      ],
+      "underlays": {
+        "3:5": 1,
+        "4:5": 1,
+        "3:4": 1,
+        "4:4": 1,
+        "3:3": 1,
+        "4:3": 1,
+        "3:2": 1,
+        "4:2": 1
+      },
+      "obstacles": {
+        "2:5": 1,
+        "5:5": 1,
+        "2:2": 1,
+        "5:2": 1
+      },
+      "targetWinRate": 45,
+      "generatorVersion": "curated-v6",
+      "contentRevision": "curated-v6-five-colors"
+    },
+    {
+      "id": 21,
+      "name": "新手入门 · 21",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 165,
+      "moveCount": 24,
+      "goals": [
+        {
+          "type": "score",
+          "target": 3650
+        }
+      ],
+      "underlays": {},
+      "obstacles": {},
+      "targetWinRate": 60,
+      "generatorVersion": "infinite-v5",
+      "contentRevision": "infinite-v5-progressive-colors"
+    },
+    {
+      "id": 30,
+      "name": "双倍挑战 · 30",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 135,
+      "moveCount": 24,
+      "goals": [
+        {
+          "type": "jelly",
+          "target": 8
+        },
+        {
+          "type": "score",
+          "target": 4100
+        }
+      ],
+      "underlays": {
+        "4:2": 1,
+        "3:2": 1,
+        "4:3": 1,
+        "3:3": 1,
+        "4:4": 1,
+        "3:4": 1,
+        "4:5": 1,
+        "3:5": 1
+      },
+      "obstacles": {
+        "5:2": 1,
+        "2:2": 1,
+        "5:5": 1,
+        "2:5": 1
+      },
+      "targetWinRate": 28,
+      "generatorVersion": "infinite-v5",
+      "contentRevision": "infinite-v5-progressive-colors"
+    },
+    {
+      "id": 121,
+      "name": "新手入门 · 121",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 165,
+      "moveCount": 23,
+      "goals": [
+        {
+          "type": "score",
+          "target": 4020
+        }
+      ],
+      "underlays": {},
+      "obstacles": {},
+      "targetWinRate": 47,
+      "generatorVersion": "infinite-v5",
+      "contentRevision": "infinite-v5-progressive-colors"
+    },
+    {
+      "id": 130,
+      "name": "双倍挑战 · 130",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 135,
+      "moveCount": 23,
+      "goals": [
+        {
+          "type": "jelly",
+          "target": 8
+        },
+        {
+          "type": "score",
+          "target": 4510
+        }
+      ],
+      "underlays": {
+        "3:2": 1,
+        "4:2": 1,
+        "3:3": 1,
+        "4:3": 1,
+        "3:4": 1,
+        "4:4": 1,
+        "3:5": 1,
+        "4:5": 1
+      },
+      "obstacles": {
+        "2:2": 1,
+        "5:2": 1,
+        "2:5": 1,
+        "5:5": 1
+      },
+      "targetWinRate": 15,
+      "generatorVersion": "infinite-v5",
+      "contentRevision": "infinite-v5-progressive-colors"
+    },
+    {
+      "id": 421,
+      "name": "新手入门 · 421",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 165,
+      "moveCount": 23,
+      "goals": [
+        {
+          "type": "score",
+          "target": 4230
+        }
+      ],
+      "underlays": {},
+      "obstacles": {},
+      "targetWinRate": 39,
+      "generatorVersion": "infinite-v5",
+      "contentRevision": "infinite-v5-progressive-colors"
+    },
+    {
+      "id": 430,
+      "name": "双倍挑战 · 430",
+      "rows": 8,
+      "columns": 8,
+      "colorCount": 5,
+      "timeLimitSec": 135,
+      "moveCount": 23,
+      "goals": [
+        {
+          "type": "jelly",
+          "target": 8
+        },
+        {
+          "type": "score",
+          "target": 4760
+        }
+      ],
+      "underlays": {
+        "4:2": 1,
+        "3:2": 1,
+        "4:3": 1,
+        "3:3": 1,
+        "4:4": 1,
+        "3:4": 1,
+        "4:5": 1,
+        "3:5": 1
+      },
+      "obstacles": {
+        "5:2": 1,
+        "2:2": 1,
+        "5:5": 1,
+        "2:5": 1
+      },
+      "targetWinRate": 10,
+      "generatorVersion": "infinite-v5",
+      "contentRevision": "infinite-v5-progressive-colors"
+    }
+  ],
+  "cells": [
+    {
+      "levelId": 6,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 93,
+      "rate": 0.155,
+      "ci95": [
+        0.1282458511251585,
+        0.18614372257429498
+      ],
+      "timeouts": 0,
+      "moveFailures": 507,
+      "batchRates": [
+        0.19,
+        0.135,
+        0.14
+      ],
+      "chiSquare": 2.8249665966787556,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 38,
+          "timeouts": 0,
+          "moveFailures": 162,
+          "scoreSum": 651490,
+          "elapsedSum": 23271080,
+          "animationMsSum": 7491080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 27,
+          "timeouts": 0,
+          "moveFailures": 173,
+          "scoreSum": 649840,
+          "elapsedSum": 23388800,
+          "animationMsSum": 7500800
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 28,
+          "timeouts": 0,
+          "moveFailures": 172,
+          "scoreSum": 623720,
+          "elapsedSum": 23295840,
+          "animationMsSum": 7398840
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 35,
+      "rate": 0.058333333333333334,
+      "ci95": [
+        0.04223947455645403,
+        0.08004669467231493
+      ],
+      "timeouts": 565,
+      "moveFailures": 0,
+      "batchRates": [
+        0.08,
+        0.06,
+        0.035
+      ],
+      "chiSquare": 3.7016434892541086,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 16,
+          "timeouts": 184,
+          "moveFailures": 0,
+          "scoreSum": 571580,
+          "elapsedSum": 34804100,
+          "animationMsSum": 6538100
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 558370,
+          "elapsedSum": 34861900,
+          "animationMsSum": 6481900
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 535900,
+          "elapsedSum": 34859960,
+          "animationMsSum": 6395960
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 0,
+      "rate": 0,
+      "ci95": [
+        4.336808689942018e-19,
+        0.00636170101370071
+      ],
+      "timeouts": 600,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 373140,
+          "elapsedSum": 36201080,
+          "animationMsSum": 4301080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 363970,
+          "elapsedSum": 36148220,
+          "animationMsSum": 4248220
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 359730,
+          "elapsedSum": 36163440,
+          "animationMsSum": 4243440
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 98,
+      "rate": 0.16333333333333333,
+      "ci95": [
+        0.13591247797024722,
+        0.1950377340456446
+      ],
+      "timeouts": 0,
+      "moveFailures": 502,
+      "batchRates": [
+        0.16,
+        0.19,
+        0.14
+      ],
+      "chiSquare": 1.8538092527847794,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 32,
+          "timeouts": 0,
+          "moveFailures": 168,
+          "scoreSum": 563550,
+          "elapsedSum": 21901420,
+          "animationMsSum": 7315420
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 38,
+          "timeouts": 0,
+          "moveFailures": 162,
+          "scoreSum": 561570,
+          "elapsedSum": 21941220,
+          "animationMsSum": 7340220
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 28,
+          "timeouts": 0,
+          "moveFailures": 172,
+          "scoreSum": 567300,
+          "elapsedSum": 21930540,
+          "animationMsSum": 7335540
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 22,
+      "rate": 0.03666666666666667,
+      "ci95": [
+        0.024336895975690734,
+        0.05489161363033859
+      ],
+      "timeouts": 578,
+      "moveFailures": 0,
+      "batchRates": [
+        0.035,
+        0.03,
+        0.045
+      ],
+      "chiSquare": 0.6605850896508335,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 422690,
+          "elapsedSum": 28848580,
+          "animationMsSum": 5598580
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 6,
+          "timeouts": 194,
+          "moveFailures": 0,
+          "scoreSum": 424190,
+          "elapsedSum": 28924580,
+          "animationMsSum": 5614580
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 421910,
+          "elapsedSum": 28852000,
+          "animationMsSum": 5572000
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 1,
+      "rate": 0.0016666666666666668,
+      "ci95": [
+        0.0002942682008495647,
+        0.009379560476138811
+      ],
+      "timeouts": 599,
+      "moveFailures": 0,
+      "batchRates": [
+        0.005,
+        0,
+        0
+      ],
+      "chiSquare": 2.0033388981636056,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 282360,
+          "elapsedSum": 29936660,
+          "animationMsSum": 3746660
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 281740,
+          "elapsedSum": 30063940,
+          "animationMsSum": 3743940
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 279870,
+          "elapsedSum": 30070180,
+          "animationMsSum": 3700180
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 118,
+      "rate": 0.19666666666666666,
+      "ci95": [
+        0.16683474102174364,
+        0.23035802425990146
+      ],
+      "timeouts": 0,
+      "moveFailures": 482,
+      "batchRates": [
+        0.205,
+        0.19,
+        0.195
+      ],
+      "chiSquare": 0.14768971095013717,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 41,
+          "timeouts": 0,
+          "moveFailures": 159,
+          "scoreSum": 591870,
+          "elapsedSum": 20965860,
+          "animationMsSum": 7042860
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 38,
+          "timeouts": 0,
+          "moveFailures": 162,
+          "scoreSum": 586870,
+          "elapsedSum": 20949480,
+          "animationMsSum": 7029480
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 39,
+          "timeouts": 0,
+          "moveFailures": 161,
+          "scoreSum": 580890,
+          "elapsedSum": 20865680,
+          "animationMsSum": 6987680
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 16,
+      "rate": 0.02666666666666667,
+      "ci95": [
+        0.01647980981438986,
+        0.042875933811913486
+      ],
+      "timeouts": 584,
+      "moveFailures": 0,
+      "batchRates": [
+        0.025,
+        0.03,
+        0.025
+      ],
+      "chiSquare": 0.12842465753424656,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 5,
+          "timeouts": 195,
+          "moveFailures": 0,
+          "scoreSum": 429650,
+          "elapsedSum": 25958000,
+          "animationMsSum": 5072000
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 6,
+          "timeouts": 194,
+          "moveFailures": 0,
+          "scoreSum": 425760,
+          "elapsedSum": 25946560,
+          "animationMsSum": 5054560
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 5,
+          "timeouts": 195,
+          "moveFailures": 0,
+          "scoreSum": 423300,
+          "elapsedSum": 26003860,
+          "animationMsSum": 5039860
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 0,
+      "rate": 0,
+      "ci95": [
+        4.336808689942018e-19,
+        0.00636170101370071
+      ],
+      "timeouts": 600,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 290220,
+          "elapsedSum": 27198100,
+          "animationMsSum": 3348100
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 291230,
+          "elapsedSum": 27184660,
+          "animationMsSum": 3354660
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 278210,
+          "elapsedSum": 27187300,
+          "animationMsSum": 3277300
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 89,
+      "rate": 0.14833333333333334,
+      "ci95": [
+        0.12213319200132422,
+        0.17900787104497867
+      ],
+      "timeouts": 0,
+      "moveFailures": 511,
+      "batchRates": [
+        0.16,
+        0.155,
+        0.13
+      ],
+      "chiSquare": 0.8179599375535962,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 32,
+          "timeouts": 0,
+          "moveFailures": 168,
+          "scoreSum": 580390,
+          "elapsedSum": 20623360,
+          "animationMsSum": 6658360
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 31,
+          "timeouts": 0,
+          "moveFailures": 169,
+          "scoreSum": 568070,
+          "elapsedSum": 20565500,
+          "animationMsSum": 6588500
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 26,
+          "timeouts": 0,
+          "moveFailures": 174,
+          "scoreSum": 542230,
+          "elapsedSum": 20505920,
+          "animationMsSum": 6498920
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 80,
+      "rate": 0.13333333333333333,
+      "ci95": [
+        0.10845252233661881,
+        0.16287939174009505
+      ],
+      "timeouts": 441,
+      "moveFailures": 79,
+      "batchRates": [
+        0.145,
+        0.135,
+        0.12
+      ],
+      "chiSquare": 0.548076923076923,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 29,
+          "timeouts": 150,
+          "moveFailures": 21,
+          "scoreSum": 563270,
+          "elapsedSum": 34166080,
+          "animationMsSum": 6440080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 27,
+          "timeouts": 148,
+          "moveFailures": 25,
+          "scoreSum": 550070,
+          "elapsedSum": 34208880,
+          "animationMsSum": 6380880
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 24,
+          "timeouts": 143,
+          "moveFailures": 33,
+          "scoreSum": 525620,
+          "elapsedSum": 34174060,
+          "animationMsSum": 6292060
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 11,
+      "rate": 0.018333333333333333,
+      "ci95": [
+        0.010267306165938218,
+        0.032527799143926804
+      ],
+      "timeouts": 589,
+      "moveFailures": 0,
+      "batchRates": [
+        0.02,
+        0.02,
+        0.015
+      ],
+      "chiSquare": 0.18521376755672173,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 196,
+          "moveFailures": 0,
+          "scoreSum": 372800,
+          "elapsedSum": 36145640,
+          "animationMsSum": 4295640
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 196,
+          "moveFailures": 0,
+          "scoreSum": 362500,
+          "elapsedSum": 35969420,
+          "animationMsSum": 4229420
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 3,
+          "timeouts": 197,
+          "moveFailures": 0,
+          "scoreSum": 358280,
+          "elapsedSum": 35984120,
+          "animationMsSum": 4224120
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 46,
+      "rate": 0.07666666666666666,
+      "ci95": [
+        0.05796841836178705,
+        0.10075115516314621
+      ],
+      "timeouts": 0,
+      "moveFailures": 554,
+      "batchRates": [
+        0.075,
+        0.065,
+        0.09
+      ],
+      "chiSquare": 0.8946790142834721,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 15,
+          "timeouts": 0,
+          "moveFailures": 185,
+          "scoreSum": 605020,
+          "elapsedSum": 21468260,
+          "animationMsSum": 7203260
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 13,
+          "timeouts": 0,
+          "moveFailures": 187,
+          "scoreSum": 602760,
+          "elapsedSum": 21452860,
+          "animationMsSum": 7193860
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 18,
+          "timeouts": 0,
+          "moveFailures": 182,
+          "scoreSum": 594120,
+          "elapsedSum": 21335460,
+          "animationMsSum": 7136460
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 11,
+      "rate": 0.018333333333333333,
+      "ci95": [
+        0.010267306165938218,
+        0.032527799143926804
+      ],
+      "timeouts": 589,
+      "moveFailures": 0,
+      "batchRates": [
+        0.015,
+        0.02,
+        0.02
+      ],
+      "chiSquare": 0.18521376755672173,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 3,
+          "timeouts": 197,
+          "moveFailures": 0,
+          "scoreSum": 479490,
+          "elapsedSum": 28998720,
+          "animationMsSum": 5676720
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 196,
+          "moveFailures": 0,
+          "scoreSum": 473120,
+          "elapsedSum": 28977160,
+          "animationMsSum": 5649160
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 196,
+          "moveFailures": 0,
+          "scoreSum": 470200,
+          "elapsedSum": 28957840,
+          "animationMsSum": 5617840
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 0,
+      "rate": 0,
+      "ci95": [
+        4.336808689942018e-19,
+        0.00636170101370071
+      ],
+      "timeouts": 600,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 327040,
+          "elapsedSum": 29987380,
+          "animationMsSum": 3777380
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 323680,
+          "elapsedSum": 30086640,
+          "animationMsSum": 3766640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 310010,
+          "elapsedSum": 30026140,
+          "animationMsSum": 3676140
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 41,
+      "rate": 0.06833333333333333,
+      "ci95": [
+        0.05076809443760846,
+        0.09139084077088647
+      ],
+      "timeouts": 0,
+      "moveFailures": 559,
+      "batchRates": [
+        0.08,
+        0.07,
+        0.055
+      ],
+      "chiSquare": 0.9948078013874952,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 16,
+          "timeouts": 0,
+          "moveFailures": 184,
+          "scoreSum": 569200,
+          "elapsedSum": 20114560,
+          "animationMsSum": 6500560
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 14,
+          "timeouts": 0,
+          "moveFailures": 186,
+          "scoreSum": 553620,
+          "elapsedSum": 20069900,
+          "animationMsSum": 6431900
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 11,
+          "timeouts": 0,
+          "moveFailures": 189,
+          "scoreSum": 531090,
+          "elapsedSum": 19982920,
+          "animationMsSum": 6341920
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 41,
+      "rate": 0.06833333333333333,
+      "ci95": [
+        0.05076809443760846,
+        0.09139084077088647
+      ],
+      "timeouts": 54,
+      "moveFailures": 505,
+      "batchRates": [
+        0.08,
+        0.07,
+        0.055
+      ],
+      "chiSquare": 0.9948078013874952,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 16,
+          "timeouts": 20,
+          "moveFailures": 164,
+          "scoreSum": 566550,
+          "elapsedSum": 33700140,
+          "animationMsSum": 6472140
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 14,
+          "timeouts": 15,
+          "moveFailures": 171,
+          "scoreSum": 550920,
+          "elapsedSum": 33683620,
+          "animationMsSum": 6407620
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 11,
+          "timeouts": 19,
+          "moveFailures": 170,
+          "scoreSum": 529220,
+          "elapsedSum": 33597720,
+          "animationMsSum": 6315720
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 6,
+      "rate": 0.01,
+      "ci95": [
+        0.004590922177703892,
+        0.021643544815722802
+      ],
+      "timeouts": 594,
+      "moveFailures": 0,
+      "batchRates": [
+        0.01,
+        0.01,
+        0.01
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 373140,
+          "elapsedSum": 36201080,
+          "animationMsSum": 4301080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 362560,
+          "elapsedSum": 35990400,
+          "animationMsSum": 4230400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 359100,
+          "elapsedSum": 36063540,
+          "animationMsSum": 4233540
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 17,
+      "rate": 0.028333333333333332,
+      "ci95": [
+        0.01776394016148477,
+        0.044903931128106235
+      ],
+      "timeouts": 0,
+      "moveFailures": 583,
+      "batchRates": [
+        0.025,
+        0.025,
+        0.035
+      ],
+      "chiSquare": 0.48431036222379176,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 5,
+          "timeouts": 0,
+          "moveFailures": 195,
+          "scoreSum": 584450,
+          "elapsedSum": 20724480,
+          "animationMsSum": 6957480
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 5,
+          "timeouts": 0,
+          "moveFailures": 195,
+          "scoreSum": 578010,
+          "elapsedSum": 20685360,
+          "animationMsSum": 6927360
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 0,
+          "moveFailures": 193,
+          "scoreSum": 578020,
+          "elapsedSum": 20647680,
+          "animationMsSum": 6913680
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 1,
+      "rate": 0.0016666666666666668,
+      "ci95": [
+        0.0002942682008495647,
+        0.009379560476138811
+      ],
+      "timeouts": 599,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0.005
+      ],
+      "chiSquare": 2.0033388981636056,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 479490,
+          "elapsedSum": 29016720,
+          "animationMsSum": 5676720
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 473420,
+          "elapsedSum": 28998640,
+          "animationMsSum": 5652640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 470990,
+          "elapsedSum": 29001040,
+          "animationMsSum": 5625040
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 0,
+      "rate": 0,
+      "ci95": [
+        4.336808689942018e-19,
+        0.00636170101370071
+      ],
+      "timeouts": 600,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 327040,
+          "elapsedSum": 29987380,
+          "animationMsSum": 3777380
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 323680,
+          "elapsedSum": 30086640,
+          "animationMsSum": 3766640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 310010,
+          "elapsedSum": 30026140,
+          "animationMsSum": 3676140
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 26,
+      "rate": 0.043333333333333335,
+      "ci95": [
+        0.02974099813478266,
+        0.06273602212439733
+      ],
+      "timeouts": 0,
+      "moveFailures": 574,
+      "batchRates": [
+        0.06,
+        0.035,
+        0.035
+      ],
+      "chiSquare": 2.010184937014205,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 0,
+          "moveFailures": 188,
+          "scoreSum": 570770,
+          "elapsedSum": 20176580,
+          "animationMsSum": 6520580
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 0,
+          "moveFailures": 193,
+          "scoreSum": 554780,
+          "elapsedSum": 20135800,
+          "animationMsSum": 6449800
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 0,
+          "moveFailures": 193,
+          "scoreSum": 532540,
+          "elapsedSum": 20039940,
+          "animationMsSum": 6359940
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 26,
+      "rate": 0.043333333333333335,
+      "ci95": [
+        0.02974099813478266,
+        0.06273602212439733
+      ],
+      "timeouts": 67,
+      "moveFailures": 507,
+      "batchRates": [
+        0.06,
+        0.035,
+        0.035
+      ],
+      "chiSquare": 2.010184937014205,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 23,
+          "moveFailures": 165,
+          "scoreSum": 567950,
+          "elapsedSum": 33800720,
+          "animationMsSum": 6488720
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 22,
+          "moveFailures": 171,
+          "scoreSum": 551500,
+          "elapsedSum": 33788920,
+          "animationMsSum": 6416920
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 22,
+          "moveFailures": 171,
+          "scoreSum": 530070,
+          "elapsedSum": 33688280,
+          "animationMsSum": 6328280
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 4,
+      "rate": 0.006666666666666667,
+      "ci95": [
+        0.0025955012515148645,
+        0.017014710415336507
+      ],
+      "timeouts": 596,
+      "moveFailures": 0,
+      "batchRates": [
+        0.005,
+        0.01,
+        0.005
+      ],
+      "chiSquare": 0.5033557046979865,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 373140,
+          "elapsedSum": 36201080,
+          "animationMsSum": 4301080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 362560,
+          "elapsedSum": 35990400,
+          "animationMsSum": 4230400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 359100,
+          "elapsedSum": 36073540,
+          "animationMsSum": 4233540
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "random",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 11,
+      "rate": 0.018333333333333333,
+      "ci95": [
+        0.010267306165938218,
+        0.032527799143926804
+      ],
+      "timeouts": 0,
+      "moveFailures": 589,
+      "batchRates": [
+        0.015,
+        0.02,
+        0.02
+      ],
+      "chiSquare": 0.18521376755672173,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 3,
+          "timeouts": 0,
+          "moveFailures": 197,
+          "scoreSum": 584650,
+          "elapsedSum": 20740900,
+          "animationMsSum": 6961900
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 0,
+          "moveFailures": 196,
+          "scoreSum": 579640,
+          "elapsedSum": 20722480,
+          "animationMsSum": 6940480
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 0,
+          "moveFailures": 196,
+          "scoreSum": 579460,
+          "elapsedSum": 20679820,
+          "animationMsSum": 6924820
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "random",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 1,
+      "rate": 0.0016666666666666668,
+      "ci95": [
+        0.0002942682008495647,
+        0.009379560476138811
+      ],
+      "timeouts": 599,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0.005
+      ],
+      "chiSquare": 2.0033388981636056,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 479490,
+          "elapsedSum": 29016720,
+          "animationMsSum": 5676720
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 473420,
+          "elapsedSum": 28998640,
+          "animationMsSum": 5652640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 470990,
+          "elapsedSum": 29001040,
+          "animationMsSum": 5625040
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "random",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 0,
+      "rate": 0,
+      "ci95": [
+        4.336808689942018e-19,
+        0.00636170101370071
+      ],
+      "timeouts": 600,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 327040,
+          "elapsedSum": 29987380,
+          "animationMsSum": 3777380
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 323680,
+          "elapsedSum": 30086640,
+          "animationMsSum": 3766640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 310010,
+          "elapsedSum": 30026140,
+          "animationMsSum": 3676140
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 448,
+      "rate": 0.7466666666666667,
+      "ci95": [
+        0.710372621099191,
+        0.7798222730673834
+      ],
+      "timeouts": 0,
+      "moveFailures": 152,
+      "batchRates": [
+        0.74,
+        0.75,
+        0.75
+      ],
+      "chiSquare": 0.07048872180451128,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 148,
+          "timeouts": 0,
+          "moveFailures": 52,
+          "scoreSum": 748200,
+          "elapsedSum": 20392560,
+          "animationMsSum": 6811560
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 150,
+          "timeouts": 0,
+          "moveFailures": 50,
+          "scoreSum": 747560,
+          "elapsedSum": 19937300,
+          "animationMsSum": 6713300
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 150,
+          "timeouts": 0,
+          "moveFailures": 50,
+          "scoreSum": 740150,
+          "elapsedSum": 19733720,
+          "animationMsSum": 6650720
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 323,
+      "rate": 0.5383333333333333,
+      "ci95": [
+        0.4983259602663047,
+        0.5778529759893115
+      ],
+      "timeouts": 277,
+      "moveFailures": 0,
+      "batchRates": [
+        0.5,
+        0.55,
+        0.565
+      ],
+      "chiSquare": 1.864291222854333,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 100,
+          "timeouts": 100,
+          "moveFailures": 0,
+          "scoreSum": 699600,
+          "elapsedSum": 32135960,
+          "animationMsSum": 6353960
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 110,
+          "timeouts": 90,
+          "moveFailures": 0,
+          "scoreSum": 699830,
+          "elapsedSum": 31507340,
+          "animationMsSum": 6283340
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 113,
+          "timeouts": 87,
+          "moveFailures": 0,
+          "scoreSum": 700180,
+          "elapsedSum": 31263320,
+          "animationMsSum": 6261320
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 39,
+      "rate": 0.065,
+      "ci95": [
+        0.04791058921339886,
+        0.08762409066852075
+      ],
+      "timeouts": 561,
+      "moveFailures": 0,
+      "batchRates": [
+        0.06,
+        0.055,
+        0.08
+      ],
+      "chiSquare": 1.1517893870835045,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 505150,
+          "elapsedSum": 36103800,
+          "animationMsSum": 4533800
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 11,
+          "timeouts": 189,
+          "moveFailures": 0,
+          "scoreSum": 504640,
+          "elapsedSum": 36032660,
+          "animationMsSum": 4522660
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 16,
+          "timeouts": 184,
+          "moveFailures": 0,
+          "scoreSum": 517370,
+          "elapsedSum": 35751800,
+          "animationMsSum": 4551800
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 287,
+      "rate": 0.47833333333333333,
+      "ci95": [
+        0.4386282562988837,
+        0.5183140840783768
+      ],
+      "timeouts": 0,
+      "moveFailures": 313,
+      "batchRates": [
+        0.47,
+        0.485,
+        0.48
+      ],
+      "chiSquare": 0.09350892230967038,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 94,
+          "timeouts": 0,
+          "moveFailures": 106,
+          "scoreSum": 647440,
+          "elapsedSum": 19827280,
+          "animationMsSum": 6834280
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 97,
+          "timeouts": 0,
+          "moveFailures": 103,
+          "scoreSum": 667530,
+          "elapsedSum": 20245020,
+          "animationMsSum": 7036020
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 96,
+          "timeouts": 0,
+          "moveFailures": 104,
+          "scoreSum": 671730,
+          "elapsedSum": 20052760,
+          "animationMsSum": 6939760
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 141,
+      "rate": 0.235,
+      "ci95": [
+        0.20282559541589984,
+        0.27054610612136154
+      ],
+      "timeouts": 459,
+      "moveFailures": 0,
+      "batchRates": [
+        0.26,
+        0.21,
+        0.235
+      ],
+      "chiSquare": 1.3906271728549575,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 52,
+          "timeouts": 148,
+          "moveFailures": 0,
+          "scoreSum": 523100,
+          "elapsedSum": 27492760,
+          "animationMsSum": 5568760
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 42,
+          "timeouts": 158,
+          "moveFailures": 0,
+          "scoreSum": 535420,
+          "elapsedSum": 27807760,
+          "animationMsSum": 5715760
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 47,
+          "timeouts": 153,
+          "moveFailures": 0,
+          "scoreSum": 545570,
+          "elapsedSum": 27772080,
+          "animationMsSum": 5668080
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 24,
+      "rate": 0.04,
+      "ci95": [
+        0.02702502927655182,
+        0.05882773565605286
+      ],
+      "timeouts": 576,
+      "moveFailures": 0,
+      "batchRates": [
+        0.03,
+        0.045,
+        0.045
+      ],
+      "chiSquare": 0.7812500000000001,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 6,
+          "timeouts": 194,
+          "moveFailures": 0,
+          "scoreSum": 363480,
+          "elapsedSum": 29893960,
+          "animationMsSum": 3893960
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 366550,
+          "elapsedSum": 29816680,
+          "animationMsSum": 3936680
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 377950,
+          "elapsedSum": 29884580,
+          "animationMsSum": 3914580
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 336,
+      "rate": 0.56,
+      "ci95": [
+        0.5200245001137724,
+        0.5992120957645837
+      ],
+      "timeouts": 5,
+      "moveFailures": 259,
+      "batchRates": [
+        0.58,
+        0.52,
+        0.58
+      ],
+      "chiSquare": 1.9480519480519483,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 116,
+          "timeouts": 3,
+          "moveFailures": 81,
+          "scoreSum": 671480,
+          "elapsedSum": 18870620,
+          "animationMsSum": 6558620
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 104,
+          "timeouts": 2,
+          "moveFailures": 94,
+          "scoreSum": 673050,
+          "elapsedSum": 18602800,
+          "animationMsSum": 6500800
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 116,
+          "timeouts": 0,
+          "moveFailures": 84,
+          "scoreSum": 657730,
+          "elapsedSum": 18363180,
+          "animationMsSum": 6381180
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 143,
+      "rate": 0.23833333333333334,
+      "ci95": [
+        0.20597424902728556,
+        0.27402170783655116
+      ],
+      "timeouts": 457,
+      "moveFailures": 0,
+      "batchRates": [
+        0.195,
+        0.26,
+        0.26
+      ],
+      "chiSquare": 3.1032424905510245,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 39,
+          "timeouts": 161,
+          "moveFailures": 0,
+          "scoreSum": 524460,
+          "elapsedSum": 25135780,
+          "animationMsSum": 5101780
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 52,
+          "timeouts": 148,
+          "moveFailures": 0,
+          "scoreSum": 545070,
+          "elapsedSum": 24753680,
+          "animationMsSum": 5163680
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 52,
+          "timeouts": 148,
+          "moveFailures": 0,
+          "scoreSum": 531360,
+          "elapsedSum": 24828200,
+          "animationMsSum": 5106200
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 19,
+      "rate": 0.03166666666666667,
+      "ci95": [
+        0.020364911485651824,
+        0.048927215130514526
+      ],
+      "timeouts": 581,
+      "moveFailures": 0,
+      "batchRates": [
+        0.025,
+        0.035,
+        0.035
+      ],
+      "chiSquare": 0.43482199474590094,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 5,
+          "timeouts": 195,
+          "moveFailures": 0,
+          "scoreSum": 356590,
+          "elapsedSum": 27050020,
+          "animationMsSum": 3470020
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 384270,
+          "elapsedSum": 27023580,
+          "animationMsSum": 3573580
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 376070,
+          "elapsedSum": 27112980,
+          "animationMsSum": 3532980
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 320,
+      "rate": 0.5333333333333333,
+      "ci95": [
+        0.49332929672753023,
+        0.5729132565382231
+      ],
+      "timeouts": 0,
+      "moveFailures": 280,
+      "batchRates": [
+        0.515,
+        0.555,
+        0.53
+      ],
+      "chiSquare": 0.65625,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 103,
+          "timeouts": 0,
+          "moveFailures": 97,
+          "scoreSum": 703200,
+          "elapsedSum": 19193920,
+          "animationMsSum": 6410920
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 111,
+          "timeouts": 0,
+          "moveFailures": 89,
+          "scoreSum": 711370,
+          "elapsedSum": 18963300,
+          "animationMsSum": 6387300
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 106,
+          "timeouts": 0,
+          "moveFailures": 94,
+          "scoreSum": 711360,
+          "elapsedSum": 18801120,
+          "animationMsSum": 6351120
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 313,
+      "rate": 0.5216666666666666,
+      "ci95": [
+        0.4816859159216232,
+        0.5613717437011163
+      ],
+      "timeouts": 258,
+      "moveFailures": 29,
+      "batchRates": [
+        0.505,
+        0.545,
+        0.515
+      ],
+      "chiSquare": 0.6946377085861228,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 101,
+          "timeouts": 88,
+          "moveFailures": 11,
+          "scoreSum": 689570,
+          "elapsedSum": 31780760,
+          "animationMsSum": 6274760
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 109,
+          "timeouts": 78,
+          "moveFailures": 13,
+          "scoreSum": 694860,
+          "elapsedSum": 31340040,
+          "animationMsSum": 6254040
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 103,
+          "timeouts": 92,
+          "moveFailures": 5,
+          "scoreSum": 695580,
+          "elapsedSum": 31062160,
+          "animationMsSum": 6216160
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 65,
+      "rate": 0.10833333333333334,
+      "ci95": [
+        0.08591052491269927,
+        0.13573947421469965
+      ],
+      "timeouts": 535,
+      "moveFailures": 0,
+      "batchRates": [
+        0.085,
+        0.11,
+        0.13
+      ],
+      "chiSquare": 2.104960460100647,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 17,
+          "timeouts": 183,
+          "moveFailures": 0,
+          "scoreSum": 501340,
+          "elapsedSum": 35949200,
+          "animationMsSum": 4509200
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 22,
+          "timeouts": 178,
+          "moveFailures": 0,
+          "scoreSum": 501440,
+          "elapsedSum": 35707080,
+          "animationMsSum": 4497080
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 26,
+          "timeouts": 174,
+          "moveFailures": 0,
+          "scoreSum": 516420,
+          "elapsedSum": 35312700,
+          "animationMsSum": 4522700
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 181,
+      "rate": 0.3016666666666667,
+      "ci95": [
+        0.26629818895612284,
+        0.33955861911264523
+      ],
+      "timeouts": 0,
+      "moveFailures": 419,
+      "batchRates": [
+        0.3,
+        0.295,
+        0.31
+      ],
+      "chiSquare": 0.11076095412650483,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 60,
+          "timeouts": 0,
+          "moveFailures": 140,
+          "scoreSum": 742650,
+          "elapsedSum": 20687560,
+          "animationMsSum": 7175560
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 59,
+          "timeouts": 0,
+          "moveFailures": 141,
+          "scoreSum": 744910,
+          "elapsedSum": 20569400,
+          "animationMsSum": 7162400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 62,
+          "timeouts": 0,
+          "moveFailures": 138,
+          "scoreSum": 736790,
+          "elapsedSum": 20582420,
+          "animationMsSum": 7121420
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 72,
+      "rate": 0.12,
+      "ci95": [
+        0.09638593328911173,
+        0.14844895948130082
+      ],
+      "timeouts": 528,
+      "moveFailures": 0,
+      "batchRates": [
+        0.11,
+        0.14,
+        0.11
+      ],
+      "chiSquare": 1.1363636363636362,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 22,
+          "timeouts": 178,
+          "moveFailures": 0,
+          "scoreSum": 599760,
+          "elapsedSum": 28544880,
+          "animationMsSum": 5810880
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 28,
+          "timeouts": 172,
+          "moveFailures": 0,
+          "scoreSum": 618270,
+          "elapsedSum": 28486220,
+          "animationMsSum": 5884220
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 22,
+          "timeouts": 178,
+          "moveFailures": 0,
+          "scoreSum": 610660,
+          "elapsedSum": 28534440,
+          "animationMsSum": 5842440
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 6,
+      "rate": 0.01,
+      "ci95": [
+        0.004590922177703892,
+        0.021643544815722802
+      ],
+      "timeouts": 594,
+      "moveFailures": 0,
+      "batchRates": [
+        0.015,
+        0.005,
+        0.01
+      ],
+      "chiSquare": 1.0101010101010102,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 3,
+          "timeouts": 197,
+          "moveFailures": 0,
+          "scoreSum": 403970,
+          "elapsedSum": 30036460,
+          "animationMsSum": 3916460
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 430960,
+          "elapsedSum": 30072400,
+          "animationMsSum": 4032400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 419410,
+          "elapsedSum": 30075920,
+          "animationMsSum": 3965920
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 205,
+      "rate": 0.3416666666666667,
+      "ci95": [
+        0.3048327476564238,
+        0.3805151243312482
+      ],
+      "timeouts": 0,
+      "moveFailures": 395,
+      "batchRates": [
+        0.315,
+        0.365,
+        0.345
+      ],
+      "chiSquare": 1.1262735412164249,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 63,
+          "timeouts": 0,
+          "moveFailures": 137,
+          "scoreSum": 715740,
+          "elapsedSum": 19547560,
+          "animationMsSum": 6524560
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 73,
+          "timeouts": 0,
+          "moveFailures": 127,
+          "scoreSum": 716950,
+          "elapsedSum": 19222820,
+          "animationMsSum": 6457820
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 69,
+          "timeouts": 0,
+          "moveFailures": 131,
+          "scoreSum": 721790,
+          "elapsedSum": 19145980,
+          "animationMsSum": 6461980
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 205,
+      "rate": 0.3416666666666667,
+      "ci95": [
+        0.3048327476564238,
+        0.3805151243312482
+      ],
+      "timeouts": 36,
+      "moveFailures": 359,
+      "batchRates": [
+        0.315,
+        0.365,
+        0.345
+      ],
+      "chiSquare": 1.1262735412164249,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 63,
+          "timeouts": 15,
+          "moveFailures": 122,
+          "scoreSum": 714280,
+          "elapsedSum": 32552080,
+          "animationMsSum": 6506080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 73,
+          "timeouts": 9,
+          "moveFailures": 118,
+          "scoreSum": 715860,
+          "elapsedSum": 31975720,
+          "animationMsSum": 6445720
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 69,
+          "timeouts": 12,
+          "moveFailures": 119,
+          "scoreSum": 719970,
+          "elapsedSum": 31812160,
+          "animationMsSum": 6444160
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 37,
+      "rate": 0.06166666666666667,
+      "ci95": [
+        0.045067361772116676,
+        0.08384306278322762
+      ],
+      "timeouts": 563,
+      "moveFailures": 0,
+      "batchRates": [
+        0.035,
+        0.065,
+        0.085
+      ],
+      "chiSquare": 4.378090346118765,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 505950,
+          "elapsedSum": 36190040,
+          "animationMsSum": 4540040
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 13,
+          "timeouts": 187,
+          "moveFailures": 0,
+          "scoreSum": 503480,
+          "elapsedSum": 35935820,
+          "animationMsSum": 4515820
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 17,
+          "timeouts": 183,
+          "moveFailures": 0,
+          "scoreSum": 520870,
+          "elapsedSum": 35734400,
+          "animationMsSum": 4564400
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 113,
+      "rate": 0.18833333333333332,
+      "ci95": [
+        0.15906857437151636,
+        0.2215635525936904
+      ],
+      "timeouts": 0,
+      "moveFailures": 487,
+      "batchRates": [
+        0.175,
+        0.2,
+        0.19
+      ],
+      "chiSquare": 0.4143119332739728,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 35,
+          "timeouts": 0,
+          "moveFailures": 165,
+          "scoreSum": 734190,
+          "elapsedSum": 20387700,
+          "animationMsSum": 7076700
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 40,
+          "timeouts": 0,
+          "moveFailures": 160,
+          "scoreSum": 744410,
+          "elapsedSum": 20459220,
+          "animationMsSum": 7133220
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 38,
+          "timeouts": 0,
+          "moveFailures": 162,
+          "scoreSum": 729730,
+          "elapsedSum": 20393980,
+          "animationMsSum": 7046980
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 39,
+      "rate": 0.065,
+      "ci95": [
+        0.04791058921339886,
+        0.08762409066852075
+      ],
+      "timeouts": 561,
+      "moveFailures": 0,
+      "batchRates": [
+        0.075,
+        0.065,
+        0.055
+      ],
+      "chiSquare": 0.658165364047717,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 15,
+          "timeouts": 185,
+          "moveFailures": 0,
+          "scoreSum": 605410,
+          "elapsedSum": 28735480,
+          "animationMsSum": 5851480
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 13,
+          "timeouts": 187,
+          "moveFailures": 0,
+          "scoreSum": 625800,
+          "elapsedSum": 28870180,
+          "animationMsSum": 5950180
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 11,
+          "timeouts": 189,
+          "moveFailures": 0,
+          "scoreSum": 613290,
+          "elapsedSum": 28797660,
+          "animationMsSum": 5877660
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 2,
+      "rate": 0.0033333333333333335,
+      "ci95": [
+        0.0009145966868046472,
+        0.012071359653471395
+      ],
+      "timeouts": 598,
+      "moveFailures": 0,
+      "batchRates": [
+        0.01,
+        0,
+        0
+      ],
+      "chiSquare": 4.013377926421405,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 405380,
+          "elapsedSum": 30052000,
+          "animationMsSum": 3922000
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 430960,
+          "elapsedSum": 30072400,
+          "animationMsSum": 4032400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 419410,
+          "elapsedSum": 30095920,
+          "animationMsSum": 3965920
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 163,
+      "rate": 0.27166666666666667,
+      "ci95": [
+        0.23761065166261117,
+        0.30862785846697893
+      ],
+      "timeouts": 0,
+      "moveFailures": 437,
+      "batchRates": [
+        0.24,
+        0.275,
+        0.3
+      ],
+      "chiSquare": 1.8362791481237104,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 48,
+          "timeouts": 0,
+          "moveFailures": 152,
+          "scoreSum": 729670,
+          "elapsedSum": 19835800,
+          "animationMsSum": 6629800
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 55,
+          "timeouts": 0,
+          "moveFailures": 145,
+          "scoreSum": 735360,
+          "elapsedSum": 19605020,
+          "animationMsSum": 6597020
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 60,
+          "timeouts": 0,
+          "moveFailures": 140,
+          "scoreSum": 732750,
+          "elapsedSum": 19469020,
+          "animationMsSum": 6566020
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 163,
+      "rate": 0.27166666666666667,
+      "ci95": [
+        0.23761065166261117,
+        0.30862785846697893
+      ],
+      "timeouts": 60,
+      "moveFailures": 377,
+      "batchRates": [
+        0.24,
+        0.275,
+        0.3
+      ],
+      "chiSquare": 1.8362791481237104,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 48,
+          "timeouts": 23,
+          "moveFailures": 129,
+          "scoreSum": 726790,
+          "elapsedSum": 33009920,
+          "animationMsSum": 6597920
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 55,
+          "timeouts": 19,
+          "moveFailures": 126,
+          "scoreSum": 731350,
+          "elapsedSum": 32580240,
+          "animationMsSum": 6564240
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 60,
+          "timeouts": 18,
+          "moveFailures": 122,
+          "scoreSum": 730370,
+          "elapsedSum": 32347560,
+          "animationMsSum": 6541560
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 28,
+      "rate": 0.04666666666666667,
+      "ci95": [
+        0.03248188567095377,
+        0.06661938991480156
+      ],
+      "timeouts": 572,
+      "moveFailures": 0,
+      "batchRates": [
+        0.035,
+        0.045,
+        0.06
+      ],
+      "chiSquare": 1.4235764235764234,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 506240,
+          "elapsedSum": 36202280,
+          "animationMsSum": 4542280
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 505510,
+          "elapsedSum": 36060900,
+          "animationMsSum": 4530900
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 523740,
+          "elapsedSum": 35903560,
+          "animationMsSum": 4583560
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "special",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 86,
+      "rate": 0.14333333333333334,
+      "ci95": [
+        0.11756139513870045,
+        0.1736432849177394
+      ],
+      "timeouts": 0,
+      "moveFailures": 514,
+      "batchRates": [
+        0.155,
+        0.135,
+        0.14
+      ],
+      "chiSquare": 0.35290923898289744,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 31,
+          "timeouts": 0,
+          "moveFailures": 169,
+          "scoreSum": 742940,
+          "elapsedSum": 20516500,
+          "animationMsSum": 7130500
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 27,
+          "timeouts": 0,
+          "moveFailures": 173,
+          "scoreSum": 750740,
+          "elapsedSum": 20687640,
+          "animationMsSum": 7205640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 28,
+          "timeouts": 0,
+          "moveFailures": 172,
+          "scoreSum": 736610,
+          "elapsedSum": 20595780,
+          "animationMsSum": 7113780
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "special",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 28,
+      "rate": 0.04666666666666667,
+      "ci95": [
+        0.03248188567095377,
+        0.06661938991480156
+      ],
+      "timeouts": 572,
+      "moveFailures": 0,
+      "batchRates": [
+        0.05,
+        0.045,
+        0.045
+      ],
+      "chiSquare": 0.07492507492507493,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 10,
+          "timeouts": 190,
+          "moveFailures": 0,
+          "scoreSum": 606020,
+          "elapsedSum": 28795880,
+          "animationMsSum": 5857880
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 626670,
+          "elapsedSum": 28940540,
+          "animationMsSum": 5960540
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 614820,
+          "elapsedSum": 28890720,
+          "animationMsSum": 5892720
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "special",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 2,
+      "rate": 0.0033333333333333335,
+      "ci95": [
+        0.0009145966868046472,
+        0.012071359653471395
+      ],
+      "timeouts": 598,
+      "moveFailures": 0,
+      "batchRates": [
+        0.01,
+        0,
+        0
+      ],
+      "chiSquare": 4.013377926421405,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 405380,
+          "elapsedSum": 30052000,
+          "animationMsSum": 3922000
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 430960,
+          "elapsedSum": 30072400,
+          "animationMsSum": 4032400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 419410,
+          "elapsedSum": 30095920,
+          "animationMsSum": 3965920
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 488,
+      "rate": 0.8133333333333334,
+      "ci95": [
+        0.7801980517683933,
+        0.8424819489296878
+      ],
+      "timeouts": 0,
+      "moveFailures": 112,
+      "batchRates": [
+        0.83,
+        0.84,
+        0.77
+      ],
+      "chiSquare": 3.7763466042154574,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 166,
+          "timeouts": 0,
+          "moveFailures": 34,
+          "scoreSum": 709330,
+          "elapsedSum": 19602900,
+          "animationMsSum": 6528900
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 168,
+          "timeouts": 0,
+          "moveFailures": 32,
+          "scoreSum": 694600,
+          "elapsedSum": 19572140,
+          "animationMsSum": 6486140
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 154,
+          "timeouts": 0,
+          "moveFailures": 46,
+          "scoreSum": 700840,
+          "elapsedSum": 19694920,
+          "animationMsSum": 6539920
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 354,
+      "rate": 0.59,
+      "ci95": [
+        0.5501945105891836,
+        0.6286603832283503
+      ],
+      "timeouts": 246,
+      "moveFailures": 0,
+      "batchRates": [
+        0.575,
+        0.61,
+        0.585
+      ],
+      "chiSquare": 0.5374121537825547,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 115,
+          "timeouts": 85,
+          "moveFailures": 0,
+          "scoreSum": 678000,
+          "elapsedSum": 31410720,
+          "animationMsSum": 6204720
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 122,
+          "timeouts": 78,
+          "moveFailures": 0,
+          "scoreSum": 660970,
+          "elapsedSum": 31486400,
+          "animationMsSum": 6178400
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 117,
+          "timeouts": 83,
+          "moveFailures": 0,
+          "scoreSum": 668400,
+          "elapsedSum": 31464280,
+          "animationMsSum": 6198280
+        }
+      ]
+    },
+    {
+      "levelId": 6,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 43,
+      "rate": 0.07166666666666667,
+      "ci95": [
+        0.05363893908574288,
+        0.0951442514493274
+      ],
+      "timeouts": 557,
+      "moveFailures": 0,
+      "batchRates": [
+        0.07,
+        0.06,
+        0.085
+      ],
+      "chiSquare": 0.9519435514174774,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 14,
+          "timeouts": 186,
+          "moveFailures": 0,
+          "scoreSum": 496110,
+          "elapsedSum": 35867560,
+          "animationMsSum": 4487560
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 476180,
+          "elapsedSum": 36065660,
+          "animationMsSum": 4435660
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 17,
+          "timeouts": 183,
+          "moveFailures": 0,
+          "scoreSum": 479370,
+          "elapsedSum": 35737780,
+          "animationMsSum": 4447780
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 431,
+      "rate": 0.7183333333333334,
+      "ci95": [
+        0.6810403824737422,
+        0.7528483414169419
+      ],
+      "timeouts": 0,
+      "moveFailures": 169,
+      "batchRates": [
+        0.755,
+        0.705,
+        0.695
+      ],
+      "chiSquare": 2.042861653784374,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 151,
+          "timeouts": 0,
+          "moveFailures": 49,
+          "scoreSum": 569110,
+          "elapsedSum": 17742480,
+          "animationMsSum": 5982480
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 141,
+          "timeouts": 0,
+          "moveFailures": 59,
+          "scoreSum": 589670,
+          "elapsedSum": 18549100,
+          "animationMsSum": 6273100
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 139,
+          "timeouts": 0,
+          "moveFailures": 61,
+          "scoreSum": 590180,
+          "elapsedSum": 18376080,
+          "animationMsSum": 6232080
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 253,
+      "rate": 0.4216666666666667,
+      "ci95": [
+        0.382774169949745,
+        0.46155582987573496
+      ],
+      "timeouts": 347,
+      "moveFailures": 0,
+      "batchRates": [
+        0.47,
+        0.38,
+        0.415
+      ],
+      "chiSquare": 3.376200293879782,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 94,
+          "timeouts": 106,
+          "moveFailures": 0,
+          "scoreSum": 510030,
+          "elapsedSum": 26719200,
+          "animationMsSum": 5335200
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 76,
+          "timeouts": 124,
+          "moveFailures": 0,
+          "scoreSum": 504140,
+          "elapsedSum": 27178740,
+          "animationMsSum": 5410740
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 83,
+          "timeouts": 117,
+          "moveFailures": 0,
+          "scoreSum": 502220,
+          "elapsedSum": 26845840,
+          "animationMsSum": 5335840
+        }
+      ]
+    },
+    {
+      "levelId": 10,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 31,
+      "rate": 0.051666666666666666,
+      "ci95": [
+        0.036634743907307504,
+        0.0724029146683108
+      ],
+      "timeouts": 569,
+      "moveFailures": 0,
+      "batchRates": [
+        0.06,
+        0.045,
+        0.05
+      ],
+      "chiSquare": 0.4762174726458416,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 353450,
+          "elapsedSum": 29770340,
+          "animationMsSum": 3760340
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 347740,
+          "elapsedSum": 29838500,
+          "animationMsSum": 3778500
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 10,
+          "timeouts": 190,
+          "moveFailures": 0,
+          "scoreSum": 343300,
+          "elapsedSum": 29846700,
+          "animationMsSum": 3756700
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 452,
+      "rate": 0.7533333333333333,
+      "ci95": [
+        0.7173016098226437,
+        0.7861417949970813
+      ],
+      "timeouts": 0,
+      "moveFailures": 148,
+      "batchRates": [
+        0.79,
+        0.705,
+        0.765
+      ],
+      "chiSquare": 4.10786893087778,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 158,
+          "timeouts": 0,
+          "moveFailures": 42,
+          "scoreSum": 605130,
+          "elapsedSum": 17175480,
+          "animationMsSum": 5871480
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 141,
+          "timeouts": 0,
+          "moveFailures": 59,
+          "scoreSum": 605610,
+          "elapsedSum": 17757640,
+          "animationMsSum": 6009640
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 153,
+          "timeouts": 0,
+          "moveFailures": 47,
+          "scoreSum": 614080,
+          "elapsedSum": 17442600,
+          "animationMsSum": 5940600
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 181,
+      "rate": 0.3016666666666667,
+      "ci95": [
+        0.26629818895612284,
+        0.33955861911264523
+      ],
+      "timeouts": 419,
+      "moveFailures": 0,
+      "batchRates": [
+        0.335,
+        0.255,
+        0.315
+      ],
+      "chiSquare": 3.291182636901858,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 67,
+          "timeouts": 133,
+          "moveFailures": 0,
+          "scoreSum": 507780,
+          "elapsedSum": 24517900,
+          "animationMsSum": 4915900
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 51,
+          "timeouts": 149,
+          "moveFailures": 0,
+          "scoreSum": 501330,
+          "elapsedSum": 25010680,
+          "animationMsSum": 4964680
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 63,
+          "timeouts": 137,
+          "moveFailures": 0,
+          "scoreSum": 509440,
+          "elapsedSum": 24687060,
+          "animationMsSum": 4935060
+        }
+      ]
+    },
+    {
+      "levelId": 20,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 20,
+      "rate": 0.03333333333333333,
+      "ci95": [
+        0.021680161456561077,
+        0.05092409282289293
+      ],
+      "timeouts": 580,
+      "moveFailures": 0,
+      "batchRates": [
+        0.05,
+        0.02,
+        0.03
+      ],
+      "chiSquare": 2.896551724137931,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 10,
+          "timeouts": 190,
+          "moveFailures": 0,
+          "scoreSum": 349690,
+          "elapsedSum": 26967320,
+          "animationMsSum": 3407320
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 4,
+          "timeouts": 196,
+          "moveFailures": 0,
+          "scoreSum": 344630,
+          "elapsedSum": 27192960,
+          "animationMsSum": 3422960
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 6,
+          "timeouts": 194,
+          "moveFailures": 0,
+          "scoreSum": 355890,
+          "elapsedSum": 27065360,
+          "animationMsSum": 3385360
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 320,
+      "rate": 0.5333333333333333,
+      "ci95": [
+        0.49332929672753023,
+        0.5729132565382231
+      ],
+      "timeouts": 0,
+      "moveFailures": 280,
+      "batchRates": [
+        0.515,
+        0.555,
+        0.53
+      ],
+      "chiSquare": 0.65625,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 103,
+          "timeouts": 0,
+          "moveFailures": 97,
+          "scoreSum": 703200,
+          "elapsedSum": 19193920,
+          "animationMsSum": 6410920
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 111,
+          "timeouts": 0,
+          "moveFailures": 89,
+          "scoreSum": 711370,
+          "elapsedSum": 18963300,
+          "animationMsSum": 6387300
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 106,
+          "timeouts": 0,
+          "moveFailures": 94,
+          "scoreSum": 711360,
+          "elapsedSum": 18801120,
+          "animationMsSum": 6351120
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 313,
+      "rate": 0.5216666666666666,
+      "ci95": [
+        0.4816859159216232,
+        0.5613717437011163
+      ],
+      "timeouts": 258,
+      "moveFailures": 29,
+      "batchRates": [
+        0.505,
+        0.545,
+        0.515
+      ],
+      "chiSquare": 0.6946377085861228,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 101,
+          "timeouts": 88,
+          "moveFailures": 11,
+          "scoreSum": 689570,
+          "elapsedSum": 31780760,
+          "animationMsSum": 6274760
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 109,
+          "timeouts": 78,
+          "moveFailures": 13,
+          "scoreSum": 694860,
+          "elapsedSum": 31340040,
+          "animationMsSum": 6254040
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 103,
+          "timeouts": 92,
+          "moveFailures": 5,
+          "scoreSum": 695580,
+          "elapsedSum": 31062160,
+          "animationMsSum": 6216160
+        }
+      ]
+    },
+    {
+      "levelId": 21,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 65,
+      "rate": 0.10833333333333334,
+      "ci95": [
+        0.08591052491269927,
+        0.13573947421469965
+      ],
+      "timeouts": 535,
+      "moveFailures": 0,
+      "batchRates": [
+        0.085,
+        0.11,
+        0.13
+      ],
+      "chiSquare": 2.104960460100647,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 17,
+          "timeouts": 183,
+          "moveFailures": 0,
+          "scoreSum": 501340,
+          "elapsedSum": 35949200,
+          "animationMsSum": 4509200
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 22,
+          "timeouts": 178,
+          "moveFailures": 0,
+          "scoreSum": 501440,
+          "elapsedSum": 35707080,
+          "animationMsSum": 4497080
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 26,
+          "timeouts": 174,
+          "moveFailures": 0,
+          "scoreSum": 516420,
+          "elapsedSum": 35312700,
+          "animationMsSum": 4522700
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 174,
+      "rate": 0.29,
+      "ci95": [
+        0.2551191238284465,
+        0.3275527905973079
+      ],
+      "timeouts": 0,
+      "moveFailures": 426,
+      "batchRates": [
+        0.295,
+        0.285,
+        0.29
+      ],
+      "chiSquare": 0.04856726566294318,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 59,
+          "timeouts": 0,
+          "moveFailures": 141,
+          "scoreSum": 713330,
+          "elapsedSum": 20552600,
+          "animationMsSum": 6920600
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 57,
+          "timeouts": 0,
+          "moveFailures": 143,
+          "scoreSum": 717850,
+          "elapsedSum": 20399880,
+          "animationMsSum": 6911880
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 58,
+          "timeouts": 0,
+          "moveFailures": 142,
+          "scoreSum": 714440,
+          "elapsedSum": 20460380,
+          "animationMsSum": 6903380
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 70,
+      "rate": 0.11666666666666667,
+      "ci95": [
+        0.0933845944690549,
+        0.14482604297478233
+      ],
+      "timeouts": 530,
+      "moveFailures": 0,
+      "batchRates": [
+        0.11,
+        0.125,
+        0.115
+      ],
+      "chiSquare": 0.22641509433962265,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 22,
+          "timeouts": 178,
+          "moveFailures": 0,
+          "scoreSum": 590030,
+          "elapsedSum": 28655900,
+          "animationMsSum": 5687900
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 25,
+          "timeouts": 175,
+          "moveFailures": 0,
+          "scoreSum": 594430,
+          "elapsedSum": 28479600,
+          "animationMsSum": 5685600
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 23,
+          "timeouts": 177,
+          "moveFailures": 0,
+          "scoreSum": 584470,
+          "elapsedSum": 28523220,
+          "animationMsSum": 5645220
+        }
+      ]
+    },
+    {
+      "levelId": 30,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 6,
+      "rate": 0.01,
+      "ci95": [
+        0.004590922177703892,
+        0.021643544815722802
+      ],
+      "timeouts": 594,
+      "moveFailures": 0,
+      "batchRates": [
+        0.005,
+        0.01,
+        0.015
+      ],
+      "chiSquare": 1.0101010101010102,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 393720,
+          "elapsedSum": 30055240,
+          "animationMsSum": 3805240
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 2,
+          "timeouts": 198,
+          "moveFailures": 0,
+          "scoreSum": 399410,
+          "elapsedSum": 30074180,
+          "animationMsSum": 3844180
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 3,
+          "timeouts": 197,
+          "moveFailures": 0,
+          "scoreSum": 389260,
+          "elapsedSum": 29967780,
+          "animationMsSum": 3777780
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 205,
+      "rate": 0.3416666666666667,
+      "ci95": [
+        0.3048327476564238,
+        0.3805151243312482
+      ],
+      "timeouts": 0,
+      "moveFailures": 395,
+      "batchRates": [
+        0.315,
+        0.365,
+        0.345
+      ],
+      "chiSquare": 1.1262735412164249,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 63,
+          "timeouts": 0,
+          "moveFailures": 137,
+          "scoreSum": 715740,
+          "elapsedSum": 19547560,
+          "animationMsSum": 6524560
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 73,
+          "timeouts": 0,
+          "moveFailures": 127,
+          "scoreSum": 716950,
+          "elapsedSum": 19222820,
+          "animationMsSum": 6457820
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 69,
+          "timeouts": 0,
+          "moveFailures": 131,
+          "scoreSum": 721790,
+          "elapsedSum": 19145980,
+          "animationMsSum": 6461980
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 205,
+      "rate": 0.3416666666666667,
+      "ci95": [
+        0.3048327476564238,
+        0.3805151243312482
+      ],
+      "timeouts": 36,
+      "moveFailures": 359,
+      "batchRates": [
+        0.315,
+        0.365,
+        0.345
+      ],
+      "chiSquare": 1.1262735412164249,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 63,
+          "timeouts": 15,
+          "moveFailures": 122,
+          "scoreSum": 714280,
+          "elapsedSum": 32552080,
+          "animationMsSum": 6506080
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 73,
+          "timeouts": 9,
+          "moveFailures": 118,
+          "scoreSum": 715860,
+          "elapsedSum": 31975720,
+          "animationMsSum": 6445720
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 69,
+          "timeouts": 12,
+          "moveFailures": 119,
+          "scoreSum": 719970,
+          "elapsedSum": 31812160,
+          "animationMsSum": 6444160
+        }
+      ]
+    },
+    {
+      "levelId": 121,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 37,
+      "rate": 0.06166666666666667,
+      "ci95": [
+        0.045067361772116676,
+        0.08384306278322762
+      ],
+      "timeouts": 563,
+      "moveFailures": 0,
+      "batchRates": [
+        0.035,
+        0.065,
+        0.085
+      ],
+      "chiSquare": 4.378090346118765,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 505950,
+          "elapsedSum": 36190040,
+          "animationMsSum": 4540040
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 13,
+          "timeouts": 187,
+          "moveFailures": 0,
+          "scoreSum": 503480,
+          "elapsedSum": 35935820,
+          "animationMsSum": 4515820
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 17,
+          "timeouts": 183,
+          "moveFailures": 0,
+          "scoreSum": 520870,
+          "elapsedSum": 35734400,
+          "animationMsSum": 4564400
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 97,
+      "rate": 0.16166666666666665,
+      "ci95": [
+        0.1343769363922438,
+        0.1932611479603603
+      ],
+      "timeouts": 0,
+      "moveFailures": 503,
+      "batchRates": [
+        0.15,
+        0.18,
+        0.155
+      ],
+      "chiSquare": 0.7624356951077044,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 30,
+          "timeouts": 0,
+          "moveFailures": 170,
+          "scoreSum": 706070,
+          "elapsedSum": 20296640,
+          "animationMsSum": 6841640
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 36,
+          "timeouts": 0,
+          "moveFailures": 164,
+          "scoreSum": 709590,
+          "elapsedSum": 20193340,
+          "animationMsSum": 6834340
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 31,
+          "timeouts": 0,
+          "moveFailures": 169,
+          "scoreSum": 706100,
+          "elapsedSum": 20253320,
+          "animationMsSum": 6825320
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 33,
+      "rate": 0.055,
+      "ci95": [
+        0.03942813848636002,
+        0.07623377541583362
+      ],
+      "timeouts": 567,
+      "moveFailures": 0,
+      "batchRates": [
+        0.06,
+        0.06,
+        0.045
+      ],
+      "chiSquare": 0.5772005772005773,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 593500,
+          "elapsedSum": 28842360,
+          "animationMsSum": 5718360
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 596860,
+          "elapsedSum": 28697940,
+          "animationMsSum": 5711940
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 587080,
+          "elapsedSum": 28761760,
+          "animationMsSum": 5673760
+        }
+      ]
+    },
+    {
+      "levelId": 130,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 2,
+      "rate": 0.0033333333333333335,
+      "ci95": [
+        0.0009145966868046472,
+        0.012071359653471395
+      ],
+      "timeouts": 598,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0.005,
+        0.005
+      ],
+      "chiSquare": 1.003344481605351,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 393900,
+          "elapsedSum": 30066980,
+          "animationMsSum": 3806980
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 399410,
+          "elapsedSum": 30074180,
+          "animationMsSum": 3844180
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 1,
+          "timeouts": 199,
+          "moveFailures": 0,
+          "scoreSum": 389290,
+          "elapsedSum": 29988760,
+          "animationMsSum": 3778760
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 163,
+      "rate": 0.27166666666666667,
+      "ci95": [
+        0.23761065166261117,
+        0.30862785846697893
+      ],
+      "timeouts": 0,
+      "moveFailures": 437,
+      "batchRates": [
+        0.24,
+        0.275,
+        0.3
+      ],
+      "chiSquare": 1.8362791481237104,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 48,
+          "timeouts": 0,
+          "moveFailures": 152,
+          "scoreSum": 729670,
+          "elapsedSum": 19835800,
+          "animationMsSum": 6629800
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 55,
+          "timeouts": 0,
+          "moveFailures": 145,
+          "scoreSum": 735360,
+          "elapsedSum": 19605020,
+          "animationMsSum": 6597020
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 60,
+          "timeouts": 0,
+          "moveFailures": 140,
+          "scoreSum": 732750,
+          "elapsedSum": 19469020,
+          "animationMsSum": 6566020
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 163,
+      "rate": 0.27166666666666667,
+      "ci95": [
+        0.23761065166261117,
+        0.30862785846697893
+      ],
+      "timeouts": 60,
+      "moveFailures": 377,
+      "batchRates": [
+        0.24,
+        0.275,
+        0.3
+      ],
+      "chiSquare": 1.8362791481237104,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 48,
+          "timeouts": 23,
+          "moveFailures": 129,
+          "scoreSum": 726790,
+          "elapsedSum": 33009920,
+          "animationMsSum": 6597920
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 55,
+          "timeouts": 19,
+          "moveFailures": 126,
+          "scoreSum": 731350,
+          "elapsedSum": 32580240,
+          "animationMsSum": 6564240
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 60,
+          "timeouts": 18,
+          "moveFailures": 122,
+          "scoreSum": 730370,
+          "elapsedSum": 32347560,
+          "animationMsSum": 6541560
+        }
+      ]
+    },
+    {
+      "levelId": 421,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 28,
+      "rate": 0.04666666666666667,
+      "ci95": [
+        0.03248188567095377,
+        0.06661938991480156
+      ],
+      "timeouts": 572,
+      "moveFailures": 0,
+      "batchRates": [
+        0.035,
+        0.045,
+        0.06
+      ],
+      "chiSquare": 1.4235764235764234,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 506240,
+          "elapsedSum": 36202280,
+          "animationMsSum": 4542280
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 9,
+          "timeouts": 191,
+          "moveFailures": 0,
+          "scoreSum": 505510,
+          "elapsedSum": 36060900,
+          "animationMsSum": 4530900
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 12,
+          "timeouts": 188,
+          "moveFailures": 0,
+          "scoreSum": 523740,
+          "elapsedSum": 35903560,
+          "animationMsSum": 4583560
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "goal",
+      "thinkMs": 3000,
+      "n": 600,
+      "wins": 67,
+      "rate": 0.11166666666666666,
+      "ci95": [
+        0.08889497508919378,
+        0.13937927936478045
+      ],
+      "timeouts": 0,
+      "moveFailures": 533,
+      "batchRates": [
+        0.1,
+        0.115,
+        0.12
+      ],
+      "chiSquare": 0.4368401892974154,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 20,
+          "timeouts": 0,
+          "moveFailures": 180,
+          "scoreSum": 713110,
+          "elapsedSum": 20461900,
+          "animationMsSum": 6898900
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 23,
+          "timeouts": 0,
+          "moveFailures": 177,
+          "scoreSum": 717890,
+          "elapsedSum": 20472360,
+          "animationMsSum": 6924360
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 24,
+          "timeouts": 0,
+          "moveFailures": 176,
+          "scoreSum": 712760,
+          "elapsedSum": 20423060,
+          "animationMsSum": 6884060
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "goal",
+      "thinkMs": 6000,
+      "n": 600,
+      "wins": 20,
+      "rate": 0.03333333333333333,
+      "ci95": [
+        0.021680161456561077,
+        0.05092409282289293
+      ],
+      "timeouts": 580,
+      "moveFailures": 0,
+      "batchRates": [
+        0.03,
+        0.035,
+        0.035
+      ],
+      "chiSquare": 0.10344827586206896,
+      "stability": "no-detected-batch-difference",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 6,
+          "timeouts": 194,
+          "moveFailures": 0,
+          "scoreSum": 594190,
+          "elapsedSum": 28897280,
+          "animationMsSum": 5725280
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 599810,
+          "elapsedSum": 28891600,
+          "animationMsSum": 5743600
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 7,
+          "timeouts": 193,
+          "moveFailures": 0,
+          "scoreSum": 589440,
+          "elapsedSum": 28847640,
+          "animationMsSum": 5693640
+        }
+      ]
+    },
+    {
+      "levelId": 430,
+      "strategy": "goal",
+      "thinkMs": 10000,
+      "n": 600,
+      "wins": 0,
+      "rate": 0,
+      "ci95": [
+        4.336808689942018e-19,
+        0.00636170101370071
+      ],
+      "timeouts": 600,
+      "moveFailures": 0,
+      "batchRates": [
+        0,
+        0,
+        0
+      ],
+      "chiSquare": 0,
+      "stability": "sparse-descriptive",
+      "batches": [
+        {
+          "batch": 0,
+          "baseSeed": 396544323,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 393900,
+          "elapsedSum": 30066980,
+          "animationMsSum": 3806980
+        },
+        {
+          "batch": 1,
+          "baseSeed": 2377593317,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 399410,
+          "elapsedSum": 30084180,
+          "animationMsSum": 3844180
+        },
+        {
+          "batch": 2,
+          "baseSeed": 3288791593,
+          "n": 200,
+          "wins": 0,
+          "timeouts": 200,
+          "moveFailures": 0,
+          "scoreSum": 389290,
+          "elapsedSum": 29988760,
+          "animationMsSum": 3778760
+        }
+      ]
+    }
+  ]
+}

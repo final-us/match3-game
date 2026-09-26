@@ -28,6 +28,14 @@
 
 ## 当前发布素材
 
+2026-09-24图鉴开发样板新增：`res/catalog/portraits-atlas.jpg`（700×776，102460字节）从用户接受的内置ImageGen v8概念确定性提取四块插画，注册为 `catalogPortraits`。仅开发样板使用，trial/release入口隐藏，未发布；来源、接受范围、提示与本地处理见 [`cat-catalog-assets.md`](../design/cat-catalog-assets.md)。不是整张概念UI作为交互页面，也不是完整20张成长原画。
+
+同日按用户反馈新增图鉴入口 `res/home/catalog-album.png`（160×160透明PNG，37859字节），内置ImageGen原创猫爪收藏册经本地Canvas缩放，注册为 `catalogIcon`。原图、提示、透明检查和使用范围见上述图鉴来源记录；图鉴底板及淡紫色按钮为原生Canvas绘制。新视觉仍待用户运行验收，未部署或发布。
+
+奶糖成长第二阶段「熟悉」经用户接受后接入 `res/catalog/naitang-familiar.jpg`（512×512，50642字节），注册为 `catalogNaitangFamiliar`。内置ImageGen生成原图和已授权参考、本地完整构图缩放参数见 [`cat-catalog-assets.md`](../design/cat-catalog-assets.md)。仅develop样板使用，未发布。2026-09-25第三至第五阶段经接受后加入 `res/catalog/naitang-trust.jpg`（52149字节）、`res/catalog/naitang-attachment.jpg`（52194字节）、`res/catalog/naitang-best-friend.jpg`（53058字节），均为512×512；来源、提示与注册键见上述资产记录。随后按用户要求回退为静态原画，动画代码已移出运行包并留作下版本参考。另补12张团子/芝麻/布丁成长原画，用户已接受并授权开发部署，选择原生catalog子包。源1254×1254 PNG和完整提示留在assets/_incoming/cat-growth-complete-v1；运行采用512×512 JPEG质量0.84完整缩放，`CATALOG_ASSETS`注册12条`catalog/`路径。来源/参考/接受/转换逐项保存在provenance.json；无新增生成或外部服务。初见图集和奶糖4图当时仍在主包；实际部署见catalog-activation.md，未授权公开发布。
+
+2026-09-26包体调整：上述4张奶糖成长JPEG原字节移动为当前运行路径 `catalog/naitang-familiar.jpg`、`catalog/naitang-trust.jpg`、`catalog/naitang-attachment.jpg`、`catalog/naitang-best-friend.jpg`，改由 `CATALOG_ASSETS` 在原生图鉴分包加载；上段 `res/catalog/` 路径仅记录迁移前历史。初见图集仍在主包，图鉴分包共16张成长原画。未重新生成、裁切或降低画质。
+
 ### 本地 B 视觉候选覆盖（2026-09-12，尚未发布）
 
 2026-09-13 地图/结算最新覆盖：`res/level-background-v2.jpg`为独立云海玻璃阶梯640×1384背景；`res/ui/result-happy-cat.png`、`res/ui/result-sad-cat.png`为新320×320真透明角色（单人及PvP共用）。内置ImageGen各生成一次，猫图checker-alpha保留原生alpha并经白/深底检查，确定性缩放。完整来源/提示/透明报告/hash/备份与运行映射见assets/_incoming/moon-ui-runtime/map-results/README.md。地图节点改为原生Canvas，旧三枚节点PNG仍注册保留但地图不绘制。本批本地待验收，未上线；下方早期来源表对此三文件仅作历史来源。商店/设置/道具前批现已获用户确认。

@@ -46,7 +46,8 @@ function drawFit(ctx, text, x, y, maxWidth, options) {
 
 // Editable display lettering: rounded device glyphs, pearl edging and a gentle arch.
 // Uses the existing licensed system stack; no raster text or additional font download.
-function drawDisplay(ctx, text, x, y, maxWidth, size) {
+function drawDisplay(ctx, text, x, y, maxWidth, size, options) {
+    const opts = options || {};
     ctx.save();
     const fitted = fitFontSize(ctx, text, maxWidth - 12, size, 18, '900', false);
     set(ctx, fitted, '900', false, 'center');
@@ -65,7 +66,7 @@ function drawDisplay(ctx, text, x, y, maxWidth, size) {
         ctx.strokeText(char, 0, 0);
         ctx.strokeStyle = '#AC83B5'; ctx.lineWidth = 1.5;
         ctx.strokeText(char, 0, 0);
-        ctx.fillStyle = '#FFFCED'; ctx.fillText(char, 0, 0);
+        ctx.fillStyle = opts.fill || '#FFFCED'; ctx.fillText(char, 0, 0);
         ctx.restore();
         left += widths[index];
     });

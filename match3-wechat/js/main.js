@@ -18,12 +18,20 @@ const onboarding = require('./core/onboarding');
 const strategyFeedback = require('./core/strategy-feedback');
 const assets = require('./render/assets');
 const cloudBattle = require('./net/cloud-battle');
+const battleItems = require('./net/battle-items');
 const BattleUI = require('./render/battle-ui');
 const OnboardingUI = require('./render/onboarding');
 const userProfile = require('./platform/user-profile');
 const dailyEngine = require('./core/daily-challenge');
 const dailyProgress = require('./core/daily-progress');
 const DailyUI = require('./render/daily-ui');
+const RetentionUI = require('./render/retention-ui');
+const retentionPreview = require('./platform/retention-preview');
+const retentionClient = require('./platform/retention-client');
+const CatalogUI = require('./render/catalog-ui');
+const catalogPreview = require('./platform/catalog-preview');
+const CompanionUI = require('./render/companion-ui');
+const companionDisplay = require('./platform/companion');
 
 // 存档 key
 const STORAGE_KEY = 'match3_progress_infinite_v1';
@@ -44,8 +52,6 @@ const BATTLE_INVITE_EXPIRED_MESSAGE = '邀请已失效或对局已结束，请�
 const BATTLE_JOIN_NETWORK_MESSAGE = '暂时无法加入对局，请检查网络后重试';
 const BATTLE_CREATE_RATE_LIMIT_MESSAGE = '创建太频繁，请稍后再试';
 const SOLO_REVIVE_TIME_MS = 30000;
-const BATTLE_ITEM_ALLOWLIST = ['freeze', 'disturb'];
-const BATTLE_ITEM_BUDGET = 3;
 const BATTLE_WAIT_REQUEST = { timeoutMs: 8000 };
 const DAILY_REQUEST = { timeoutMs: 12000 };
 
@@ -72,7 +78,7 @@ function battleErrorReason(error, category) {
 }
 
 class Main {
-    constructor() {
+    constructor(options) {
         runtime.init('menu');
 
         // 主屏 canvas
@@ -149,6 +155,24 @@ class Main {
         this.board = null;
         this.result = null;
         this.menuButtons = null;
+        this.menuBattlePress = null;
+        this.catalogPreviewEnabled = catalogPreview.isEnabled(wx);
+        this.catalogPreview = null;
+        this.companion = this.catalogPreviewEnabled ? companionDisplay.create(wx) : null;
+        this.companionView = null; this.companionTouch = null; this.companionButtons = null;
+        if(this.companion && this.companion.selection)assets.loadCatalog();
+        this.catalogButtons = null;
+        this.catalogTouch = null;
+        this.retentionPreviewEnabled = retentionPreview.isEnabled(wx);
+        this.retentionPreview = null;
+        this.retentionButtons = null;
+        this.retentionTouch = null;
+        // The sample is injected only by the isolated local visual fixture.
+        this.retention = this.retentionPreviewEnabled && !(options && options.retentionSample)
+            ? retentionClient.create(wx,cloudBattle.call,coin,message=>{
+                this.retentionNotice=message;this.showBattleNotice(message);
+            }) : null;
+        if(this.retention)this.retentionPreview=this.retention.model;
         this.resultButtons = null;
         this.shopButtons = null;
         this.shopRewardPending = false;
@@ -186,6 +210,7 @@ class Main {
 
         // 初始化云开发（云函数对战）
         cloudBattle.init();
+        if(this.retention)this.retention.sync();
 
         // 监听小游戏从后台回到前台（好友点卡片进入时拿参数）
         if (wx.onShow) {
@@ -199,6 +224,9 @@ class Main {
         wx.onTouchStart(this.handleTouchStart.bind(this));
         wx.onTouchMove(this.handleTouchMove.bind(this));
         wx.onTouchEnd(this.handleTouchEnd.bind(this));
+        if (typeof wx.onTouchCancel === 'function') {
+            wx.onTouchCancel(() => { this.retentionTouch = null; this.catalogTouch = null; this.companionTouch = null; });
+        }
 
         // 被动分享（右上角菜单）：自定义分享文案
         if (wx.onShareAppMessage) {
@@ -270,6 +298,8 @@ class Main {
     startGame(levelId) {
         const level = levelData.getLevel(levelId);
         if (!level) return;
+        const savedItems=coin.getItems();
+        if(!savedItems){this.showBattleNotice('奖励正在恢复保存，请稍后重试');return;}
 
         // 消耗体力（不足则不进入）
         if (!heart.consumeHeart(true)) {
@@ -289,6 +319,8 @@ class Main {
         this.soloReviveCount = 0;
         this.soloPendingResult = null;
         this.soloRunStartedAt = Date.now();
+        this.retentionSolo = this.retention ? this.retention.startSolo(level.id) : null;
+        this.retentionNotice='';
         analytics.track('solo_start', { level: level.id });
 
         // 先创建渲染层（动画回调需要引用它）
@@ -296,12 +328,16 @@ class Main {
 
         // 再创建逻辑层，动画回调绑定到渲染层
         this.core = new GameCore(level, {
-            onSwap: (from, to) => this.board.animateSwap(from, to),
+            onSwap: (from, to) => {
+                if(this.retentionSolo)this.retentionSolo.validMove=true;
+                return this.board.animateSwap(from, to);
+            },
             onInvalidSwap: (from, to) => {
                 AudioFX.invalid();
                 return this.board.animateInvalidSwap(from, to);
             },
             onMatch: (data) => {
+                if(this.retentionSolo){this.retentionSolo.cleared+=data.removed.length;if(data.removed.length)this.retentionSolo.validMove=true;}
                 AudioFX.match(data);
                 if (data && data.generated && data.generated.length) this.showGuide(onboarding.GUIDE_KEYS.SPECIAL);
                 return this.board.animateMatch(data);
@@ -310,6 +346,7 @@ class Main {
             onFill: (data) => this.board.animateFill(data),
             onColorChange: (data) => this.board.animateColorChange(data),
             onReshuffle: () => this.board.animateReshuffle(),
+            onYarnSpread: (pos) => this.board.animateYarnSpread(pos),
             onLevelEnd: this.handleLevelEnd.bind(this)
         });
 
@@ -327,11 +364,14 @@ class Main {
         }
 
         this.board.setGame(this.core);
-        const items = coin.getItems();
+        const items = savedItems;
         this.board.setTools(items);
         this.board.onToolUsed = (toolType) => {
+            if(this.retentionSolo)this.retentionSolo.validMove=true;
             coin.useItem(toolType);
-            this.board.setTools(coin.getItems());
+            const latestItems=coin.getItems();
+            if(latestItems)this.board.setTools(latestItems);
+            else this.showBattleNotice('道具记录暂未保存，请稍后重试');
             AudioFX.tool(toolType);
         };
         this.state = 'playing';
@@ -340,6 +380,7 @@ class Main {
         if (Object.keys(level.underlays || {}).length || Object.keys(level.obstacles || {}).length) {
             this.showGuide(onboarding.GUIDE_KEYS.OBSTACLE);
         }
+        if (level.yarn) this.showGuide(onboarding.GUIDE_KEYS.YARN);
         if (items.hammer > 0 || items.bomb > 0 || items.color > 0) {
             this.showGuide(onboarding.GUIDE_KEYS.SOLO_ITEM);
         }
@@ -356,6 +397,11 @@ class Main {
 
     handleLevelEnd(result) {
         if (this.soloCompletionTracked) return;
+        if(this.retention&&this.retentionSolo) {
+            this.retentionSolo.date=this.retention.date();
+            this.retentionSolo.completed=true;
+            this.retentionSoloSaved=this.retention.saveSolo(this.retentionSolo,true).ok;
+        }
         // 旧存档的已解锁前置关和有星关都视为已通关，内容升级不重发金币。
         const firstClear = result.win && !(this.progress.stars && this.progress.stars[this.core.level.id] > 0) &&
             this.core.level.id >= this.progress.unlockedLevel;
@@ -444,6 +490,7 @@ class Main {
 
             this.soloPendingResult = null;
             this.soloCompletionTracked = true;
+            if(this.retention&&this.retentionSolo&&result.win)this.retention.finishSolo(this.retentionSolo);
             this.state = 'result';
             this.guide = null;
             this.guideQueue = [];
@@ -501,6 +548,7 @@ class Main {
             return;
         }
         const state = coin.getRewardedItemState();
+        if(!state){this.showBattleNotice('奖励正在恢复保存，请稍后重试');return;}
         if (state.remaining <= 0) {
             analytics.track('shop_ad_reward_limit', { category: type, count: state.count });
             AudioFX.invalid();
@@ -578,11 +626,19 @@ class Main {
     /** 看广告复活（+步数继续玩） */
     reviveGame() {
         const self = this;
+        const originalCore=this.core,originalRun=this.retentionSolo;
         ad.showRewarded('revive').then(function (completed) {
             if (!completed) return;
-            if (!self.core) return;
+            if (!self.core||self.core!==originalCore||self.retentionSolo!==originalRun||self.state!=='result') return;
+            if(self.retention&&self.retentionSolo && !self.retention.saveSolo(self.retentionSolo,false).ok) {
+                self.showBattleNotice('任务记录暂未保存，请重试');return;
+            }
             // 复活：加步数、恢复时间、解除结束状态、回到游戏中
-            if (!self.core.revive(config.AD_CONFIG.reviveSteps, SOLO_REVIVE_TIME_MS)) return;
+            if (!self.core.revive(config.AD_CONFIG.reviveSteps, SOLO_REVIVE_TIME_MS)) {
+                if(self.retention&&self.retentionSolo)self.retention.saveSolo(self.retentionSolo,true);
+                return;
+            }
+            if(self.retentionSolo)self.retentionSolo.completed=false;
             ad.markRewardGranted('revive');
             self.soloReviveCount++;
             self.soloCompletionTracked = false;
@@ -595,6 +651,9 @@ class Main {
     /** 最终离开单人结算：计入插屏节奏，广告关闭/失败后继续原导航。 */
     leaveSoloResult(action) {
         if (this.resultLeaving) return;
+        if(this.retention&&this.retentionSolo && !this.retention.finishSolo(this.retentionSolo).ok) {
+            this.showBattleNotice('任务进度暂未保存，请重试');return;
+        }
         this.resultLeaving = true;
         const self = this;
         function finish() {
@@ -800,6 +859,11 @@ class Main {
                 d.pendingUnavailable = res.err === '挑战已过期' || res.err === '挑战记录不存在';
                 d.error = d.pendingUnavailable ? '上次成绩已过期，点击处理' : cloudBattle.describeDailyFailure(res, true); return;
             }
+            if(this.retention){d.retentionPending=true;this.retentionNotice='';}
+            if(this.retention&&!this.retention.record({id:'daily:'+pending.runId,mode:'daily',runId:pending.runId,
+                date:res.date,cleared:0,validMove:true}).ok) {
+                d.error='每日任务进度暂未保存，请重试';return;
+            }
             const stored = dailyProgress.finishPending(Object.assign({},res,{runId:pending.runId}));
             if (!stored.ok) { d.error = '奖励或纪录暂未保存，请重试'; return; }
             d.pending = false; d.lastCompleted = {date:res.date,score:res.score};
@@ -849,10 +913,13 @@ class Main {
         if (!this.battle || !this.battle.roomId) return;
         const self = this;
         const b = this.battle;
-        if (b.pollPending || b.actionPending || b.expired || (b.completedTracked && b.protocolVersion !== 2)) return;
+        if (b.itemRulesVersion === 3 && b.scorePending) { b.pollWanted = true; return; }
+        if (b.pollPending || b.actionPending || b.scorePending || b.expired || (b.completedTracked && b.protocolVersion !== 2)) return;
+        b.pollWanted = false;
         b.pollPending = true;
         const revision = b.pollRevision;
-        cloudBattle.call('query', { roomId: b.roomId, protocolVersion: 2 }, BATTLE_WAIT_REQUEST).then(function (res) {
+        const sentAt = Date.now();
+        cloudBattle.call('query', Object.assign({ roomId: b.roomId, protocolVersion: 2 }, b.itemRulesVersion === 3 ? { itemRulesVersion: 3, roundId: b.roundId } : {}), BATTLE_WAIT_REQUEST).then(function (res) {
             b.pollPending = false;
             if (self.battle !== b || b.actionPending || revision !== b.pollRevision) return;
             if (!res.ok) {
@@ -875,7 +942,7 @@ class Main {
                 return;
             }
             b.offline = false;
-            self.applyPoll(res);
+            self.applyPoll(res, sentAt);
         }).catch(function (error) {
             b.pollPending = false;
             if (self.battle !== b || b.actionPending || revision !== b.pollRevision) return;
@@ -888,7 +955,7 @@ class Main {
     }
 
     /** 应用轮询结果 */
-    applyPoll(res) {
+    applyPoll(res, sentAt) {
         if (!this.battle) return;
         let b = this.battle;
         if (b.protocolVersion === 2) {
@@ -909,8 +976,14 @@ class Main {
             b.canRematch = !!res.canRematch; b.oppLeft = !!res.oppLeft;
             b.oppOnline = !!(res.opp && res.opp.online);
         }
+        battleItems.configure(b, res);
+        if (b.itemRulesVersion === 3) {
+            battleItems.status(b, res, sentAt);
+            if (battleItems.acknowledge(b, res)) b.scoreUncertain = false;
+            if (b.pendingItem && (res.casts || []).some(cast => cast.requestId === b.pendingItem.requestId)) b.pendingItem = null;
+        }
         if (b.completedTracked) return;
-        if (Number.isFinite(res.myScore)) b.syncedScore = Math.max(b.syncedScore, res.myScore);
+        if (b.itemRulesVersion !== 3 && Number.isFinite(res.myScore)) b.syncedScore = Math.max(b.syncedScore, res.myScore);
 
         // 对手信息
         if (res.opp) {
@@ -923,8 +996,9 @@ class Main {
         }
         b.myReady = !!res.myReady;
         if (res.myItems) {
-            for (let i = 0; i < BATTLE_ITEM_ALLOWLIST.length; i++) {
-                const item = BATTLE_ITEM_ALLOWLIST[i];
+            const keys = battleItems.keys(b);
+            for (let i = 0; i < keys.length; i++) {
+                const item = keys[i];
                 b.items[item] = Number(res.myItems[item]) || 0;
             }
         }
@@ -932,15 +1006,32 @@ class Main {
         b.activeEffectUntil = Number(res.myActiveEffectUntil) || 0;
 
         // 处理新效果（冰冻/干扰）
-        if (res.effects && res.effects.length > this.effectSeen) {
+        if (b.itemRulesVersion === 3) {
+            for (const effect of res.effects || []) {
+                const state = effect.status || 'active';
+                if (b.effectStates[effect.id] === state) continue;
+                b.effectStates[effect.id] = state;
+                this.applyEffect(effect);
+            }
+        } else if (res.effects && res.effects.length > this.effectSeen) {
             for (let i = this.effectSeen; i < res.effects.length; i++) {
                 this.applyEffect(res.effects[i]);
             }
             this.effectSeen = res.effects.length;
         }
-        if (res.casts && res.casts.length > this.castSeen) {
+        if (b.itemRulesVersion === 3) {
+            for (const cast of res.casts || []) {
+                const status = cast.status || 'active';
+                if (b.castStates[cast.id] === status) continue;
+                b.castStates[cast.id] = status;
+                if (this.battleNow() - cast.at < 2000) {
+                    if (status === 'reflected') b.itemNotice = { text: '攻击被对手反弹', until: this.battleNow() + 1500 };
+                    else b.castNotice = { item: cast.item, until: this.battleNow() + 1500 };
+                }
+            }
+        } else if (res.casts && res.casts.length > this.castSeen) {
             for (let i = this.castSeen; i < res.casts.length; i++) {
-                b.castNotice = { item: res.casts[i].item, until: Date.now() + 1500 };
+                if (this.battleNow() - res.casts[i].at < 2000) b.castNotice = { item: res.casts[i].item, until: this.battleNow() + 1500 };
             }
             this.castSeen = res.casts.length;
         }
@@ -967,16 +1058,27 @@ class Main {
     /** 受击特效 */
     applyEffect(effect) {
         if (!this.battle) return;
-        const now = Date.now();
+        const now = this.battleNow();
         const until = Number(effect.until) || (now + Number(effect.duration || 0));
+        if (effect.status === 'blocked' || effect.status === 'triggered') {
+            if (now - effect.at < 5000) this.battle.itemNotice = { text: effect.status === 'triggered' ? '镜面反弹 · 已反击' : '镜面反弹 · 已抵挡', until: now + 1500 };
+            return;
+        }
         if (until <= now) return;
         if (effect.item === 'freeze') {
             this.battle.frozenUntil = Math.max(this.battle.frozenUntil, until);
         } else if (effect.item === 'disturb') {
             this.battle.disturbUntil = Math.max(this.battle.disturbUntil, until);
+            this.battle.disturbNoticeUntil = Math.min(until, now + 1000);
             if (this.battleCore) this.battleCore.minMatchCount = 4;
+        } else if (effect.item === 'reflect') {
+            // Poll/useItem status is authoritative: historical grants must not revive a consumed shield.
+            return;
+        } else if (effect.item === 'cheer') {
+            this.battle.cheerUntil = Math.max(this.battle.cheerUntil, until);
+            battleItems.window(this.battle, until);
         }
-        AudioFX.pvpHit(effect.item);
+        if (effect.item === 'freeze' || effect.item === 'disturb') AudioFX.pvpHit(effect.item);
     }
 
     /** 结算 */
@@ -986,6 +1088,12 @@ class Main {
         this.battle.result = result.result;
         this.battle.myScore = result.myScore;
         this.battle.oppScore = result.oppScore;
+        if(this.retention&&this.battle.protocolVersion===2&&this.battle.retentionValidMove) {
+            this.battle.retentionEvent={id:'pvp:'+this.battle.roomId+':'+this.battle.roundId,mode:'pvp',
+                roomId:this.battle.roomId,roundId:this.battle.roundId,date:this.retention.date(),
+                cleared:this.battle.retentionCleared||0,validMove:true};
+            if(this.retention.record(this.battle.retentionEvent).ok)this.battle.retentionEvent=null;
+        }
         const reward = result.result === 'win' ? 150 : (result.result === 'draw' ? 50 : 30);
         if (this.battle.protocolVersion === 2) {
             this.battle.rewardReceipt = result.settlementId;
@@ -1009,6 +1117,10 @@ class Main {
 
     creditBattleReward() {
         const b = this.battle;
+        if(this.retention&&b&&b.retentionEvent) {
+            if(!this.retention.record(b.retentionEvent).ok)return false;
+            b.retentionEvent=null;
+        }
         if (!b || !b.rewardPending) return true;
         const credit = coin.creditOnce(b.rewardReceipt, b.rewardAmount);
         if (!credit.ok) return false;
@@ -1019,7 +1131,7 @@ class Main {
 
     battleRequestData(b, fields) {
         return Object.assign({ roomId: b.roomId }, b.protocolVersion === 2
-            ? { protocolVersion: 2, roundId: b.roundId } : {}, fields || {});
+            ? { protocolVersion: 2, roundId: b.roundId } : {}, b.itemRulesVersion === 3 ? { itemRulesVersion: 3 } : {}, fields || {});
     }
 
     battleAgain() {
@@ -1073,7 +1185,7 @@ class Main {
         analytics.track('pvp_click');
         const self = this;
         const b = this.battle = this.newBattleState(true);
-        cloudBattle.call('create', { nickname: '房主猫', protocolVersion: 2 }).then(function (res) {
+        cloudBattle.call('create', { nickname: '房主猫', protocolVersion: 2, itemRulesVersion: 3, retentionEnabled: !!this.retention }).then(function (res) {
             if (self.battle !== b) return;
             self.battleCreating = false;
             if (res.ok && res.roomId) {
@@ -1081,6 +1193,7 @@ class Main {
                 b.protocolVersion = res.protocolVersion === 2 ? 2 : 1;
                 b.roundId = res.roundId || 1;
                 b.roundNumber = res.roundNumber || 1;
+                battleItems.configure(b, res);
                 self.state = 'battle_wait';
                 analytics.track('pvp_create', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
@@ -1122,13 +1235,14 @@ class Main {
         this.battleExitRequest = null;
         const b = this.battle = this.newBattleState(false);
         b.roomId = roomId;
-        cloudBattle.call('join', { roomId: roomId, nickname: '挑战猫', protocolVersion: 2 }).then(function (res) {
+        cloudBattle.call('join', { roomId: roomId, nickname: '挑战猫', protocolVersion: 2, itemRulesVersion: 3, retentionEnabled: !!this.retention }).then(function (res) {
             if (self.battle !== b) return;
             self.battleCreating = false;
             if (res.ok) {
                 b.protocolVersion = res.protocolVersion === 2 ? 2 : 1;
                 b.roundId = res.roundId || 1;
                 b.roundNumber = res.roundNumber || 1;
+                battleItems.configure(b, res);
                 self.state = 'battle_wait';
                 analytics.track('pvp_join', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
@@ -1137,7 +1251,7 @@ class Main {
                 AudioFX.invalid();
                 analytics.track('pvp_join', { result: 'failure', reason: battleErrorReason(res, 'join') });
                 self.battle = null;
-                self.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
+                self.showBattleNotice(res.err === 'UPDATE_REQUIRED' ? '请更新游戏后加入这场对战' : BATTLE_INVITE_EXPIRED_MESSAGE);
             }
         }).catch(function () {
             if (self.battle !== b) return;
@@ -1153,6 +1267,10 @@ class Main {
         return {
             roomId: null,
             protocolVersion: 1, roundId: 1, roundNumber: 1, myWins: 0, oppWins: 0,
+            itemRulesVersion: 1, serverOffset: 0, reflectUntil: 0, cheerUntil: 0,
+            effectStates: {}, castStates: {}, pendingItem: null, scoreUncertain: false,
+            scoreSamples: [], nextScoreSeq: 0, scoreAckSeq: 0, lastSampleScore: 0, lastSampleAt: 0,
+            cheerWindows: [], confirmedScore: 0, itemNotice: null,
             myRematch: false, oppRematch: false, canRematch: false, oppOnline: true,
             offline: false, expired: false, rewardPending: false,
             myName: '我',
@@ -1183,6 +1301,7 @@ class Main {
             castNotice: null,
             frozenUntil: 0,
             disturbUntil: 0,
+            disturbNoticeUntil: 0,
             result: null,
             coinReward: 0,
             oppLeft: false,
@@ -1225,6 +1344,7 @@ class Main {
     /** 处理 onShow（好友点卡片进入时拿参数加入房间） */
     handleShow(res) {
         this.lastTime = Date.now();
+        if(this.retention)this.retention.sync();
         if (this.state === 'daily_detail') this.loadDailyInfo();
         if (this.state === 'playing' && this.core && !this.guide) this.core.resumeTimer();
 
@@ -1256,27 +1376,35 @@ class Main {
 
     /** 进入后台时暂停单人计时，并丢弃后台期间的主循环间隔 */
     handleHide() {
+        this.menuBattlePress = null;
+        this.catalogTouch = null;
+        this.companionTouch = null;
         this.privacyTouch = null;
+        this.retentionTouch = null;
         this.lastTime = Date.now();
         if (this.state === 'playing' && this.core) this.core.pauseTimer();
     }
 
     /** 初始化对战棋盘（复用 GameCore + BoardRenderer，对战模式） */
     startBattleBoard() {
+        this.retentionNotice='';
+        this.battle.retentionCleared=0;
+        this.battle.retentionValidMove=false;
         this.battleBoard = new BoardRenderer(this.ctx, this.screen);
         this.battleBoard.battleMode = true;
         const board = this.battleBoard;
+        const battle = this.battle;
         this.battleCore = new GameCore(BATTLE_LEVEL, {
-            onSwap: (from, to) => board.animateSwap(from, to),
+            onSwap: (from, to) => {this.battle.retentionValidMove=true;return board.animateSwap(from, to);},
             onInvalidSwap: (from, to) => { AudioFX.invalid(); return board.animateInvalidSwap(from, to); },
-            onMatch: (data) => { AudioFX.match(data); return board.animateMatch(data); },
+            onMatch: (data) => { if (this.battle !== battle) return; battleItems.sample(battle, data.score);battle.retentionCleared+=data.removed.length;AudioFX.match(data); return board.animateMatch(data); },
             onGravity: (data) => board.animateGravity(data),
             onFill: (data) => board.animateFill(data),
             onColorChange: (data) => board.animateColorChange(data),
             onReshuffle: () => board.animateReshuffle(),
             onLevelEnd: () => {}
         });
-        if (this.battle.disturbUntil > Date.now()) {
+        if (this.battle.disturbUntil > this.battleNow()) {
             this.battleCore.minMatchCount = 4;
         }
         this.battleBoard.setGame(this.battleCore);
@@ -1304,6 +1432,10 @@ class Main {
     battleReady() {
         if (!this.battle || !this.battle.roomId || this.state !== 'battle_wait' || this.battle.actionPending) return;
         if (this.battle.offline) { this.pollRoom(); return; }
+        if (this.battle.itemRulesVersion === 3 && !this.battle.myReady &&
+            battleItems.KEYS.reduce((sum, key) => sum + this.battle.items[key], 0) !== 5) {
+            this.showBattleNotice('请先分配完5次免费额度'); return;
+        }
         AudioFX.click();
         const self = this;
         const b = this.battle;
@@ -1331,29 +1463,18 @@ class Main {
     /** 等待页按固定总预算调整自己可见的 PvP 道具配置。 */
     battleAdjustItem(item, delta) {
         if (!this.battle || this.state !== 'battle_wait' || this.battle.actionPending ||
-            this.battle.myReady || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
+            this.battle.myReady || battleItems.keys(this.battle).indexOf(item) < 0) return;
         if (this.battle.offline) { this.pollRoom(); return; }
-        const next = {};
-        for (let i = 0; i < BATTLE_ITEM_ALLOWLIST.length; i++) {
-            const key = BATTLE_ITEM_ALLOWLIST[i];
-            next[key] = Number(this.battle.items[key]) || 0;
-        }
+        const keys = battleItems.keys(this.battle), next = { ...this.battle.items };
         const direction = delta > 0 ? 1 : -1;
-        const other = BATTLE_ITEM_ALLOWLIST.find(function (key) {
-            return key !== item && (direction > 0 ? next[key] > 0 : next[item] > 0);
-        });
-        if (!other) {
-            AudioFX.invalid();
-            return;
-        }
-        if (direction > 0) {
-            if (next[item] >= BATTLE_ITEM_BUDGET) return;
-            next[item]++;
-            next[other]--;
+        if (this.battle.itemRulesVersion === 3) {
+            const total = keys.reduce((sum, key) => sum + next[key], 0);
+            if (direction > 0 ? total >= 5 : next[item] <= 0) return;
+            next[item] += direction;
         } else {
-            if (next[item] <= 0) return;
-            next[item]--;
-            next[other]++;
+            const other = keys.find(key => key !== item && (direction > 0 ? next[key] > 0 : next[item] > 0));
+            if (!other) { AudioFX.invalid(); return; }
+            next[item] += direction; next[other] -= direction;
         }
         const self = this;
         const b = this.battle;
@@ -1404,44 +1525,57 @@ class Main {
         this.state = 'menu';
     }
 
-    /** 对战道具释放：仅允许房间配置中的 freeze/disturb。 */
+    /** 对战道具释放：使用房间规则中的道具与共享冷却。 */
     battleUseItem(item) {
-        if (!this.isBattleInputOpen(Date.now()) || this.battle.actionPending || BATTLE_ITEM_ALLOWLIST.indexOf(item) < 0) return;
-        const now = Date.now();
-        if (this.battle.items[item] <= 0 || now < this.battle.itemCooldownUntil ||
-            now < this.battle.activeEffectUntil) {
-            AudioFX.invalid();
-            return;
-        }
-        const self = this;
-        const b = this.battle;
-        b.actionPending = true;
-        b.pollRevision++;
-        cloudBattle.call('useItem', this.battleRequestData(b, { item: item })).then(function (res) {
-            if (self.battle !== b || b.completedTracked) return;
-            b.actionPending = false;
-            b.pollRevision++;
+        const b = this.battle, now = this.battleNow();
+        if (!this.isBattleInputOpen(now) || this.isFrozen() || b.actionPending || b.scorePending || battleItems.keys(b).indexOf(item) < 0) return;
+        if (b.offline || b.scoreUncertain) { this.pollRoom(); return; }
+        const retry = b.pendingItem;
+        if (retry && retry.item !== item) { this.showBattleNotice('上次道具尚未确认，请重试原道具'); return; }
+        if (!retry && (b.items[item] <= 0 || now < b.itemCooldownUntil || now < b.activeEffectUntil)) { AudioFX.invalid(); return; }
+        if (b.itemRulesVersion === 3 && b.scoreSamples.length > 32) { this.showBattleNotice('正在同步成绩，请稍后使用'); return; }
+        // Retry identity is stable; reconcile the score batch so already-acked samples are not replayed.
+        const payload = retry ? { ...retry, samples: b.scoreSamples.slice() } : (b.itemRulesVersion === 3 ? {
+            item: item, requestId: 'cast_' + b.roundId + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10),
+            samples: b.scoreSamples.slice()
+        } : { item: item });
+        if (b.itemRulesVersion === 3) b.pendingItem = payload;
+        b.actionPending = true; b.pollRevision++;
+        const sentAt = Date.now();
+        cloudBattle.call('useItem', this.battleRequestData(b, payload), BATTLE_WAIT_REQUEST).then(res => {
+            if (this.battle !== b || b.completedTracked) return;
+            b.actionPending = false; b.pollRevision++;
             if (!res.ok) {
+                b.pendingItem = null;
                 AudioFX.invalid();
-                if (res.err) self.showBattleNotice(res.err);
-                return;
+                if (res.err) this.showBattleNotice(res.err);
+                b.scoreUncertain = b.itemRulesVersion === 3;
+                this.pollRoom(); return;
             }
-            self.battle.items = res.items;
-            self.battle.itemCooldownUntil = Number(res.itemCooldownUntil) || 0;
-            self.battle.activeEffectUntil = Number(res.activeEffectUntil) || 0;
-            self.battle.castNotice = { item: item, until: Date.now() + 1500 };
-            AudioFX.pvpCast(item);
-        }).catch(function () {
-            if (self.battle !== b || b.completedTracked) return;
-            b.actionPending = false;
-            b.pollRevision++;
+            b.pendingItem = null;
+            battleItems.acknowledge(b, res);
+            if (b.itemRulesVersion === 3) battleItems.status(b, res, sentAt);
+            b.items = res.items;
+            b.itemCooldownUntil = Number(res.itemCooldownUntil) || 0;
+            b.activeEffectUntil = Number(res.activeEffectUntil) || 0;
+            b.castNotice = { item: item, until: this.battleNow() + 1500 };
+            if (res.cast && res.cast.status === 'reflected') b.itemNotice = { text: '攻击被对手反弹', until: this.battleNow() + 1500 };
+            if (item === 'freeze' || item === 'disturb') AudioFX.pvpCast(item);
+            else AudioFX.click();
+        }).catch(() => {
+            if (this.battle !== b || b.completedTracked) return;
+            b.actionPending = false; b.pollRevision++;
+            b.offline = true;
+            this.showBattleNotice('道具尚未确认，重连后请重试');
             AudioFX.invalid();
         });
     }
 
+    battleNow() { return this.battle && this.battle.itemRulesVersion === 3 ? battleItems.serverNow(this.battle) : Date.now(); }
+
     /** 是否被冰冻（锁定输入） */
     isFrozen() {
-        return this.battle && Date.now() < this.battle.frozenUntil;
+        return this.battle && this.battleNow() < this.battle.frozenUntil;
     }
 
     isBattleInputOpen(now) {
@@ -1453,6 +1587,7 @@ class Main {
     /** 更新对战帧逻辑（干扰到期、分数上报、倒计时结束） */
     updateBattle(now) {
         if (!this.battle) return;
+        if (this.battle.itemRulesVersion === 3) now = this.battleNow();
         if (this.battle.startTime && now < this.battle.startTime) return;
         if (!this.isBattleInputOpen(now)) {
             if (!this.battle.inputClosed && this.battleBoard) this.battleBoard.onTouchEnd();
@@ -1474,6 +1609,10 @@ class Main {
         }
         const b = this.battle;
         if (!this.battleCore) return;
+        if (b.itemRulesVersion === 3) {
+            b.myScore = battleItems.displayScore(b);
+            this.syncBattleSamples(b, now); return;
+        }
         b.myScore = this.battleCore.score;
         // 显示分数与服务端确认分数分开。失败后下一窗口重试；截止前最后800ms立即提交新增分数。
         if (b.scorePending || b.myScore <= b.syncedScore ||
@@ -1496,6 +1635,26 @@ class Main {
             if (self.battle !== b || b.completedTracked || b.scoreErrorTracked) return;
             b.scoreErrorTracked = true;
             analytics.track('pvp_error', { category: 'sync_score', reason: 'network' });
+        });
+    }
+
+    syncBattleSamples(b, now) {
+        if (b.scorePending || b.pollPending || b.actionPending || b.scoreUncertain || b.offline || !b.scoreSamples.length ||
+            (now - b.lastScoreSyncAt < 300 && b.endTime - now > 800)) return;
+        b.scorePending = true; b.pollRevision++; b.lastScoreSyncAt = now;
+        const sentAt = Date.now();
+        cloudBattle.call('syncScore', this.battleRequestData(b, { samples: b.scoreSamples.slice(0, 32) }), BATTLE_WAIT_REQUEST).then(res => {
+            if (this.battle !== b || b.completedTracked) return;
+            b.scorePending = false; b.pollRevision++;
+            if (res.ok) {
+                battleItems.acknowledge(b, res); battleItems.status(b, res, sentAt);
+                if (b.pollWanted) this.pollRoom();
+            }
+            else { b.scoreUncertain = true; this.pollRoom(); }
+        }).catch(() => {
+            if (this.battle !== b || b.completedTracked) return;
+            b.scorePending = false; b.pollRevision++; b.scoreUncertain = true;
+            this.pollRoom();
         });
     }
 
@@ -1527,6 +1686,154 @@ class Main {
 
     // ===== 触摸处理 =====
 
+    openCompanion(kind,id,stage) {
+        if(!this.companion)return;
+        const model=this.catalogPreview,selection=this.companion.selection;
+        id=id||(selection&&selection.id);
+        const owned=model&&model.status==='ready'&&model.owned.includes(id);
+        const saved=selection&&selection.id===id?selection:null;
+        if(kind==='story'&&!owned&&!saved)return;
+        const growth=owned?catalogPreview.growthFor(model,id):null;
+        const unlocked=Math.max(owned?(growth.enabled?growth.stage:0):0,saved?saved.unlocked:0);
+        const homeStage=this.state==='menu'&&saved?saved.stage:null;
+        this.companionView={kind,catId:id,stage:stage==null?(homeStage!==null?homeStage:owned?(growth.enabled?growth.displayStage:0):saved?saved.stage:0):stage,
+            unlocked,returnState:this.state,offset:0,message:''};
+        this.companionButtons=null;this.companionTouch=null;this.state='companion';
+        assets.loadCatalog();
+    }
+
+    companionAction(action) {
+        const view=this.companionView;if(!view||!this.companion)return;
+        const close=()=>{this.state=view.returnState==='catalog_preview'?'catalog_preview':'menu';this.companionView=null;this.companionButtons=null;this.companionTouch=null;
+            if(view.backSwitch)this.openCompanion('switch');};
+        if(action==='close'||action==='home'){close();return;}
+        if(action==='retry-save'){this.companionAction(view.saveAction||'read');return;}
+        if(action==='read'){view.readAttempted=true;view.saveAction='read';this.companion.markRead(view.catId,view.stage,view.unlocked);return;}
+        if(action==='retry'){assets.loadCatalog();return;}
+        if(action==='catalog'){this.openCatalogPreview();this.companionView=null;return;}
+        if(action==='feed'){
+            const model=this.catalogPreview,growth=model&&catalogPreview.growthFor(model,view.catId);
+            if(!growth||!growth.enabled)return;
+            model.view='detail';model.selectedId=view.catId;model.offset=0;model.overlay=null;
+            catalogPreview.activate(model,'feed');this.state='catalog_preview';this.companionView=null;return;
+        }
+        if(action.indexOf('choose:')===0){
+            const id=action.slice(7),selection=this.companion.selection;
+            this.openCompanion('story',id,selection&&selection.id===id?selection.stage:undefined);
+            if(this.companionView!==view){this.companionView.returnState='menu';this.companionView.backSwitch=true;}
+            return;
+        }
+        view.saveAction=action;
+        if(action==='default'){
+            if(this.companion.restoreDefault()){this.state='menu';this.companionView=null;}
+        }else if(action.indexOf('chapter:')===0){
+            const stage=Number(action.slice(8));
+            if(Number.isInteger(stage)&&stage>=0&&stage<5){view.stage=stage;view.offset=0;view.readAttempted=false;}
+        }else if(action==='select'||action.indexOf('choose:')===0){
+            const id=action==='select'?view.catId:action.slice(7),model=this.catalogPreview;
+            if(action==='select'&&view.stage>view.unlocked)return;
+            if(model&&model.owned.includes(id)){
+                const growth=catalogPreview.growthFor(model,id);
+                if(view.stage>(growth.enabled?growth.stage:0))return;
+                const selected=action==='select'?Object.assign({},model,{displayStages:Object.assign({},model.displayStages,{[id]:view.stage})}):model;
+                if(this.companion.select(selected,id)){this.state='menu';this.companionView=null;}
+            }else if(this.companion.selection&&this.companion.selection.id===id){this.state='menu';this.companionView=null;}
+        }
+        this.companionButtons=null;this.companionTouch=null;
+    }
+
+    finishCompanionTouch(e) {
+        const t=this.companionTouch;this.companionTouch=null;
+        const p=t&&e&&e.changedTouches&&Array.from(e.changedTouches).find(p=>p.identifier===t.id);
+        if(!p||t.dragged||(e.touches&&e.touches.length)||t.view!==this.companionView||t.stage!==this.companionView.stage||!this.companionButtons)return;
+        if(Math.abs(p.clientX-t.x)>8||Math.abs(p.clientY-t.y)>8)return;
+        const r=this.companionButtons[t.action];
+        if(t.action&&UI.hitTest(t.x,t.y,r)&&UI.hitTest(p.clientX,p.clientY,r)){AudioFX.click();this.companionAction(t.action);}
+    }
+
+    openCatalogPreview() {
+        if (!this.catalogPreviewEnabled) return;
+        if (!this.catalogPreview) this.catalogPreview = catalogPreview.create();
+        this.catalogPreview.view = 'list'; this.catalogPreview.selectedId = null;
+        this.catalogPreview.offset = this.catalogPreview.listOffset = 0;
+        this.catalogPreview.message = '';
+        this.catalogPreview.overlay = null;
+        this.catalogButtons = null; this.catalogTouch = null;
+        this.state = 'catalog_preview';
+        this.loadCatalogResources();
+    }
+
+    loadCatalogResources() {
+        this.catalogButtons = null; this.catalogTouch = null;
+        assets.loadCatalog().then(() => {
+            if (this.state === 'catalog_preview') {
+                this.catalogButtons = null; this.catalogTouch = null;
+            }
+        });
+    }
+
+    finishCatalogTouch(e) {
+        const t = this.catalogTouch;
+        this.catalogTouch = null;
+        const p = t && e && e.changedTouches && Array.from(e.changedTouches).find(point=>point.identifier===t.identifier);
+        if (!t || !p || (e.touches && e.touches.length) || t.dragged || t.model !== this.catalogPreview || !this.catalogButtons ||
+            t.view!==this.catalogPreview.view || t.selectedId!==this.catalogPreview.selectedId ||
+            t.status!==this.catalogPreview.status ||
+            t.overlay!==this.catalogPreview.overlay ||
+            Math.abs(p.clientX-t.x)>8 || Math.abs(p.clientY-t.y)>8) return;
+        const r = this.catalogButtons[t.action];
+        if (!t.action || !UI.hitTest(t.x,t.y,r) || !UI.hitTest(p.clientX,p.clientY,r)) return;
+        AudioFX.click();
+        if(t.action==='open-story'||t.action==='set-companion'||t.action==='read-unlock'){
+            const id=this.catalogPreview.selectedId;
+            if(this.catalogPreview.status!=='ready'||!this.catalogPreview.owned.includes(id))return;
+            if(t.action==='read-unlock'){
+                const stage=this.catalogPreview.overlay&&this.catalogPreview.overlay.stage;
+                this.catalogPreview.overlay=null;this.openCompanion('story',id,stage);
+            }else if(t.action==='open-story'){
+                const unread=this.companion.firstUnread(this.catalogPreview,id);
+                this.openCompanion('story',id,unread===null?undefined:unread);
+            }
+            else if(this.companion && this.companion.select(this.catalogPreview,id))this.state='menu';
+            else this.catalogPreview.message=this.companion?this.companion.error:'暂时无法保存';
+            this.catalogButtons=null;return;
+        }
+        if (t.action === 'retry-assets') { this.loadCatalogResources(); return; }
+        const navigation = catalogPreview.activate(this.catalogPreview,t.action);
+        this.catalogButtons = null;
+        if (navigation === 'close') this.state = 'menu';
+        else if (navigation === 'play') this.state = 'menu';
+    }
+
+    openRetentionPreview() {
+        if (!this.retentionPreviewEnabled) return;
+        if (!this.retentionPreview) this.retentionPreview = retentionPreview.create();
+        this.retentionPreview.offset = 0;
+        this.retentionPreview.message = '';
+        this.retentionPreview.rules = false;
+        this.retentionButtons = null;
+        this.retentionTouch = null;
+        this.state = 'retention_preview';
+        if(this.retention)this.retention.sync();
+    }
+
+    finishRetentionTouch(e) {
+        const touch = this.retentionTouch;
+        this.retentionTouch = null;
+        if (!touch || touch.dragged || !this.retentionButtons || !this.retentionPreview) return;
+        const point = e && e.changedTouches && e.changedTouches[0];
+        if (!point || Math.abs(point.clientY-touch.y)>8 || Math.abs(point.clientX-touch.x)>8) return;
+        for (const action of ['close','signinTab','tasksTab','rules','primary','weekly0','weekly1','weekly2','previous0','previous1','previous2']) {
+            const r = this.retentionButtons[action];
+            if (!UI.hitTest(touch.x,touch.y,r) || !UI.hitTest(point.clientX,point.clientY,r)) continue;
+            AudioFX.click();
+            const navigation = this.retention ? this.retention.activate(action) : retentionPreview.activate(this.retentionPreview,action);
+            this.retentionButtons = null;
+            if (navigation === 'close' || navigation === 'play') this.state = 'menu';
+            return;
+        }
+    }
+
     handleTouchStart(e) {
         if (!e.touches || !e.touches.length) return;
         if (this.state === 'settings') runtime.privacyDiagnostic('settings_touch');
@@ -1537,18 +1844,47 @@ class Main {
         if (this.battleCreating) return;
         if (this.handleStaminaDialogTouch(x, y)) return;
 
-        if (this.state === 'daily_detail' && this.dailyButtons) {
+        if(this.state==='companion'){
+            if(e.touches.length!==1){this.companionTouch=null;return;}
+            const b=this.companionButtons;
+            this.companionTouch={x,y,lastY:y,id:e.touches[0].identifier,view:this.companionView,stage:this.companionView.stage,dragged:false,
+                action:b&&Object.keys(b).find(k=>k!=='viewport'&&k!=='maxScroll'&&UI.hitTest(x,y,b[k])),scroll:b&&UI.hitTest(x,y,b.viewport)};return;
+        }
+        if (this.state === 'catalog_preview') {
+            if(e.touches.length!==1){this.catalogTouch=null;return;}
+            const b=this.catalogButtons;
+            const action=b && Object.keys(b).find(key=>key!=='viewport' && key!=='maxScroll' && UI.hitTest(x,y,b[key]));
+            this.catalogTouch={x,y,lastY:y,dragged:false,action,model:this.catalogPreview,
+                identifier:e.touches[0].identifier,view:this.catalogPreview.view,selectedId:this.catalogPreview.selectedId,
+                status:this.catalogPreview.status,
+                overlay:this.catalogPreview.overlay,
+                scroll:!!b && UI.hitTest(x,y,b.viewport)};
+            if(this.catalogPreview)this.catalogPreview.message='';
+            return;
+        }
+        if (this.state === 'retention_preview') {
+            this.retentionTouch = {x,y,lastY:y,dragged:false,
+                scroll:!!this.retentionButtons && UI.hitTest(x,y,this.retentionButtons.viewport)};
+            if (this.retentionPreview) this.retentionPreview.message = '';
+            return;
+        } else if (this.state === 'daily_detail' && this.dailyButtons) {
             if (UI.hitTest(x,y,this.dailyButtons.start)) this.dailyPrimary();
             else if (UI.hitTest(x,y,this.dailyButtons.back)) this.leaveDaily();
         } else if (this.state === 'daily_playing' && this.dailyBoard) {
             if (UI.hitTest(x,y,this.dailyButtons && this.dailyButtons.back)) this.leaveDaily();
             else this.dailyBoard.onTouchStart(x,y);
         } else if (this.state === 'playing' && this.board) {
+            if(this.board.selectedTool) {
+                const savedItems=coin.getItems();
+                if(!savedItems){this.board.selectedTool=null;this.showBattleNotice('道具记录待保存，请重试');return;}
+                this.board.setTools(savedItems);
+            }
             this.board.onTouchStart(x, y);
         } else if (this.state === 'menu' && this.menuButtons) {
+            if (this.menuBattlePress) return;
             if (UI.hitTest(x, y, this.menuButtons.battle)) {
                 AudioFX.click();
-                this.startBattle();
+                this.menuBattlePress = { elapsed: 0 };
             } else if (UI.hitTest(x, y, this.menuButtons.start)) {
                 AudioFX.click();
                 if (heart.getHeartState().count <= 0) {
@@ -1567,6 +1903,14 @@ class Main {
                 this.state = 'shop';
             } else if (UI.hitTest(x, y, this.menuButtons.daily)) {
                 AudioFX.click(); this.openDaily();
+            } else if(UI.hitTest(x,y,this.menuButtons.companionSwitch)){
+                this.openCompanion('switch');
+            } else if(UI.hitTest(x,y,this.menuButtons.companionStory)){
+                this.openCompanion('story');
+            } else if (UI.hitTest(x, y, this.menuButtons.catalog)) {
+                AudioFX.click(); this.openCatalogPreview();
+            } else if (UI.hitTest(x, y, this.menuButtons.retention)) {
+                AudioFX.click(); this.openRetentionPreview();
             } else if (UI.hitTest(x, y, this.menuButtons.settings)) {
                 AudioFX.click();
                 this.state = 'settings';
@@ -1658,26 +2002,25 @@ class Main {
         } else if (this.state === 'battle_wait' && this.battleButtons) {
             if (BattleUI.hitTest(x, y, this.battleButtons.invite)) {
                 this.battleInvite();
-            } else if (BattleUI.hitTest(x, y, this.battleButtons.freezeMinus)) {
-                this.battleAdjustItem('freeze', -1);
-            } else if (BattleUI.hitTest(x, y, this.battleButtons.freezePlus)) {
-                this.battleAdjustItem('freeze', 1);
-            } else if (BattleUI.hitTest(x, y, this.battleButtons.disturbMinus)) {
-                this.battleAdjustItem('disturb', -1);
-            } else if (BattleUI.hitTest(x, y, this.battleButtons.disturbPlus)) {
-                this.battleAdjustItem('disturb', 1);
+            } else if (battleItems.keys(this.battle).some(key => {
+                for (const [suffix, delta] of [['Minus', -1], ['Plus', 1]]) {
+                    if (BattleUI.hitTest(x, y, this.battleButtons[key + suffix])) { this.battleAdjustItem(key, delta); return true; }
+                }
+                return false;
+            })) {
+                return;
             } else if (BattleUI.hitTest(x, y, this.battleButtons.ready)) {
                 this.battleReady();
             } else if (BattleUI.hitTest(x, y, this.battleButtons.cancel)) {
                 this.battleCancel();
             }
         } else if (this.state === 'battle_playing' && this.battleBoard) {
-            if (!this.isBattleInputOpen(Date.now())) return;
+            if (!this.isBattleInputOpen(this.battleNow())) return;
             // 冰冻中不能操作
             if (this.isFrozen()) return;
             // 道具栏点击
             if (this.battleButtons) {
-                const itemKeys = BATTLE_ITEM_ALLOWLIST;
+                const itemKeys = battleItems.keys(this.battle);
                 for (let i = 0; i < itemKeys.length; i++) {
                     const k = itemKeys[i];
                     if (BattleUI.hitTest(x, y, this.battleButtons[k])) {
@@ -1704,7 +2047,35 @@ class Main {
     handleTouchMove(e) {
         if (!e.touches || !e.touches.length) return;
         if (this.guide) return;
-        if (this.state === 'privacy' && this.privacyTouch && this.privacyButtons) {
+        if(this.state==='companion'){
+            const t=this.companionTouch,p=e.touches[0];
+            if(e.touches.length!==1||!t||p.identifier!==t.id){this.companionTouch=null;return;}
+            if(Math.abs(p.clientX-t.x)>8||Math.abs(p.clientY-t.y)>8)t.dragged=true;
+            if(t.scroll&&t.dragged&&this.companionButtons)this.companionView.offset=Math.max(0,Math.min(this.companionButtons.maxScroll,this.companionView.offset+t.lastY-p.clientY));
+            t.lastY=p.clientY;return;
+        }
+        if (this.state === 'catalog_preview') {
+            if(e.touches.length!==1){this.catalogTouch=null;return;}
+            const t=this.catalogTouch,p=e.touches[0];
+            if(t && p.identifier!==t.identifier){this.catalogTouch=null;return;}
+            if(t && this.catalogButtons && this.catalogPreview){
+                if(Math.abs(p.clientY-t.y)>8 || Math.abs(p.clientX-t.x)>8)t.dragged=true;
+                if(t.scroll && t.dragged)this.catalogPreview.offset=Math.max(0,Math.min(this.catalogButtons.maxScroll,
+                    this.catalogPreview.offset+t.lastY-p.clientY));
+                t.lastY=p.clientY;
+            }
+            return;
+        }
+        if (this.state === 'retention_preview') {
+            const t=this.retentionTouch,p=e.touches[0];
+            if(t&&this.retentionButtons&&this.retentionPreview){
+                if(Math.abs(p.clientY-t.y)>8||Math.abs(p.clientX-t.x)>8)t.dragged=true;
+                if(t.scroll&&t.dragged)this.retentionPreview.offset=Math.max(0,Math.min(this.retentionButtons.maxScroll,
+                    this.retentionPreview.offset+t.lastY-p.clientY));
+                t.lastY=p.clientY;
+            }
+            return;
+        } else if (this.state === 'privacy' && this.privacyTouch && this.privacyButtons) {
             const y = e.touches[0].clientY;
             this.privacyOffset = Math.max(0, Math.min(this.privacyButtons.maxScroll,
                 this.privacyOffset + this.privacyTouch.lastY - y));
@@ -1722,14 +2093,21 @@ class Main {
             this.levelMapTouch.lastY = y;
             if (Math.abs(y - this.levelMapTouch.y) > 8) this.levelMapDragged = true;
         } else if (this.state === 'battle_playing' && this.battleBoard &&
-            this.isBattleInputOpen(Date.now()) && !this.isFrozen()) {
+            this.isBattleInputOpen(this.battleNow()) && !this.isFrozen()) {
             this.battleBoard.onTouchMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }
 
     handleTouchEnd(e) {
         if (this.guide) return;
-        if (this.state === 'privacy') {
+        if(this.state==='companion'){this.finishCompanionTouch(e);return;}
+        if (this.state === 'catalog_preview') {
+            this.finishCatalogTouch(e); return;
+        }
+        if (this.state === 'retention_preview') {
+            this.finishRetentionTouch(e);
+            return;
+        } else if (this.state === 'privacy') {
             this.privacyTouch = null;
         } else if (this.state === 'daily_playing' && this.dailyBoard) {
             this.dailyBoard.onTouchEnd();
@@ -1788,6 +2166,17 @@ class Main {
     }
 
     update(dt) {
+        if (this.menuBattlePress) {
+            if (this.state !== 'menu' || this.guide || this.battleCreating) {
+                this.menuBattlePress = null;
+            } else {
+                this.menuBattlePress.elapsed += Math.max(0, dt);
+                if (this.menuBattlePress.elapsed >= 160) {
+                    this.menuBattlePress = null;
+                    this.startBattle();
+                }
+            }
+        }
         if (this.runtimeState !== this.state) {
             this.runtimeState = this.state;
             runtime.maybePromptUpdate(this.state);
@@ -1818,7 +2207,13 @@ class Main {
             this.audioScene = audioScene;
             AudioFX.setScene(audioScene);
         }
-        if (this.state === 'menu' || this.state === 'daily_detail') {
+        if(this.state==='companion'&&this.companionView.kind!=='switch'){
+            this.companionButtons=CompanionUI.draw(this.ctx,this.screen,this.companionView,this.catalogPreview,this.companion,assets.getCatalogState());
+            const view=this.companionView;
+            if(!view.readAttempted&&view.readVisible)this.companionAction('read');
+        } else if (this.state === 'catalog_preview') {
+            this.catalogButtons = CatalogUI.draw(this.ctx,this.screen,this.catalogPreview,assets.getCatalogState(),this.companion);
+        } else if (this.state === 'menu' || this.state === 'daily_detail' || this.state === 'retention_preview' || this.state==='companion') {
             const heartState = heart.getHeartState();
             const unlocked = this.progress.unlockedLevel;
             this.menuButtons = UI.drawMenu(this.ctx, this.screen, unlocked, {
@@ -1826,9 +2221,22 @@ class Main {
                 timeLeftText: heart.formatTimeLeft(),
                 canPlay: heartState.count > 0,
                 canAd: ad.isRewardedAvailable()
-            }, { coins: coin.getCoins() });
-            if (this.state === 'daily_detail') {
+            }, { coins: coin.getCoins(), retentionPreview: this.retentionPreviewEnabled,
+                catalogPreview: this.catalogPreviewEnabled,
+                companion: this.companion && this.companion.selection,
+                coinsReady: this.retention&&this.retention.hasClaimable(),
+                storyNew: this.companion&&this.companion.hasUnread(this.catalogPreview),
+                companionNew: this.companion&&this.companion.selection&&this.companion.hasUnread(this.catalogPreview,this.companion.selection.id),
+                battlePress: this.state === 'menu' && this.menuBattlePress
+                    ? (this.screen.reduceEffects ? 1 : Math.sin(Math.PI * this.menuBattlePress.elapsed / 160)) : 0 });
+            if(this.state==='companion'){
+                this.companionButtons=CompanionUI.draw(this.ctx,this.screen,this.companionView,this.catalogPreview,this.companion,assets.getCatalogState());
+            } else if (this.state === 'daily_detail') {
+                if(this.retention&&this.daily&&this.daily.retentionPending)this.daily.retentionMessage=
+                    this.retentionNotice||'每日任务待同步';
                 this.dailyButtons = DailyUI.drawDetail(this.ctx,this.screen,this.daily || {loading:true});
+            } else if (this.state === 'retention_preview') {
+                this.retentionButtons = RetentionUI.draw(this.ctx,this.screen,this.retentionPreview);
             }
         } else if (this.state === 'daily_playing' && this.dailyBoard) {
             this.dailyBoard.draw();
@@ -1836,13 +2244,15 @@ class Main {
         } else if (this.state === 'playing' && this.board) {
             this.board.draw();
         } else if (this.state === 'result') {
+            if(this.retention&&this.result)this.result.retentionMessage=this.retentionNotice||
+                (this.retentionSolo&&this.retentionSolo.validMove?(this.result.win?'每日任务待同步':'结束本局后同步每日任务'):'');
             this.resultButtons = UI.drawResult(this.ctx, this.screen, this.result);
         } else if (this.state === 'shop') {
             const rewardState = coin.getRewardedItemState();
             const heartState = heart.getHeartState();
             this.shopButtons = UI.drawShop(this.ctx, this.screen, coin.getCoins(), coin.getItems(), {
-                canReward: ad.isRealRewardedAvailable(),
-                count: rewardState.count,
+                canReward: !!rewardState&&ad.isRealRewardedAvailable(),
+                count: rewardState&&rewardState.count,
                 limit: coin.REWARDED_ITEM_DAILY_LIMIT,
                 pending: this.shopRewardPending,
                 heartCount: heartState.count,
@@ -1876,7 +2286,7 @@ class Main {
                 oppName: this.battle.oppName,
                 oppReady: this.battle.oppReady,
                 oppJoined: this.battle.oppJoined,
-                items: this.battle.items,
+                items: this.battle.items, itemRulesVersion: this.battle.itemRulesVersion,
                 isHost: this.battle.isHost,
                 offline: this.battle.offline, actionPending: this.battle.actionPending,
                 pendingAction: this.battle.pendingAction, pollPending: this.battle.pollPending,
@@ -1884,7 +2294,7 @@ class Main {
             });
             userProfile.ensureButton(this.battleButtons.avatar);
         } else if (this.state === 'battle_playing' && this.battleBoard && this.battle) {
-            const now = Date.now();
+            const now = this.battleNow();
             this.battleBoard.draw();
             const timeLeft = Math.max(0, Math.ceil((this.battle.endTime - now) / 1000));
             BattleUI.drawTop(this.ctx, this.screen, {
@@ -1896,16 +2306,24 @@ class Main {
                 urgent: timeLeft <= 10
             });
             this.battleButtons = BattleUI.drawItems(this.ctx, this.screen, {
-                freeze: this.battle.items.freeze,
-                disturb: this.battle.items.disturb,
+                itemRulesVersion: this.battle.itemRulesVersion,
+                freeze: this.battle.items.freeze, disturb: this.battle.items.disturb,
+                reflect: this.battle.items.reflect, cheer: this.battle.items.cheer,
+                pending: this.battle.actionPending || this.battle.offline,
+                frozen: this.isFrozen(),
                 cooldownRemaining: Math.max(0, this.battle.itemCooldownUntil - now),
                 active: now < this.battle.activeEffectUntil
             });
             BattleUI.drawEffects(this.ctx, this.screen, {
+                itemRulesVersion: this.battle.itemRulesVersion,
+                reflectRemaining: Math.max(0, this.battle.reflectUntil - now),
+                cheerRemaining: Math.max(0, this.battle.cheerUntil - now),
+                notice: this.battle.itemNotice && this.battle.itemNotice.until > now ? this.battle.itemNotice.text : '',
                 frozen: this.isFrozen(),
                 frozenRemaining: Math.max(0, this.battle.frozenUntil - now),
                 disturb: this.battle.disturbUntil > now,
                 disturbRemaining: Math.max(0, this.battle.disturbUntil - now),
+                disturbNotice: this.battle.disturbNoticeUntil > now,
                 castNotice: this.battle.castNotice && this.battle.castNotice.until > now
                     ? this.battle.castNotice.item : '',
                 boardY: this.battleBoard.boardY,
@@ -1934,7 +2352,8 @@ class Main {
                 myRematch: this.battle.myRematch, oppRematch: this.battle.oppRematch,
                 oppLeft: this.battle.oppLeft, oppOnline: this.battle.oppOnline,
                 offline: this.battle.offline, expired: this.battle.expired,
-                actionPending: this.battle.actionPending, rewardPending: this.battle.rewardPending
+                actionPending: this.battle.actionPending, rewardPending: this.battle.rewardPending,
+                retentionMessage:this.retention&&(this.retentionNotice||(this.battle.retentionValidMove?'每日任务待同步':''))
             });
         }
         if (this.staminaDialog) {

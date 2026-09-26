@@ -6,6 +6,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const base = new URL(process.argv[2]);
 const verifyWin = process.argv.includes('--win');
+const levelOption = process.argv.find(arg => arg.startsWith('--levels='));
 assert(['127.0.0.1', 'localhost'].includes(base.hostname), 'Only local fixtures are allowed');
 const output = path.resolve(__dirname, '../assets/_incoming/moon-ui-runtime/screens');
 
@@ -26,13 +27,18 @@ const output = path.resolve(__dirname, '../assets/_incoming/moon-ui-runtime/scre
             }
         }
         const summaries = [];
-        const cases = verifyWin ? [[375, 812, 1]] : [[320, 568, 6], [375, 812, 11], [430, 932, 20], [320, 568, 1]];
+        const cases = levelOption ? levelOption.slice(9).split(',').map(id => [375,812,Number(id)]) :
+            verifyWin ? [[375, 812, 1]] : [[320, 568, 6], [375, 812, 11], [430, 932, 20], [320, 568, 1]];
         for (const [width, height, level] of cases) {
             await page.setViewportSize({ width: width + 24, height: height + 330 });
             await page.goto(base.href + '?preview=content&width=' + width);
             await page.waitForFunction(() => window.previewApp && previewApp.board && previewApp.guideButtons);
             await page.evaluate(level => previewStart(level), level);
             await page.waitForTimeout(100);
+            if (levelOption) {
+                assert.deepStrictEqual(await page.evaluate(() => previewApp.core.commonTypes), level <= 5 ? [1,2,3,4] : [1,2,3,4,5]);
+                assert(await page.evaluate(() => !!load('js/render/assets.js').get('piece5')), '第五色素材须实际加载');
+            }
             await page.locator('canvas').screenshot({ path: path.join(output, 'content-live-start-' + level + '-' + width + '.png') });
             let actions = 0;
             while (await page.evaluate(() => previewApp.state === 'playing')) {
@@ -96,7 +102,7 @@ const output = path.resolve(__dirname, '../assets/_incoming/moon-ui-runtime/scre
             assert(summary.result, 'Real Main should render a result after completing the run');
             assert.strictEqual(summary.result.maxCascade, summary.maxCascade);
             assert.strictEqual(summary.result.specialComboCount, summary.specialComboCount);
-            assert.strictEqual(summary.unlocked, 42);
+            assert.strictEqual(summary.unlocked, Math.max(42, summary.result.win ? level+1 : 42));
             assert.strictEqual(summary.guide, null);
             assert(summary.maxCascade >= 1);
             if (verifyWin) assert(summary.result.win, 'Score-focused legal exchanges should exercise actual win flow');

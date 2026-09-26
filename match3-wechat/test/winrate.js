@@ -1,78 +1,16 @@
 /**
- * 关卡难度标定：固定种子 + 随机合法交换，每关至少跑 200 局。
- * 用法: node test/winrate.js [局数] [每步虚拟耗时毫秒] [起始关] [结束关]
+ * 关卡难度标定：独立掉落/决策随机数 + 浏览器回放验证的计时，每关至少200局。
+ * 用法: node test/winrate.js [局数] [每步思考毫秒，另计动画] [起始关] [结束关] [--greedy|--random] [--measure]
  */
 
-const GameCore = require('../js/core/game-core');
 const levelData = require('../js/core/level');
-
-function createRandom(seed) {
-    let state = seed >>> 0;
-    return function () {
-        state = (state + 0x6D2B79F5) >>> 0;
-        let t = state;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
-async function withSeed(seed, fn) {
-    const originalRandom = Math.random;
-    Math.random = createRandom(seed);
-    try {
-        return await fn();
-    } finally {
-        Math.random = originalRandom;
-    }
-}
-
-function shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
-    }
-    return arr;
-}
-
-function findValidMoves(core) {
-    const grid = core.grid;
-    const rows = grid.length;
-    const cols = grid[0].length;
-    const moves = [];
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (c + 1 < cols) {
-                const from = { row: r, column: c }, to = { row: r, column: c + 1 };
-                if (!core.isBlocked(from) && !core.isBlocked(to) && core.validateMove(from, to)) {
-                    moves.push([from, to]);
-                }
-            }
-            if (r + 1 < rows) {
-                const from = { row: r, column: c }, to = { row: r + 1, column: c };
-                if (!core.isBlocked(from) && !core.isBlocked(to) && core.validateMove(from, to)) {
-                    moves.push([from, to]);
-                }
-            }
-        }
-    }
-    return moves;
-}
-
-async function playOne(level, seed, moveDurationMs) {
-    return withSeed(seed, async function () {
-        const core = new GameCore(level, {});
-        let guard = 0;
-        while (core.isPlaying() && guard < 300) {
-            guard++;
-            const moves = findValidMoves(core);
-            if (!moves.length) break;
-            shuffle(moves);
-            await core.trySwap(moves[0][0], moves[0][1]);
-            core.updateTime(moveDurationMs);
-        }
-        return { win: core.won, score: core.score, ended: core.ended, timeLeftMs: core.timeLeftMs };
-    });
+const simulation = require('./helpers/solo-simulation');
+const greedy = process.argv.includes('--greedy');
+const randomOnly = process.argv.includes('--random');
+const measureOnly = process.argv.includes('--measure');
+async function playOne(level, seed, thinkMs) {
+    return simulation.play({level,seed,thinkMs,
+        strategy:greedy || !randomOnly && level.id >= 6 ? 'goal' : 'random'});
 }
 
 /** 目标描述（显示用） */
@@ -83,6 +21,7 @@ function goalDesc(level) {
         if (g.type === 'score') parts.push('分' + g.target);
         else if (g.type === 'jelly') parts.push('果冻' + g.target);
         else if (g.type === 'collect') parts.push('收集' + g.pieceType + '×' + g.target);
+        else if (g.type === 'yarn') parts.push('毛线源头' + g.target + '击');
         else parts.push('未知目标');
     }
     if ((level.underlays || {}) && parts.length === 0) {
@@ -98,8 +37,7 @@ const moveDurationMs = Math.max(1, parseInt(process.argv[3], 10) || 6000);
 const startLevel = Math.max(1, parseInt(process.argv[4], 10) || 1);
 const endLevel = Math.max(startLevel, parseInt(process.argv[5], 10) || 40);
 const seedBase = 0x5EED1234;
-// 新彩球与完整特殊组合会有意抬高随机玩家上限；仍严格阻止关卡变难，
-// 对“变容易”保留较宽回归带，避免测试反向削弱本次冻结玩法规则。
+// 固定工程容差保持不变；--measure只输出探索结果，不宣称标定通过。
 const harderTolerance = 12;
 const easierTolerance = 24;
 const deviations = [];
@@ -107,15 +45,13 @@ const levelIds = [];
 for (let id = startLevel; id <= endLevel; id++) levelIds.push(id);
 
 (async function () {
-    console.log('========== 关卡难度标定（固定种子随机合法交换 ' + rounds + ' 局/关，虚拟每步 ' + moveDurationMs + 'ms，关卡 ' + startLevel + '–' + endLevel + '）==========');
-    const ranges = [
-        { label: '2–10', from: 2, to: 10, wins: 0, games: 0 },
-        { label: '11–20', from: 11, to: 20, wins: 0, games: 0 },
-        { label: '21–30', from: 21, to: 30, wins: 0, games: 0 },
-        { label: '31–40', from: 31, to: 40, wins: 0, games: 0 },
-        { label: '41–50', from: 41, to: 50, wins: 0, games: 0 },
-        { label: '2–50', from: 2, to: 50, wins: 0, games: 0 }
-    ];
+    console.log('========== 关卡难度标定（' + (greedy ? '单步策略' : randomOnly ? '随机合法交换' : '教学随机/6关起单步策略') + ' ' + rounds + ' 局/关，每步思考 ' + moveDurationMs + 'ms另计动画，关卡 ' + startLevel + '–' + endLevel + '）==========');
+    const ranges = [];
+    for (let from = startLevel; from <= endLevel; from += 10) {
+        const to = Math.min(from + 9, endLevel);
+        ranges.push({label:from+'–'+to,from,to,wins:0,games:0});
+    }
+    if (endLevel-startLevel >= 10) ranges.push({label:startLevel+'–'+endLevel,from:startLevel,to:endLevel,wins:0,games:0});
 
     for (let index = 0; index < levelIds.length; index++) {
         const levelId = levelIds[index];
@@ -128,7 +64,7 @@ for (let id = startLevel; id <= endLevel; id++) levelIds.push(id);
         for (let i = 0; i < rounds; i++) {
             const r = await playOne(level, (seedBase + levelId * 1000003 + i) >>> 0, moveDurationMs);
             if (r.win) wins++;
-            if (r.ended && !r.win && level.timeLimitSec > 0 && r.timeLeftMs === 0) timeout++;
+            if (r.reason === 'timeout') timeout++;
             totalScore += r.score;
             if (r.score > maxScore) maxScore = r.score;
         }
@@ -154,8 +90,9 @@ for (let id = startLevel; id <= endLevel; id++) levelIds.push(id);
         if (range.games) console.log('汇总 ' + range.label + ' 胜率' + (range.wins / range.games * 100).toFixed(2) + '%（' + range.wins + '/' + range.games + '）');
     });
 
-    console.log('种子基准: 0x' + seedBase.toString(16) + '；合法步已排除冰块覆盖格');
-    if (deviations.length) throw new Error('难度偏差超过变难-' + harderTolerance + '%/变易+' +
+    console.log('种子基准: 0x' + seedBase.toString(16) + '；模拟器v2独立随机流/思考及动画计时，旧目标曲线尚未经此口径重标定');
+    if (measureOnly && deviations.length) console.log('仅测量，未通过目标容差：' + deviations.join('；'));
+    if (!measureOnly && deviations.length) throw new Error('难度偏差超过变难-' + harderTolerance + '%/变易+' +
         easierTolerance + '%：' + deviations.join('；'));
     console.log('========================================');
 })().catch(function (err) {

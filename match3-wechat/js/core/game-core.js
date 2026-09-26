@@ -32,10 +32,15 @@ class GameCore {
      */
     constructor(levelData, callbacks) {
         this.level = levelData;
+        this.commonTypes = config.getCommonTypes(levelData.colorCount);
         this.callbacks = callbacks || {};
         this.grid = [];
         this.jellyGrid = [];
         this.iceGrid = [];
+        this.yarnSource = null;
+        this.yarnVines = {};
+        this.yarnTurns = 0;
+        this.yarnAdvancePending = false;
         this.jellyTotal = 0;
         this.score = 0;
         this.movesLeft = levelData.moveCount || 25;
@@ -64,7 +69,7 @@ class GameCore {
         const rows = this.level.rows;
         const cols = this.level.columns;
 
-        this.grid = gridUtil.createGrid(rows, cols, config.getCommonTypes());
+        this.grid = gridUtil.createGrid(rows, cols, this.commonTypes);
         this.score = 0;
         this.movesLeft = this.level.moveCount || 25;
         this.timeLimitMs = toTimerMs(this.level.timeLimitSec);
@@ -116,6 +121,21 @@ class GameCore {
             const c = parseInt(parts[1], 10);
             if (r >= 0 && r < rows && c >= 0 && c < cols) {
                 this.iceGrid[r][c] = 1;
+            }
+        }
+        this.yarnSource = null;
+        this.yarnVines = {};
+        this.yarnTurns = 0;
+        this.yarnAdvancePending = false;
+        const yarn = this.level.yarn;
+        if (yarn && typeof yarn.source === 'string') {
+            const parts = yarn.source.split(':').map(Number);
+            const source = { row: parts[0], column: parts[1] };
+            if (Number.isInteger(source.row) && Number.isInteger(source.column) &&
+                gridUtil.isValidPosition(this.grid, source) &&
+                Number.isInteger(yarn.health) && yarn.health > 0) {
+                this.yarnSource = { row: source.row, column: source.column,
+                    health: yarn.health, maxHealth: yarn.health };
             }
         }
     }
@@ -186,6 +206,50 @@ class GameCore {
             }
         }
         return left;
+    }
+
+    getYarnHealth() {
+        return this.yarnSource ? this.yarnSource.health : 0;
+    }
+
+    isYarnRoot(pos) {
+        return !!this.yarnSource && this.yarnSource.health > 0 &&
+            this.yarnSource.row === pos.row && this.yarnSource.column === pos.column;
+    }
+
+    isYarnVine(pos) {
+        return !!this.yarnVines[positionKey(pos)];
+    }
+
+    yarnNeighbors(pos) {
+        return [
+            { row: pos.row - 1, column: pos.column },
+            { row: pos.row + 1, column: pos.column },
+            { row: pos.row, column: pos.column - 1 },
+            { row: pos.row, column: pos.column + 1 }
+        ];
+    }
+
+    spreadYarn() {
+        const yarn = this.level.yarn;
+        if (!this.isYarnRoot(this.yarnSource) ||
+            Object.keys(this.yarnVines).length >= yarn.maxVines) return null;
+        const sources = [this.yarnSource].concat(Object.keys(this.yarnVines).map(function (key) {
+            const parts = key.split(':').map(Number);
+            return { row: parts[0], column: parts[1] };
+        }));
+        for (let i = 0; i < sources.length; i++) {
+            const neighbors = this.yarnNeighbors(sources[i]);
+            for (let j = 0; j < neighbors.length; j++) {
+                const pos = neighbors[j];
+                if (this.isBlocked(pos) || config.isSpecialType(gridUtil.getPieceType(this.grid, pos))) continue;
+                const key = positionKey(pos);
+                this.yarnVines[key] = true;
+                if (this.hasValidMoves()) return copyPosition(pos);
+                delete this.yarnVines[key];
+            }
+        }
+        return null;
     }
 
     /** 特殊棋子保留的普通颜色（用于彩球组合与视觉显示） */
@@ -263,6 +327,7 @@ class GameCore {
         gridUtil.swapTypeInGrid(this.grid, from, to);
         this.swapSpecialBases(from, to);
         this.movesLeft--;
+        this.yarnAdvancePending = true;
         this.preferredGenerationPositions = [copyPosition(to), copyPosition(from)];
 
         // 特殊棋子被玩家交换 → 标记为待触发（交换后触发特效）
@@ -324,6 +389,7 @@ class GameCore {
 
         const reserve = (pos, type) => {
             if (gridUtil.includesPosition(reserved, pos)) return;
+            if (this.isBlocked(pos)) return;
             const baseType = gridUtil.getPieceType(this.grid, pos);
             if (!config.getPieceTypeDef(baseType)) return;
             reserved.push(copyPosition(pos));
@@ -403,7 +469,7 @@ class GameCore {
     }
 
     getMostFrequentCommonType() {
-        const types = config.getCommonTypes();
+        const types = this.commonTypes;
         const counts = {};
         for (let i = 0; i < types.length; i++) counts[types[i]] = 0;
         for (let r = 0; r < this.grid.length; r++) {
@@ -419,7 +485,7 @@ class GameCore {
     }
 
     getSpecialFallbackBase(type) {
-        const types = config.getCommonTypes();
+        const types = this.commonTypes;
         if (type === config.SPECIAL_TYPES.H_ROCKET) return types[1] || types[0] || 0;
         if (type === config.SPECIAL_TYPES.V_ROCKET) return types[2] || types[0] || 0;
         if (type === config.SPECIAL_TYPES.BOMB) return types[3] || types[0] || 0;
@@ -564,7 +630,8 @@ class GameCore {
     /** 判断位置是否被果冻/冰块覆盖（覆盖棋子锁定，不参与下落） */
     isBlocked(pos) {
         if (!gridUtil.isValidPosition(this.grid, pos)) return true;
-        return this.jellyGrid[pos.row][pos.column] > 0 || this.iceGrid[pos.row][pos.column] === 1;
+        return this.jellyGrid[pos.row][pos.column] > 0 || this.iceGrid[pos.row][pos.column] === 1 ||
+            this.isYarnRoot(pos) || this.isYarnVine(pos);
     }
 
     /** 是否存在可行交换（排除被覆盖棋子作为交换源/目标） */
@@ -604,15 +671,37 @@ class GameCore {
      * 自动重排：棋盘无可行交换时，重建棋子（保留障碍层，确保无匹配且有可行步）
      */
     async autoReshuffle() {
-        const types = config.getCommonTypes();
-        let guard = 0;
-        while (guard < 30) {
-            guard++;
-            // 用"无匹配生成器"重建棋子（障碍层 jellyGrid/iceGrid 不受影响）
-            this.grid = gridUtil.createGrid(this.grid.length, this.grid[0].length, types);
-            this.specialBases = {};
-            if (this.hasValidMoves()) break;
+        const types = this.commonTypes;
+        const previousGrid = gridUtil.cloneGrid(this.grid);
+        const previousBases = Object.assign({}, this.specialBases);
+        const held = [];
+        const heldBases = {};
+        for (let row = 0; row < previousGrid.length; row++) {
+            for (let column = 0; column < previousGrid[row].length; column++) {
+                const pos = { row: row, column: column };
+                if (this.isBlocked(pos)) {
+                    held.push({ pos: pos, type: previousGrid[row][column] });
+                    const key = positionKey(pos);
+                    if (previousBases[key]) heldBases[key] = previousBases[key];
+                }
+            }
         }
+        let guard = 0;
+        let ready = false;
+        while (guard < 100) {
+            guard++;
+            this.grid = gridUtil.createGrid(this.grid.length, this.grid[0].length, types);
+            for (let i = 0; i < held.length; i++) {
+                gridUtil.setPieceType(this.grid, held[i].pos, held[i].type);
+            }
+            if (!gridUtil.getMatches(this.grid, null, this.minMatchCount).length && this.hasValidMoves()) {
+                ready = true;
+                break;
+            }
+        }
+        if (!ready) this.grid = previousGrid;
+        this.specialBases = ready ? heldBases : previousBases;
+        if (!ready) return;
         if (this.callbacks.onReshuffle) {
             await this.callbacks.onReshuffle();
         }
@@ -692,7 +781,7 @@ class GameCore {
         }
 
         // 填充 + 动画
-        const filled = gridUtil.fillUp(this.grid, config.getCommonTypes());
+        const filled = gridUtil.fillUp(this.grid, this.commonTypes);
         for (let i = 0; i < filled.length; i++) this.setSpecialBaseType(filled[i], 0);
         if (this.callbacks.onFill && filled.length) {
             await this.callbacks.onFill({ filled: filled });
@@ -709,6 +798,7 @@ class GameCore {
         this.processing = true;
         let round = 0;
         let guard = 0;
+        let yarnHitThisAction = false;
 
         while (guard < 50) {
             guard++;
@@ -785,6 +875,34 @@ class GameCore {
             // 第一遍：决定哪些棋子真正消除，哪些被障碍挡住（棋子保留）
             const jellyHits = [];
             const iceHits = [];
+            const yarnVineHits = [];
+            let yarnRootHit = false;
+            const yarnHeld = allRemoved.filter((pos) => this.isYarnRoot(pos) || this.isYarnVine(pos));
+            if (this.getYarnHealth() > 0 && !yarnHitThisAction && allRemoved.some((pos) =>
+                this.isYarnRoot(pos) || this.yarnNeighbors(this.yarnSource).some((neighbor) =>
+                    neighbor.row === pos.row && neighbor.column === pos.column))) {
+                this.yarnSource.health--;
+                yarnHitThisAction = true;
+                yarnRootHit = true;
+            }
+            const vineKeys = Object.keys(this.yarnVines);
+            for (let i = 0; i < vineKeys.length; i++) {
+                const parts = vineKeys[i].split(':').map(Number);
+                const vine = { row: parts[0], column: parts[1] };
+                if (allRemoved.some((pos) => positionKey(pos) === vineKeys[i] ||
+                    Math.abs(pos.row - vine.row) + Math.abs(pos.column - vine.column) === 1)) {
+                    delete this.yarnVines[vineKeys[i]];
+                    yarnVineHits.push(vine);
+                }
+            }
+            const yarnCleared = yarnRootHit && this.getYarnHealth() === 0;
+            if (yarnCleared) {
+                Object.keys(this.yarnVines).forEach(function (key) {
+                    const parts = key.split(':').map(Number);
+                    yarnVineHits.push({ row: parts[0], column: parts[1] });
+                });
+                this.yarnVines = {};
+            }
             const removed = []; // 真正被消除（置 0）的棋子
 
             for (let i = 0; i < allRemoved.length; i++) {
@@ -792,6 +910,7 @@ class GameCore {
                 const type = gridUtil.getPieceType(this.grid, pos);
                 const isSpecial = config.isSpecialType(type);
 
+                if (gridUtil.includesPosition(yarnHeld, pos)) continue;
                 if (!isSpecial && this.jellyGrid[pos.row][pos.column] > 0) {
                     // 普通棋子 + 果冻：果冻破层，棋子保留
                     this.jellyGrid[pos.row][pos.column]--;
@@ -864,11 +983,17 @@ class GameCore {
                     score: this.score,
                     jellyHits: jellyHits,
                     iceHits: iceHits,
+                    yarnRootHit: yarnRootHit,
+                    yarnVineHits: yarnVineHits,
+                    yarnCleared: yarnCleared,
                     generated: generated,
                     triggeredSpecials: triggeredSpecials,
                     specialCombo: specialCombo
                 });
             }
+
+            if (!removed.length && !generated.length && !jellyHits.length &&
+                !iceHits.length && !yarnVineHits.length) break;
 
             // 置 0（只真正消除的棋子；被障碍挡住的棋子保留）
             for (let i = 0; i < removed.length; i++) {
@@ -886,6 +1011,17 @@ class GameCore {
 
             // 棋盘整理（下落+斜向滑入+填充）
             await this.settleBoard();
+        }
+
+        if (this.yarnAdvancePending) {
+            this.yarnAdvancePending = false;
+            if (this.getYarnHealth() > 0) {
+                this.yarnTurns++;
+                if (this.yarnTurns % this.level.yarn.spreadEvery === 0) {
+                    const spread = this.spreadYarn();
+                    if (spread && this.callbacks.onYarnSpread) await this.callbacks.onYarnSpread(spread);
+                }
+            }
         }
 
         // 死局检测：无可行交换时自动重排（避免玩家卡死）
@@ -911,10 +1047,13 @@ class GameCore {
                 if (!Number.isFinite(goal.target) || goal.target < 0 || this.score < goal.target) allGoalsDone = false;
             } else if (goal.type === 'jelly') {
                 if (!Number.isFinite(goal.target) || goal.target < 0 || this.getJellyLeft() > 0) allGoalsDone = false;
+            } else if (goal.type === 'yarn') {
+                if (!Number.isInteger(goal.target) || goal.target <= 0 || !this.yarnSource ||
+                    this.yarnSource.maxHealth !== goal.target || this.getYarnHealth() > 0) allGoalsDone = false;
             } else if (goal.type === 'collect') {
                 const pieceType = Number(goal.pieceType);
                 const target = Number(goal.target);
-                if (!Number.isInteger(pieceType) || pieceType < 1 || pieceType > 4 ||
+                if (!Number.isInteger(pieceType) || this.commonTypes.indexOf(pieceType) === -1 ||
                     !Number.isFinite(target) || target < 0 || (this.collectedCounts[pieceType] || 0) < target) {
                     allGoalsDone = false;
                 }
@@ -958,7 +1097,7 @@ class GameCore {
      */
     getSmartColorChoice(pos) {
         const original = gridUtil.getPieceType(this.grid, pos);
-        const types = config.getCommonTypes();
+        const types = this.commonTypes;
         let bestType = 0;
         let bestCount = 0;
         for (let i = 0; i < types.length; i++) {

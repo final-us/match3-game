@@ -471,7 +471,7 @@ assert('B对战准备/结算状态：安全区、44px控件、互不交叠', fun
         }
     }
 });
-assert('B对战HUD：提示不遮棋盘，冷却/生效/耗尽可辨', function () {
+assert('B对战提示：受击在棋盘、干扰短提示后不遮棋子，冷却/生效/耗尽可辨', function () {
     for(const [width,height] of [[320,568],[375,812],[430,932]]) {
         const s={width,height,contentTop:72,safeBottom:34};
         const board=new BoardRenderer(ctx,s);board.battleMode=true;
@@ -481,14 +481,84 @@ assert('B对战HUD：提示不遮棋盘，冷却/生效/耗尽可辨', function 
         drawnText.length=0;
         BattleUI.drawTop(ctx,s,{timeLeft:8,myScore:999999999,oppScore:999999999});
         BattleUI.drawEffects(ctx,s,{frozen:true,frozenRemaining:2500,disturb:true,disturbRemaining:4000,castNotice:'freeze',boardX:board.boardX,boardY:board.boardY,boardW:board.boardW,boardH:board.boardH});
-        if(drawnText.some(t=>t.y+10>=board.boardY)) throw new Error('提示侵入棋盘');
-        if(!textValues().some(t=>t.includes('冰冻 3秒')&&t.includes('干扰需4连 4秒'))) throw new Error('组合受击状态丢失');
+        const frozen=drawnText.find(t=>t.text==='冰冻中 · 3秒');
+        if(!frozen||frozen.y<board.boardY||frozen.y>board.boardY+board.boardH) throw new Error('冰冻未在棋盘内');
+        if(!textValues().includes('干扰中 · 需要4连 · 4秒')) throw new Error('组合受击状态丢失');
+        if(!textValues().includes('已向对手释放冰冻')) throw new Error('未区分释放与受击');
+        const bounds={boardX:board.boardX,boardY:board.boardY,boardW:board.boardW,boardH:board.boardH};
+        drawnText.length=0;
+        BattleUI.drawEffects(ctx,s,{...bounds,disturb:true,disturbRemaining:4000,disturbNotice:true});
+        if(!textValues().includes('需要4连才能消除')) throw new Error('干扰命中缺少规则提示');
+        drawnText.length=0;
+        BattleUI.drawEffects(ctx,s,{...bounds,disturb:true,disturbRemaining:3000});
+        if(drawnText.some(t=>t.y>board.boardY+board.tileSize/2)) throw new Error('干扰持续提示遮挡棋子中心');
+        drawnText.length=0;
+        BattleUI.drawEffects(ctx,s,bounds);
+        if(drawnText.length) throw new Error('结束后仍残留受击提示');
         for(const state of [{freeze:1,disturb:2,cooldownRemaining:4500,active:false},{freeze:0,disturb:2,cooldownRemaining:0,active:true}]) {
             drawnText.length=0;const b=BattleUI.drawItems(ctx,s,state);
             if(b.freeze.h<44||b.disturb.h<44||b.freeze.y<dockY) throw new Error('道具触控异常');
             if(state.active&&!textValues().includes('用尽')) throw new Error('耗尽状态丢失');
             if(state.cooldownRemaining&&!textValues().includes('共享冷却 5秒')) throw new Error('冷却秒数丢失');
         }
+    }
+});
+
+assert('四道具 V3：短屏分配、锁定、战斗栏与效果边缘提示', function () {
+    const names=['冰霜冻结','四连魔咒','镜面反弹','猫咪鼓舞'];
+    const keys=['freeze','disturb','reflect','cheer'];
+    const overlap=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+    for(const [width,height] of [[320,568],[375,812],[430,932]]) {
+        const s={width,height,contentTop:91,safeBottom:34};
+        for(const state of [
+            {items:{freeze:1,disturb:1,reflect:1,cheer:1}},
+            {items:{freeze:2,disturb:1,reflect:1,cheer:1}},
+            {items:{freeze:2,disturb:1,reflect:1,cheer:1},myReady:true},
+            {items:{freeze:2,disturb:1,reflect:1,cheer:1},actionPending:true},
+            {items:{freeze:2,disturb:1,reflect:1,cheer:1},offline:true}
+        ]) {
+            drawnText.length=0;
+            const buttons=BattleUI.drawWait(ctx,s,{itemRulesVersion:3,roomId:'room',oppJoined:true,...state});
+            for(const name of names) if(!textValues().includes(name)) throw new Error('缺少道具名称 '+name);
+            for(const description of ['冻结对手3秒','5秒需四连','5秒反弹一次','5秒得分×2']) if(!textValues().includes(description)) throw new Error('缺少道具说明 '+description);
+            if(!textValues().some(t=>t.includes('剩余 '+(5-Object.values(state.items).reduce((a,b)=>a+b,0))))) throw new Error('额度提示错误');
+            const controls=Object.values(buttons);
+            for(const a of controls) {
+                if(a.x<0||a.y<s.contentTop||a.x+a.w>width||a.y+a.h>height-s.safeBottom||a.w<44||a.h<44) throw new Error('V3 控件越界或不足44px');
+                for(const b of controls) if(a!==b&&overlap(a,b)) throw new Error('V3 控件相交');
+            }
+            const locked=state.myReady||state.actionPending||state.offline;
+            for(const key of keys) {
+                if(!!buttons[key+'Minus']===!!locked) throw new Error('V3 减少按钮状态错误');
+                if(!!buttons[key+'Plus']!==(state.items.freeze+state.items.disturb+state.items.reflect+state.items.cheer<5&&!locked)) throw new Error('V3 增加按钮状态错误');
+            }
+        }
+        drawnText.length=0;
+        const dock=BattleUI.drawItems(ctx,s,{itemRulesVersion:3,freeze:1,disturb:0,reflect:2,cheer:1,cooldownRemaining:4200});
+        for(const key of keys) if(!dock[key]||dock[key].w<44||dock[key].h<44) throw new Error('V3 战斗按钮尺寸错误');
+        for(let i=0;i<keys.length;i++) {
+            const label=drawnText.find(t=>t.text===names[i]);
+            if(!label||Math.abs(label.x-(dock[keys[i]].x+dock[keys[i]].w/2))>1) throw new Error('V3 道具名称未占满按钮底行');
+        }
+        if(!textValues().includes('共享冷却 5秒')||!textValues().includes('用尽')) throw new Error('V3 冷却或耗尽提示缺失');
+        drawnText.length=0;
+        BattleUI.drawItems(ctx,s,{itemRulesVersion:3,freeze:1,disturb:1,reflect:1,cheer:1,frozen:true});
+        if(!textValues().includes('冰冻中 · 无法使用道具')) throw new Error('V3 冻结时未提示道具锁定');
+        const board=new BoardRenderer(ctx,s);board.battleMode=true;
+        board.setGame(new GameCore({id:0,rows:8,columns:8,moveCount:999,goals:[{type:'score',target:99999}]},{}));
+        drawnText.length=0;
+        BattleUI.drawEffects(ctx,s,{itemRulesVersion:3,boardX:board.boardX,boardY:board.boardY,boardW:board.boardW,boardH:board.boardH,
+            disturb:true,disturbRemaining:4000,reflectRemaining:4500,cheerRemaining:3500,castNotice:'reflect'});
+        if(!textValues().some(t=>t.includes('镜面反弹'))||!textValues().some(t=>t.includes('鼓舞×2'))||!textValues().includes('镜面反弹 · 已开启')) throw new Error('V3 反弹/鼓舞效果提示缺失');
+        if(drawnText.some(t=>t.y>board.boardY+board.tileSize/2&&t.y<board.boardY+board.boardH-10)) throw new Error('V3 持续提示进入棋盘中心');
+        drawnText.length=0;
+        BattleUI.drawEffects(ctx,s,{itemRulesVersion:3,boardX:board.boardX,boardY:board.boardY,boardW:board.boardW,boardH:board.boardH,
+            cheerRemaining:3500,castNotice:'cheer'});
+        if(!textValues().includes('猫咪鼓舞 · 得分×2')) throw new Error('V3 鼓舞释放提示错误');
+        drawnText.length=0;
+        BattleUI.drawEffects(ctx,s,{itemRulesVersion:3,boardX:board.boardX,boardY:board.boardY,boardW:board.boardW,boardH:board.boardH,
+            castNotice:'freeze'});
+        if(!textValues().includes('已向对手释放冰霜冻结')) throw new Error('V3 攻击释放提示错误');
     }
 });
 

@@ -35,7 +35,7 @@
 - 不在客户端保存密钥或广告后台凭证。
 - 先做小而完整的垂直切片，避免与需求无关的大型重构。
 - 单人关卡由 `js/core/level.js` 按“生成器版本 + 关卡号”确定性生成；同一版本同一关配置固定，棋盘随机性独立保留。
-- 本地内容更新：前20关配置在 `js/core/curated-levels.js`（第1关保留curated-v4教学，2–20关为curated-v5-difficulty），第21关起统一采用十关难度循环与模板（目标72/70/68/65/62/60/57/54/48/40%）；21–30关内容修订为infinite-v4-difficulty-cycle21，31关起保持infinite-v4-difficulty，布局变体seed算法不变；当前进度存储key不变，按关卡contentRevision清理失效失败计数，不删除解锁/星数/资产。验收/上线状态以 `docs/content-update-1235.md` 为准。
+- 本地内容更新：1–5关保留4色教学配置；6–20关为精修五色关，其中11/16/19关投放蔓延毛线；21关起五色无限关以十关起伏叠加有界递进，并在每轮第3/6/10关投放毛线，其余关卡保留原v5配置。具体版本、参数与验收见`docs/content-update-1235.md`顶部。当前进度存储key不变，按关卡contentRevision清理失效失败计数，不删除解锁/星数/资产；PvP默认4色与每日冻结5色保持。
 - 每日挑战独立冻结于 `js/core/daily-v1/` 与 `daily-challenge.js`，普通关卡核心改动不能静默覆盖每日历史版本。云端纯引擎由 `tools/sync-daily-engine.cjs` 同步、`--check`只读核对；规则见 `docs/design/daily-challenge-v1.md`，部署与验收状态见 `docs/release/daily-activation.md` / `docs/content-update-1235.md`。
 - 新素材统一英文文件名，经 `js/render/assets.js` 注册；首页素材放在 `res/home/`。
 - 棋子 `res/piece?-v2.png` 是保留的 512×512 源图，运行时只引用 256×256 的 `res/piece?-runtime.png`；包体忽略与预算由 `test/package-budget.js` 校验，不能忽略活跃素材。

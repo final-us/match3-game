@@ -23,6 +23,8 @@ const sfxSources = [
     'https://mixkit.co/free-sound-effects/sparkle/'
 ];
 const activePaths = [
+    'res/catalog/portraits-atlas.jpg',
+    'res/home/catalog-album.png',
     'res/home/moonlit-garden-bg.jpg',
     'res/home/duel-cats.png',
     'res/home/duel-heads.png',
@@ -49,6 +51,12 @@ const activePaths = [
     'res/piece4-runtime.png',
     'res/piece5-runtime.png'
 ];
+const movedCatalogPaths = [
+    'catalog/naitang-familiar.jpg',
+    'catalog/naitang-trust.jpg',
+    'catalog/naitang-attachment.jpg',
+    'catalog/naitang-best-friend.jpg'
+];
 const pieceSourcePaths = [
     'res/piece1-v2.png',
     'res/piece2-v2.png',
@@ -73,7 +81,8 @@ function isIgnored(relative, rules) {
 const notices = read(projectRoot, 'THIRD_PARTY_NOTICES.txt');
 const ledger = read(repoRoot, 'docs/release/open-source-and-assets.md');
 const readme = read(projectRoot, 'README.md');
-const assets = require('../js/render/assets').ASSETS;
+const assetModule = require('../js/render/assets');
+const assets = assetModule.ASSETS;
 const config = require('../project.config.json');
 const cloudLock = require('../cloudfunctions/battle/package-lock.json');
 const cloudSdk = require('../cloudfunctions/battle/node_modules/wx-server-sdk');
@@ -158,6 +167,9 @@ assert(readme.includes('[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)'), 
 assert.strictEqual(Object.keys(assets).length, activePaths.length + 1, '仅首页/棋盘背景允许共用一个文件');
 assert.strictEqual(assets.gameBackground, assets.homeBackground, '相同背景必须共用发布文件');
 assert.deepStrictEqual(Array.from(new Set(Object.values(assets))).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
+assert.deepStrictEqual(Object.values(assetModule.CATALOG_ASSETS).filter(function (relative) {
+    return relative.startsWith('catalog/naitang-');
+}).sort(), movedCatalogPaths.slice().sort(), '奶糖成长图须从图鉴分包加载');
 const retiredPaths = ['res/game-background-v2.jpg', 'res/ui/level-node-current-v2.png',
     'res/ui/level-node-done-v2.png', 'res/ui/level-node-locked-v2.png'];
 retiredPaths.forEach(function (relative) {
@@ -170,6 +182,11 @@ activePaths.forEach(function (relative) {
     assert(ledger.includes('`' + relative + '`'), '台账缺少活跃素材: ' + relative);
     assert(fs.existsSync(path.join(projectRoot, relative)), '活跃素材不存在: ' + relative);
     assert(!isIgnored(relative, ignoreRules), '活跃素材被 project.config 忽略: ' + relative);
+});
+movedCatalogPaths.forEach(function (relative) {
+    assert(ledger.includes('`' + relative + '`'), '台账缺少分包活跃素材: ' + relative);
+    assert(fs.existsSync(path.join(projectRoot, relative)), '分包活跃素材不存在: ' + relative);
+    assert(!isIgnored(relative, ignoreRules), '分包活跃素材被 project.config 忽略: ' + relative);
 });
 
 assert(fs.existsSync(path.join(projectRoot, 'THIRD_PARTY_NOTICES.txt')), 'notice 必须留在小游戏主包');

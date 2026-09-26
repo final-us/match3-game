@@ -1,20 +1,38 @@
 /**
- * 单人无限关卡源。前 20 关使用精修内容，21 关起使用 infinite-v4 难度版；
+ * 单人无限关卡源。前 20 关使用精修内容，21 关起使用 infinite-v5 难度版；
  * 每次挑战的棋盘仍由 GameCore 随机生成。
  */
 
 const curatedLevels = require('./curated-levels');
 
-const generatorVersion = 'curated-v5 + infinite-v4';
-const INFINITE_GENERATOR_VERSION = 'infinite-v4';
+const generatorVersion = 'curated-v6/v7 + infinite-v5/v6';
+const INFINITE_GENERATOR_VERSION = 'infinite-v5';
 const LAYOUT_SEED_VERSION = 'infinite-v3';
-const INFINITE_CONTENT_REVISION = 'infinite-v4-difficulty';
+const INFINITE_CONTENT_REVISION = 'infinite-v5-progressive-colors';
+const YARN_GENERATOR_VERSION = 'infinite-v6';
+const YARN_CONTENT_REVISION = 'infinite-v6-yarn-cycle';
 const ROWS = 8;
 const COLUMNS = 8;
-const TARGET_CURVE_EARLY = [95, 80, 77, 74, 69, 65, 62, 58, 55, 45];
-const TARGET_CURVE_MID = [75, 73, 70, 67, 64, 61, 58, 55, 47, 43];
-const TARGET_CURVE_CYCLE = [72, 70, 68, 65, 62, 60, 57, 54, 48, 40];
-const FROZEN_V3_TARGET_CURVE_CYCLE = [80, 78, 76, 73, 70, 68, 65, 62, 56, 48];
+const TARGET_CURVE_EARLY = [95, 80, 77, 74, 69, 85, 78, 72, 65, 58];
+const TARGET_CURVE_MID = [78, 73, 70, 65, 60, 75, 65, 60, 55, 45];
+const TARGET_CURVE_CYCLE = [60, 58, 55, 54, 51, 48, 45, 42, 36, 28];
+// 每十关保留起伏，同时逐段提高底线；增幅逐渐放缓，避免无限压缩到不可玩。
+function progressionFor(levelId) {
+    const chapter = Math.floor((levelId - 21) / 10);
+    return chapter / (chapter + 10);
+}
+const INFINITE_PROFILES = [
+    { moves: 24, score: 3650 },
+    { moves: 24, score: 3750 },
+    { moves: 24, score: 3850 },
+    { moves: 24, score: 3500, jelly: 'center6', ice: 'icePair' },
+    { moves: 24, score: 3950 },
+    { moves: 24, score: 3500, jelly: 'center8' },
+    { moves: 24, score: 3500, jelly: 'center8' },
+    { moves: 23, score: 3500, jelly: 'center8' },
+    { moves: 23, score: 3600, jelly: 'center8' },
+    { moves: 24, score: 4100, jelly: 'center8', ice: 'iceCorners' }
+];
 const LEVEL_NAMES = [
     '新手入门', '小试牛刀', '渐入佳境', '甜蜜开场', '草莓奶昔',
     '果冻花园', '缤纷世界', '冰镇果冻', '果冻风暴', '双倍挑战',
@@ -28,6 +46,10 @@ const PATTERNS = {
     icePair: [[2, 2], [5, 5]],
     iceCorners: [[2, 2], [2, 5], [5, 2], [5, 5]]
 };
+const YARN_SOURCE_CANDIDATES = [
+    [3, 3], [3, 4], [4, 3], [4, 4], [3, 5], [4, 5],
+    [2, 4], [5, 4], [2, 5], [5, 5], [3, 2], [4, 2]
+];
 const CACHE = Object.create(null);
 
 function normalizeLevelId(levelId) {
@@ -50,18 +72,13 @@ function layoutSeedFor(levelId) {
 function targetFor(levelId) {
     if (levelId <= 10) return TARGET_CURVE_EARLY[levelId - 1];
     if (levelId <= 20) return TARGET_CURVE_MID[levelId - 11];
-    return TARGET_CURVE_CYCLE[(levelId - 21) % TARGET_CURVE_CYCLE.length];
-}
-
-function frozenV3TargetFor(levelId) {
-    if (levelId <= 20) return targetFor(levelId);
-    return FROZEN_V3_TARGET_CURVE_CYCLE[(levelId - 21) % FROZEN_V3_TARGET_CURVE_CYCLE.length];
+    return Math.max(10, TARGET_CURVE_CYCLE[(levelId - 21) % TARGET_CURVE_CYCLE.length] - Math.round(26 * progressionFor(levelId)));
 }
 
 function timeFor(target, levelId) {
     if (levelId === 1) return 0;
-    // 首个收集教学保留原有观察时间；后续低档挑战用更短时限形成稳定波峰。
-    if (levelId === 6) return 165;
+    // 五色精修关单独给出思考预算，避免改目标通过率时隐式改变限时。
+    if (levelId >= 6 && levelId <= 20) return [165,165,150,135,135,165,165,150,150,150,165,150,135,120,120][levelId-6];
     if (target >= 80) return 180;
     if (target >= 68) return 165;
     if (target >= 58) return 150;
@@ -89,23 +106,18 @@ function makeLayout(patternName, variant) {
     return layout;
 }
 
-/** 复用 v3 模板选择，v4 只收紧步数和时间，保持名称、目标类型与布局方位。 */
-function profileFor(target, levelId) {
-    if (levelId === 1) return { moves: 28, score: 3600 };
-    if (target >= 90) return { moves: 28, score: 3800 };
-    if (target >= 86) return { moves: 28, score: 3950 };
-    if (target >= 83) return { moves: 28, score: 4050 };
-    if (target >= 80) return { moves: 26, score: 4200 };
-    if (target >= 75) return { moves: 27, score: 4200 };
-    if (target >= 72) return { moves: 28, jelly: 'center6', ice: 'icePair' };
-    if (target >= 69) return { moves: 25, score: 4300 };
-    if (target >= 68) return { moves: 26, jelly: 'center8' };
-    if (target >= 62) return { moves: target >= 65 ? 26 : 25, jelly: 'center8', score: target >= 65 ? 2700 : 3200 };
-    if (target >= 59) return { moves: 24, score: 4500 };
-    if (target >= 58) return { moves: 23, jelly: 'center8', ice: 'iceCorners', score: 3200 };
-    if (target >= 53) return { moves: 26, jelly: 'center8' };
-    if (target >= 50) return { moves: 26, jelly: 'columns10' };
-    return { moves: 24, jelly: 'center8', ice: 'iceCorners', score: 3800 };
+function makeYarn(underlays, obstacles, variant) {
+    for (let i = 0; i < YARN_SOURCE_CANDIDATES.length; i++) {
+        const source = transformCell(YARN_SOURCE_CANDIDATES[i], variant);
+        if (!underlays[source] && !obstacles[source]) {
+            return { source: source, health: 3, spreadEvery: 2, maxVines: 3 };
+        }
+    }
+    throw new Error('No free yarn source cell');
+}
+
+function hasInfiniteYarn(position) {
+    return position === 2 || position === 5 || position === 9;
 }
 
 function makeGoals(profile, underlays) {
@@ -118,27 +130,31 @@ function makeGoals(profile, underlays) {
 
 function generateInfiniteLevel(levelId) {
     const target = targetFor(levelId);
-    const profile = profileFor(frozenV3TargetFor(levelId), levelId);
-    profile.moves -= 2;
-    if (profile.score && levelId > 1) profile.score += ((levelId + layoutSeedFor(2)) % 3 - 1) * 40;
+    const position = (levelId - 21) % 10;
+    const pressure = progressionFor(levelId);
+    const profile = Object.assign({}, INFINITE_PROFILES[position]);
+    profile.moves -= Math.floor(2 * pressure);
+    profile.score = Math.round(profile.score * (1 + 0.2 * pressure) / 10) * 10;
     const variant = (levelId - 1 + layoutSeedFor(1)) % 8;
     const underlays = makeLayout(profile.jelly, variant);
     const obstacles = makeLayout(profile.ice, variant);
+    const yarn = hasInfiniteYarn(position) ? makeYarn(underlays, obstacles, variant) : null;
     const name = LEVEL_NAMES[(levelId - 1) % LEVEL_NAMES.length] + (levelId > LEVEL_NAMES.length ? ' · ' + levelId : '');
     return {
         id: levelId,
         name: name,
         rows: ROWS,
         columns: COLUMNS,
-        timeLimitSec: timeFor(target, levelId),
+        colorCount: 5,
+        timeLimitSec: position < 3 ? 165 : position < 6 ? 150 : 135,
         moveCount: profile.moves,
-        goals: makeGoals(profile, underlays),
+        goals: yarn ? makeGoals(profile, underlays).concat({ type: 'yarn', target: yarn.health }) : makeGoals(profile, underlays),
         underlays: underlays,
         obstacles: obstacles,
+        yarn: yarn,
         targetWinRate: target,
-        generatorVersion: INFINITE_GENERATOR_VERSION,
-        // 只重置本次接入循环的 21–30 关失败计数，其余关卡沿用原内容版本。
-        contentRevision: levelId <= 30 ? INFINITE_CONTENT_REVISION + '-cycle21' : INFINITE_CONTENT_REVISION
+        generatorVersion: yarn ? YARN_GENERATOR_VERSION : INFINITE_GENERATOR_VERSION,
+        contentRevision: yarn ? YARN_CONTENT_REVISION : INFINITE_CONTENT_REVISION
     };
 }
 
@@ -150,6 +166,7 @@ function generateLevel(levelId) {
             targetFor: targetFor,
             timeFor: timeFor,
             makeLayout: makeLayout,
+            makeYarn: makeYarn,
             variantFor: function (id) { return (id - 1 + layoutSeedFor(1)) % 8; }
         });
     }

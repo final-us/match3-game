@@ -6,6 +6,7 @@ const GUIDE_KEYS = Object.freeze({
     SOLO: 'solo_intro',
     SPECIAL: 'special_piece',
     OBSTACLE: 'obstacle',
+    YARN: 'yarn_spread',
     SOLO_ITEM: 'solo_item',
     PVP_WAIT: 'pvp_wait',
     COLLECT: 'collect_cats',

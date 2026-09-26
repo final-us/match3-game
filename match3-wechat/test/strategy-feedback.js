@@ -61,8 +61,11 @@ assert.strictEqual(app.guide, null, '已跳过教学不再弹出');
 app.startGame(21);
 assert.strictEqual(app.core.movesLeft, levels.getLevel(21).moveCount, '21关接入循环后清除旧助力');
 assert.strictEqual(app.progress.failures[21], undefined);
+assert.strictEqual(feedback.syncContentRevision(app.progress, levels.getLevel(31)), true);
+assert.strictEqual(app.progress.failures[31], undefined, '31关五色递进配置也须清除旧助力');
+app.progress.failures[31] = 2;
 assert.strictEqual(feedback.syncContentRevision(app.progress, levels.getLevel(31)), false);
-assert.strictEqual(app.progress.failures[31], 2, '31关配置未变，旧助力继续有效');
+assert.strictEqual(app.progress.failures[31], 2, '同版本失败助力继续有效');
 assert.deepStrictEqual(app.progress.stars, stars);
 assert.strictEqual(app.progress.unlockedLevel, 42);
 

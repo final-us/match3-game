@@ -57,7 +57,7 @@ Object.keys(GuideUI.CONTENT).forEach(function (key) {
 const mainSource = fs.readFileSync(path.join(__dirname, '../js/main.js'), 'utf8');
 [
     'GUIDE_KEYS.SOLO', 'GUIDE_KEYS.SPECIAL', 'GUIDE_KEYS.OBSTACLE',
-    'GUIDE_KEYS.SOLO_ITEM', 'GUIDE_KEYS.PVP_WAIT'
+    'GUIDE_KEYS.SOLO_ITEM', 'GUIDE_KEYS.PVP_WAIT', 'GUIDE_KEYS.YARN'
 ].forEach(function (marker) {
     assert(mainSource.includes(marker), '主流程缺少引导触发点 ' + marker);
 });

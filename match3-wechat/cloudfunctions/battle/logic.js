@@ -14,6 +14,13 @@ const CONFIG = Object.freeze({
     ITEM_ALLOWLIST: Object.freeze(['freeze', 'disturb']),
     ITEM_COOLDOWN_MS: 10 * 1000,
     INITIAL_ITEMS: Object.freeze({ freeze: 1, disturb: 2 }),
+    V3_ITEMS: Object.freeze({ freeze: 2, disturb: 1, reflect: 1, cheer: 1 }),
+    V3_ITEM_ALLOWLIST: Object.freeze(['freeze', 'disturb', 'reflect', 'cheer']),
+    V3_ITEM_BUDGET: 5,
+    REFLECT_DURATION_MS: 5000,
+    CHEER_DURATION_MS: 5000,
+    SCORE_SAMPLE_FUTURE_MS: 1500,
+    SCORE_SAMPLE_BATCH_MAX: 32,
     CREATE_RATE_LIMITS: Object.freeze({ perMinute: 5, perUtcDay: 60 }),
     SCORE_LIMITS: Object.freeze({
         MAX_SINGLE_INCREMENT: 10000,
@@ -112,9 +119,35 @@ function validateItemConfig(items, config) {
     return { ok: true, items: normalized };
 }
 
+function itemRules(room, config) {
+    const rules = config || CONFIG;
+    return room && room.itemRulesVersion === 3
+        ? { ITEM_ALLOWLIST: rules.V3_ITEM_ALLOWLIST, ITEM_BUDGET: rules.V3_ITEM_BUDGET }
+        : { ITEM_ALLOWLIST: rules.ITEM_ALLOWLIST, ITEM_BUDGET: rules.ITEM_BUDGET };
+}
+
+function validateRoomItemConfig(room, items, ready, config) {
+    const rules = itemRules(room, config);
+    if (!items || typeof items !== 'object' || Array.isArray(items)) return { ok: false, err: '道具配置非法' };
+    const keys = Object.keys(items);
+    if (keys.some(function (key) { return rules.ITEM_ALLOWLIST.indexOf(key) < 0; })) return { ok: false, err: '道具配置非法' };
+    let total = 0;
+    const normalized = {};
+    for (const item of rules.ITEM_ALLOWLIST) {
+        if (!finiteNonNegativeInteger(items[item])) return { ok: false, err: '道具配置非法' };
+        normalized[item] = items[item];
+        total += items[item];
+    }
+    if (total > rules.ITEM_BUDGET || (ready && total !== rules.ITEM_BUDGET) ||
+        (room && room.itemRulesVersion !== 3 && total !== rules.ITEM_BUDGET)) {
+        return { ok: false, err: '道具总数必须为' + rules.ITEM_BUDGET };
+    }
+    return { ok: true, items: normalized };
+}
+
 function validateItemUse(room, player, item, at, config) {
     const rules = config || CONFIG;
-    if (rules.ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
+    if (itemRules(room, rules).ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
     if (!room || room.status !== 'playing' || !Number.isFinite(room.startTime) || at < room.startTime) {
         return { ok: false, err: '对局未开始' };
     }
@@ -124,7 +157,49 @@ function validateItemUse(room, player, item, at, config) {
     }
     if (Number(player.itemCooldownUntil) > at) return { ok: false, err: '道具冷却中' };
     if (Number(player.activeEffectUntil) > at) return { ok: false, err: '已有道具生效中' };
+    if (Number(player.frozenUntil) > at) return { ok: false, err: '冻结中不能使用道具' };
     return { ok: true };
+}
+
+function validateRawScoreSamples(room, player, samples, at, config) {
+    const rules = config || CONFIG;
+    if (!Array.isArray(samples) || samples.length > rules.SCORE_SAMPLE_BATCH_MAX) {
+        return { ok: false, err: '分数样本格式非法' };
+    }
+    if (room.status !== 'playing' || !Number.isFinite(room.startTime) || at < room.startTime ||
+        at >= room.startTime + rules.BATTLE_DURATION_MS) return { ok: false, err: '对局未开始或已结束' };
+    let seq = Number(player.scoreSeq) || 0;
+    let rawScore = Number(player.rawScore) || 0;
+    let score = Number(player.score) || 0;
+    let lastAt = Number(player.lastScoreAt) || room.startTime;
+    const lastSample = player.lastScoreSample;
+    const cheerWindows = Array.isArray(player.cheerWindows) ? player.cheerWindows : [];
+    for (const sample of samples) {
+        if (!sample || !finiteNonNegativeInteger(sample.seq) || !finiteNonNegativeInteger(sample.score) ||
+            !Number.isSafeInteger(sample.at)) return { ok: false, err: '分数样本格式非法' };
+        if (sample.seq === seq && lastSample && sample.score === lastSample.score && sample.at === lastSample.at) continue;
+        if (sample.seq !== seq + 1) return { ok: false, err: 'STALE_SCORE_SAMPLE' };
+        if (sample.at < room.startTime || sample.at >= room.startTime + rules.BATTLE_DURATION_MS ||
+            sample.at < lastAt ||
+            sample.at > at + rules.SCORE_SAMPLE_FUTURE_MS) return { ok: false, err: '分数样本时间非法' };
+        const delta = sample.score - rawScore;
+        if (delta <= 0 || delta > rules.SCORE_LIMITS.MAX_SINGLE_INCREMENT) {
+            return { ok: false, err: '单次分数增长异常' };
+        }
+        if (sample.score > scoreCeiling(room.startTime, sample.at, rules.SCORE_LIMITS) ||
+            sample.score > scoreCeiling(room.startTime, at, rules.SCORE_LIMITS)) {
+            return { ok: false, err: '分数增长速度异常' };
+        }
+        const doubled = cheerWindows.some(function (window) { return sample.at >= window.at && sample.at < window.until; });
+        score += delta * (doubled ? 2 : 1);
+        seq = sample.seq;
+        rawScore = sample.score;
+        lastAt = sample.at;
+    }
+    const latest = samples[samples.length - 1];
+    return { ok: true, scoreSeq: seq, rawScore: rawScore, score: score,
+        lastScoreAt: lastAt, lastScoreSample: seq === Number(player.scoreSeq || 0) ? lastSample :
+            { seq: latest.seq, score: latest.score, at: latest.at } };
 }
 
 function scoreCeiling(startTime, at, limits) {
@@ -243,7 +318,10 @@ module.exports = {
     utcDayKey: utcDayKey,
     consumeCreateRateLimit: consumeCreateRateLimit,
     validateItemConfig: validateItemConfig,
+    itemRules: itemRules,
+    validateRoomItemConfig: validateRoomItemConfig,
     validateItemUse: validateItemUse,
+    validateRawScoreSamples: validateRawScoreSamples,
     scoreCeiling: scoreCeiling,
     validateScoreSync: validateScoreSync,
     isHeartbeatExpired: isHeartbeatExpired,

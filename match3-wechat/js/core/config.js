@@ -76,8 +76,9 @@ function getSpecialDef(type) {
 }
 
 /** 获取当前模式下可用的棋子类型编号列表 */
-function getCommonTypes() {
-    const count = MODE_TYPES[GAME_CONFIG.mode] || 4;
+function getCommonTypes(colorCount) {
+    const count = colorCount === undefined ? (MODE_TYPES[GAME_CONFIG.mode] || 4) : colorCount;
+    if (!Number.isInteger(count) || count < 4 || count > PIECE_TYPES.length) throw new RangeError('Invalid color count');
     const types = [];
     for (let i = 0; i < count; i++) {
         types.push(PIECE_TYPES[i].id);

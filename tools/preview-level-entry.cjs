@@ -17,7 +17,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>第一关入口隔离�
 <style>body{font:16px sans-serif;background:#dbe3f2;margin:12px}canvas{display:block;touch-action:none}pre{white-space:pre-wrap}</style>
 <a href="?width=320">320×568</a> · <a href="?width=390">390×844</a> · <a href="?width=430">430×932</a>
 <p>点击地图第一关。仅使用内存测试存档，不访问微信账号或云端。</p>
-<section id="content" hidden><label>试玩关卡 <select id="level"><option>1</option><option selected>6</option><option>11</option><option>16</option><option>20</option></select></label>
+<section id="content" hidden><label>试玩关卡 <select id="level"><option>1</option><option selected>6</option><option>11</option><option>16</option><option>19</option><option>20</option><option>23</option><option>26</option><option>30</option><option>100</option></select></label>
 <button id="start-content">开始试玩</button><button id="valid-move">演示一次合法交换</button><span>拖动棋子即可游玩；试玩不使用实际存档或体力。</span></section>
 <section id="motion" hidden><p>换位失败预览：真实棋盘与音效，本地内存状态。</p>
 <button data-case="plain">普通换位失败</button><button data-case="ice">碰到冰块</button><button data-case="jelly">碰到果冻</button>
@@ -26,6 +26,9 @@ const html = `<!doctype html><meta charset="utf-8"><title>第一关入口隔离�
 <pre id="status">加载中</pre><canvas id="game"></canvas><script src="/fixture.js"></script>`;
 const script = `
 const sources=${JSON.stringify(sources)},cache={},storage={match3_music_enabled_v1:false,match3_sfx_enabled_v1:false};
+const replayMode=new URLSearchParams(location.search).has('replay');
+const boardMath=Object.create(Math);let replayDraws=0;
+boardMath.random=()=>{replayDraws++;return window.replayRandom?window.replayRandom():Math.random();};
 window.wx={createImage:()=>new Image(),getStorageSync:k=>storage[k],setStorageSync:(k,v)=>{storage[k]=v;}};
 wx.getFileSystemManager=()=>({readFile:request=>fetch('/'+request.filePath).then(r=>{
  if(!r.ok)throw new Error('missing audio');return r.arrayBuffer();
@@ -34,7 +37,7 @@ function load(id){
  if(cache[id])return cache[id].exports;
  const m=cache[id]={exports:{}};
  const req=rel=>{const parts=id.split('/');parts.pop();rel.split('/').forEach(p=>p==='..'?parts.pop():p!=='.'&&parts.push(p));return load(parts.join('/')+'.js');};
- new Function('require','module','exports',sources[id])(req,m,m.exports);return m.exports;
+ new Function('require','module','exports','Math',sources[id])(req,m,m.exports,replayMode&&id==='js/core/grid.js'?boardMath:Math);return m.exports;
 }
 const widths={320:568,375:812,390:844,430:932},params=new URLSearchParams(location.search);
 const width=widths[params.get('width')]?+params.get('width'):390,height=widths[width];
@@ -71,11 +74,30 @@ if(contentPreview){
   }
   return false;
  };
+ if(replayMode){
+  window.replayAdvance=ms=>{for(let left=ms;left>0;){const dt=Math.min(16,left);app.update(dt);left-=dt;}draw();};
+  window.replayBegin=({levelId,seed,reduceEffects})=>{
+   let state=seed>>>0;window.replayRandom=()=>{state=(state+0x6D2B79F5)>>>0;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};
+   replayDraws=0;
+   storage.match3_onboarding_v1=Object.fromEntries(Object.values(load('js/core/onboarding.js').GUIDE_KEYS).map(k=>[k,true]));
+   app.progress={unlockedLevel:2000,stars:{},failures:{}};app.screen.reduceEffects=!!reduceEffects;
+   window.replayResult=null;window.replayPending=null;window.replayWaits=[];
+   previewStart(levelId);
+   app.board.wait=async ms=>{replayWaits.push(ms);replayAdvance(ms);};
+   const swap=app.core.trySwap.bind(app.core),finish=app.core.callbacks.onLevelEnd;
+   app.core.trySwap=(...args)=>{window.replayPending=swap(...args);return replayPending;};
+   app.core.callbacks.onLevelEnd=r=>{window.replayResult=r;finish(r);};
+   draw();
+  };
+  window.replaySnapshot=()=>{const c=app.core;return JSON.parse(JSON.stringify({grid:c.grid,jelly:c.jellyGrid,ice:c.iceGrid,yarn:c.yarnSource,vines:c.yarnVines,yarnTurns:c.yarnTurns,bases:c.specialBases,
+   score:c.score,moves:c.movesLeft,time:c.timeLeftMs,started:c.timerStarted,ended:c.ended,won:c.won,collected:c.collectedCounts,
+   cascade:c.maxCascade,combos:c.specialComboCount,draws:replayDraws,result:replayResult}));};
+ }
  document.getElementById('start-content').onclick=()=>window.previewStart(+document.getElementById('level').value);
  document.getElementById('valid-move').onclick=()=>window.previewMove();
- window.previewStart(6);
+ window.previewStart([1,6,11,16,19,20,23,26,30,100].includes(Number(params.get('level')))?Number(params.get('level')):6);
  let previous=performance.now();
- function frame(now){const dt=now-previous;previous=now;app.update(dt);draw();requestAnimationFrame(frame);}
+ function frame(now){const dt=now-previous;previous=now;if(!replayMode)app.update(dt);draw();requestAnimationFrame(frame);}
  requestAnimationFrame(frame);
 }
 if(privacyPreview){

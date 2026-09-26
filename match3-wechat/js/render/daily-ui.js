@@ -78,7 +78,7 @@ function drawDetail(ctx, screen, data) {
     else if(data.completed||claimed){label='今日已完成';active=false;}
     else if(!challenge){status='正在获取今日挑战…';label='加载中…';active=false;}
     // Rules, recovery message and primary action all stay inside the invitation.
-    text(ctx,'每日一局 · 不耗体力 · 不限时',cx,by-44,innerW,11,false);
+    text(ctx,data.retentionMessage||'每日一局 · 不耗体力 · 不限时',cx,by-44,innerW,11,false);
     if(status) text(ctx,status,cx,by-22,innerW,10,false);
     invitationButton(ctx,cx-bw/2,by,bw,bh,label,active);
     if(active)buttons.start={x:cx-bw/2,y:by,w:bw,h:bh};

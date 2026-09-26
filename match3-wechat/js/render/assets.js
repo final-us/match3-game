@@ -6,6 +6,9 @@
  */
 
 const ASSETS = {
+    // Accepted v8 concept sampled only for its four illustration regions.
+    catalogPortraits: 'res/catalog/portraits-atlas.jpg',
+    catalogIcon: 'res/home/catalog-album.png',
     // 首页（月夜花园方向，无文字背景，动态 UI 由 Canvas 绘制）
     homeBackground: 'res/home/moonlit-garden-bg.jpg',
     homeDuelCats: 'res/home/duel-cats.png',
@@ -39,6 +42,26 @@ const ASSETS = {
     piece3: 'res/piece3-runtime.png',
     piece4: 'res/piece4-runtime.png',
     piece5: 'res/piece5-runtime.png'
+};
+
+// Loaded only after the native catalog subpackage is ready.
+const CATALOG_ASSETS = {
+    catalogNaitangFamiliar: 'catalog/naitang-familiar.jpg',
+    catalogNaitangTrust: 'catalog/naitang-trust.jpg',
+    catalogNaitangAttachment: 'catalog/naitang-attachment.jpg',
+    catalogNaitangBestFriend: 'catalog/naitang-best-friend.jpg',
+    catalogRagdollFamiliar: 'catalog/tuanzi-familiar.jpg',
+    catalogRagdollTrust: 'catalog/tuanzi-trust.jpg',
+    catalogRagdollAttachment: 'catalog/tuanzi-attachment.jpg',
+    catalogRagdollBestFriend: 'catalog/tuanzi-best-friend.jpg',
+    catalogSiameseFamiliar: 'catalog/zhima-familiar.jpg',
+    catalogSiameseTrust: 'catalog/zhima-trust.jpg',
+    catalogSiameseAttachment: 'catalog/zhima-attachment.jpg',
+    catalogSiameseBestFriend: 'catalog/zhima-best-friend.jpg',
+    catalogCalicoFamiliar: 'catalog/buding-familiar.jpg',
+    catalogCalicoTrust: 'catalog/buding-trust.jpg',
+    catalogCalicoAttachment: 'catalog/buding-attachment.jpg',
+    catalogCalicoBestFriend: 'catalog/buding-best-friend.jpg',
 };
 
 const images = {};
@@ -76,8 +99,76 @@ function isReady() { return loadedCount === total; }
 
 function getProgress() { return loadedCount / total; }
 
+
+let catalogState = { status: 'idle', progress: 0, message: '' };
+let catalogPending = null;
+function getCatalogState() { return catalogState; }
+function loadCatalog() {
+    if (catalogState.status === 'ready') return Promise.resolve(catalogState);
+    if (catalogPending) return catalogPending;
+    if (!isWx || typeof wx.loadSubpackage !== 'function') {
+        catalogState = { status: 'error', progress: 0, message: '请更新微信后重试' };
+        return Promise.resolve(catalogState);
+    }
+    catalogState = { status: 'loading', progress: 0, message: '' };
+    let resolveLoad;
+    const pending = new Promise(resolve => { resolveLoad = resolve; });
+    catalogPending = pending;
+    let finished = false, decoding = false, decoded = 0;
+    const staged = {}, requested = [];
+    const timer = setTimeout(() => finish('error', '加载超时，请检查网络后重试'), 20000);
+    function finish(status, message) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        requested.forEach(img => { img.onload = img.onerror = null; });
+        if (status === 'ready') Object.assign(images, staged);
+        catalogState = { status, progress: status === 'ready' ? 100 : 0, message: message || '' };
+        catalogPending = null;
+        resolveLoad(catalogState);
+    }
+    try {
+        const task = wx.loadSubpackage({
+            name: 'catalog',
+            success() {
+                if (finished || decoding) return;
+                decoding = true;
+                catalogState = { status: 'loading', progress: 80, message: '' };
+                try {
+                    Object.keys(CATALOG_ASSETS).forEach(key => {
+                        if (finished) return;
+                        const img = wx.createImage();
+                        requested.push(img);
+                        let settled = false;
+                        img.onload = () => {
+                            if (finished || settled) return;
+                            settled = true;
+                            if (!img.width || !img.height) return finish('error', '原画读取失败，请重试');
+                            staged[key] = img;
+                            decoded++;
+                            catalogState = { status: 'loading', progress: 80 + Math.floor(decoded / Object.keys(CATALOG_ASSETS).length * 20), message: '' };
+                            if (decoded === Object.keys(CATALOG_ASSETS).length) finish('ready');
+                        };
+                        img.onerror = () => finish('error', '原画读取失败，请重试');
+                        img.src = CATALOG_ASSETS[key];
+                    });
+                } catch (error) { finish('error', '原画读取失败，请重试'); }
+            },
+            fail() { finish('error', '下载失败，请检查网络后重试'); }
+        });
+        if (task && typeof task.onProgressUpdate === 'function') task.onProgressUpdate(event => {
+            if (!finished && !decoding && event && Number.isFinite(event.progress))
+                catalogState = { status: 'loading', progress: Math.max(0, Math.min(80, Math.floor(event.progress * .8))), message: '' };
+        });
+    } catch (error) { finish('error', '暂时无法加载，请重试'); }
+    return pending;
+}
+
 module.exports = {
     ASSETS: ASSETS,
+    CATALOG_ASSETS: CATALOG_ASSETS,
+    loadCatalog: loadCatalog,
+    getCatalogState: getCatalogState,
     preload: preload,
     get: get,
     isReady: isReady,

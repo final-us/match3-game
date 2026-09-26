@@ -114,6 +114,26 @@ function battleIcon(ctx, kind, x, y, size) {
             ctx.strokeStyle='#F1FAFF';ctx.lineWidth=1.5;ctx.stroke();
             ctx.beginPath();ctx.moveTo(0,-21);ctx.lineTo(0,19);ctx.moveTo(-10,-5);ctx.lineTo(0,0);ctx.lineTo(10,-5);ctx.stroke();ctx.restore();
         }
+    } else if(kind==='reflect') {
+        // A silver mirror inside a shield: distinct from the ice crystal.
+        const g=ctx.createLinearGradient(8,5,40,43);
+        g.addColorStop(0,'#FFFFFF');g.addColorStop(.48,'#C9E2FA');g.addColorStop(1,'#829BCB');
+        ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(24,3);ctx.lineTo(42,10);ctx.lineTo(39,31);
+        ctx.quadraticCurveTo(36,39,24,45);ctx.quadraticCurveTo(12,39,9,31);ctx.lineTo(6,10);ctx.closePath();ctx.fill();
+        ctx.strokeStyle='#FFFFFF';ctx.lineWidth=2;ctx.stroke();
+        ctx.fillStyle='#677EB2';path(ctx,14,13,20,22,5);ctx.fill();
+        ctx.fillStyle='#EDF8FF';path(ctx,16,15,16,18,3);ctx.fill();
+        ctx.strokeStyle='#FFFFFF';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(19,30);ctx.lineTo(29,18);ctx.stroke();
+    } else if(kind==='cheer') {
+        // Warm star with a simple cat face, matching the moonlit palette.
+        const g=ctx.createRadialGradient(18,15,2,24,24,23);
+        g.addColorStop(0,'#FFFDF3');g.addColorStop(.55,'#FFE5A6');g.addColorStop(1,'#D6A65A');
+        ctx.fillStyle=g;ctx.beginPath();
+        for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?11:22;
+            const px=24+Math.cos(a)*r,py=24+Math.sin(a)*r;if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);}
+        ctx.closePath();ctx.fill();ctx.strokeStyle='#FFF9E4';ctx.lineWidth=2;ctx.stroke();
+        ctx.fillStyle='#A97849';ctx.beginPath();ctx.arc(19,24,1.5,0,Math.PI*2);ctx.arc(29,24,1.5,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(24,28,3,0,Math.PI);ctx.strokeStyle='#A97849';ctx.lineWidth=1.5;ctx.stroke();
     } else {
         const g=ctx.createRadialGradient(17,13,1,24,24,22);g.addColorStop(0,'#FFF7FD');g.addColorStop(.45,'#F7C8E8');g.addColorStop(1,'#CF8FB7');
         ctx.fillStyle=g;ctx.beginPath();ctx.arc(24,24,21,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#FFF5FB';ctx.lineWidth=2;ctx.stroke();

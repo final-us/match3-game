@@ -59,6 +59,8 @@ class BoardRenderer {
         this.particles = [];
         this.specialEffects = [];
         this.invalidSwapFeedback = null;
+        this.pressFeedback = null;
+        this.reshuffleFeedback = null;
 
         // 触摸状态
         this.touchStartPos = null;
@@ -155,6 +157,8 @@ class BoardRenderer {
     /** 绑定游戏核心，并从 grid 初始化视觉棋子 */
     setGame(core) {
         this.invalidSwapFeedback = null;
+        this.pressFeedback = null;
+        this.reshuffleFeedback = null;
         this.core = core;
         this.computeLayout();
         this.syncPiecesFromGrid();
@@ -211,8 +215,15 @@ class BoardRenderer {
 
     /** 死局重排动画：重建所有视觉棋子 */
     animateReshuffle() {
+        const oldPieces = this.pieces.slice();
         this.syncPiecesFromGrid();
-        return this.wait(100);
+        this.pressFeedback = null;
+        if (this.screen.reduceEffects || !oldPieces.length) {
+            this.reshuffleFeedback = null;
+            return this.wait(100);
+        }
+        this.reshuffleFeedback = { oldPieces: oldPieces, elapsed: 0 };
+        return this.wait(220);
     }
 
     /** 创建一个视觉棋子对象 */
@@ -455,12 +466,29 @@ class BoardRenderer {
             this.spawnBurst(center.x, center.y, ['#C8E8F7', '#8FD3F4', '#FFFFFF'], 14);
         }
 
+        if (data.yarnRootHit && this.core.yarnSource) {
+            const source = this.core.yarnSource;
+            const center = this.pieceCenter(source.row, source.column);
+            this.spawnBurst(center.x, center.y, ['#F6D895', '#9C72B0', '#FFFFFF'], data.yarnCleared ? 18 : 9);
+        }
+        for (let i = 0; i < (data.yarnVineHits || []).length; i++) {
+            const pos = data.yarnVineHits[i];
+            const center = this.pieceCenter(pos.row, pos.column);
+            this.spawnBurst(center.x, center.y, ['#DDA95C', '#FFFFFF'], 7);
+        }
+
         const self = this;
         return (async function () {
             await self.wait(200);
             // 移除已消失的棋子
             self.pieces = self.pieces.filter(function (p) { return !p.dying; });
         })();
+    }
+
+    animateYarnSpread(pos) {
+        const center = this.pieceCenter(pos.row, pos.column);
+        this.spawnBurst(center.x, center.y, ['#DDA95C', '#9C72B0'], 7);
+        return this.wait(this.screen.reduceEffects ? 0 : 130);
     }
 
     /** 下落动画：棋子滑到新位置 */
@@ -510,6 +538,14 @@ class BoardRenderer {
 
     update(dt) {
         if (this.invalidSwapFeedback) this.invalidSwapFeedback.elapsed += Math.max(0, dt);
+        if (this.reshuffleFeedback) {
+            this.reshuffleFeedback.elapsed += Math.max(0, dt);
+            if (this.reshuffleFeedback.elapsed >= 220) this.reshuffleFeedback = null;
+        }
+        if (this.pressFeedback) {
+            this.pressFeedback.elapsed += Math.max(0, dt);
+            if (this.pressFeedback.elapsed >= 180) this.pressFeedback = null;
+        }
         const k = Math.min(1, dt / 100); // 约 100ms 内完成插值
         for (let i = 0; i < this.pieces.length; i++) {
             const p = this.pieces[i];
@@ -603,6 +639,7 @@ class BoardRenderer {
         const collectGoal = goals.find(function (goal) { return goal.type === 'collect'; });
         for (let i = 0; i < goals.length; i++) {
             if (goals[i].type === 'jelly') goalText.push('果冻剩余 ' + this.core.getJellyLeft());
+            if (goals[i].type === 'yarn') goalText.push(this.core.getYarnHealth() ? '毛线源头 ' + this.core.getYarnHealth() + '/' + goals[i].target : '毛线已清除');
             if (goals[i].type === 'score') goalText.push('目标分 ' + goals[i].target);
         }
         const timed = Number(this.core.timeLimitMs) > 0;
@@ -613,6 +650,29 @@ class BoardRenderer {
         moon.panel(ctx,this.screen,goalX,goalY,goalW,goalH);
 
         function drawGoals(x, width) {
+            if (goals.length > 2) {
+                for (let index = 0; index < goals.length; index++) {
+                    const goal = goals[index];
+                    const lineY = goalY + 9 + index * 16;
+                    let label = '';
+                    let icon = null;
+                    if (goal.type === 'collect') {
+                        const counts = self.core.collectedCounts || {};
+                        const remaining = Math.max(0, goal.target - (counts[goal.pieceType] || 0));
+                        label = remaining ? '还需 ' + remaining + ' 只' : '收集完成';
+                        icon = assets.get('piece' + goal.pieceType);
+                    } else if (goal.type === 'jelly') label = '果冻剩余 ' + self.core.getJellyLeft();
+                    else if (goal.type === 'yarn') label = self.core.getYarnHealth() ?
+                        '毛线源头 ' + self.core.getYarnHealth() + '/' + goal.target : '毛线已清除';
+                    else if (goal.type === 'score') label = '目标分 ' + goal.target;
+                    if (icon) drawImageContain(ctx, icon, x + 2, lineY - 10, 20, 20);
+                    typography.drawFit(ctx, label, x + (icon ? 25 : 2), lineY,
+                        width - (icon ? 27 : 4), {
+                            size: 12, minSize: 9, weight: 'bold', numbers: true
+                        });
+                }
+                return;
+            }
             if (!collectGoal) {
                 typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', x + width / 2, goalY + goalH / 2, width, {
                     size: 15, minSize: 9, weight: 'bold', align: 'center', numbers: true
@@ -684,8 +744,16 @@ class BoardRenderer {
         }
 
         // 棋子（按视觉位置绘制，支持动画）
+        const reshuffle = this.reshuffleFeedback;
+        if (reshuffle) {
+            const oldAlpha = Math.max(0, 1 - reshuffle.elapsed / 180);
+            for (let i = 0; i < reshuffle.oldPieces.length; i++) {
+                this.drawPiece(reshuffle.oldPieces[i], oldAlpha);
+            }
+        }
+        const newAlpha = reshuffle ? Math.max(0, Math.min(1, (reshuffle.elapsed - 20) / 200)) : 1;
         for (let i = 0; i < this.pieces.length; i++) {
-            this.drawPiece(this.pieces[i]);
+            this.drawPiece(this.pieces[i], newAlpha);
         }
 
         // 果冻罩（绿色半透明圆罩，盖在棋子上）
@@ -693,6 +761,8 @@ class BoardRenderer {
 
         // 冰块罩（冰蓝方块罩，盖在棋子上）
         this.drawIces();
+
+        this.drawYarn();
 
         // 粒子（碎屑效果，绘制在最上层）
         this.drawParticles();
@@ -948,9 +1018,53 @@ class BoardRenderer {
         }
     }
 
-    /** 画一个视觉棋子（特殊棋子画专属样式，普通棋子画色块+emoji） */
-    drawPiece(piece) {
+    drawYarn() {
+        const source = this.core.yarnSource;
+        if (!source || source.health <= 0) return;
         const ctx = this.ctx;
+        const cells = [{ row: source.row, column: source.column, root: true }];
+        Object.keys(this.core.yarnVines).forEach(function (key) {
+            const parts = key.split(':').map(Number);
+            cells.push({ row: parts[0], column: parts[1], root: false });
+        });
+        for (let index = 0; index < cells.length; index++) {
+            const cell = cells[index];
+            const offset = this.invalidSwapOffset(cell.row, cell.column);
+            const x = this.boardX + cell.column * this.tileSize + (offset ? offset.x : 0);
+            const y = this.boardY + cell.row * this.tileSize + (offset ? offset.y : 0);
+            const pad = cell.root ? 2.5 : 3.5;
+            ctx.save();
+            ctx.strokeStyle = cell.root ? '#5A386F' : '#DDA95C';
+            ctx.lineWidth = cell.root ? 4 : 3;
+            this.roundRect(x + pad, y + pad, this.tileSize - pad * 2, this.tileSize - pad * 2, 9);
+            ctx.stroke();
+            ctx.strokeStyle = cell.root ? '#F6D895' : '#FFF0BC';
+            ctx.lineWidth = 1.4;
+            this.roundRect(x + pad + 3, y + pad + 3, this.tileSize - (pad + 3) * 2, this.tileSize - (pad + 3) * 2, 7);
+            ctx.stroke();
+            if (cell.root) {
+                const badgeX = x + this.tileSize - 10;
+                const badgeY = y + 10;
+                ctx.fillStyle = '#5A386F';
+                ctx.beginPath();
+                ctx.arc(badgeX, badgeY, 9, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFF4CE';
+                typography.drawFit(ctx, String(source.health), badgeX, badgeY, 15, {
+                    size: 12, minSize: 10, weight: 'bold', numbers: true, align: 'center'
+                });
+            }
+            ctx.restore();
+        }
+    }
+
+    /** 画一个视觉棋子（特殊棋子画专属样式，普通棋子画色块+emoji） */
+    drawPiece(piece, opacity) {
+        const ctx = this.ctx;
+        const press = this.pressFeedback && this.pressFeedback.piece === piece
+            ? Math.sin(Math.PI * (0.25 + 0.75 * this.pressFeedback.elapsed / 180)) : 0;
+        const pressScaleX = 1 + press * 0.03;
+        const pressScaleY = 1 - press * 0.06;
         const offset = this.invalidSwapOffset(piece.row, piece.col);
         const drawX = piece.x + (offset ? offset.x : 0);
         const drawY = piece.y + (offset ? offset.y : 0);
@@ -961,9 +1075,9 @@ class BoardRenderer {
             const size = this.tileSize * piece.scale;
             if (size < 1) return;
             ctx.save();
-            ctx.globalAlpha = piece.alpha;
+            ctx.globalAlpha = piece.alpha * (opacity === undefined ? 1 : opacity);
             ctx.translate(drawX, drawY);
-            ctx.scale(piece.scale, piece.scale);
+            ctx.scale(piece.scale * pressScaleX, piece.scale * pressScaleY);
 
             const s = Math.min(this.tileSize - 2, this.tileSize * 0.94);
             const img = assets.get('piece' + (piece.baseType || specialBaseType(piece.type)));
@@ -1029,9 +1143,9 @@ class BoardRenderer {
         if (size < 1) return;
 
         ctx.save();
-        ctx.globalAlpha = piece.alpha;
+        ctx.globalAlpha = piece.alpha * (opacity === undefined ? 1 : opacity);
         ctx.translate(drawX, drawY);
-        ctx.scale(piece.scale, piece.scale);
+        ctx.scale(piece.scale * pressScaleX, piece.scale * pressScaleY);
 
         // 优先用猫咪素材图（type 1-5 对应 piece1-5），无图则回退代码绘制
         const pieceImg = assets.get('piece' + piece.type);
@@ -1102,6 +1216,10 @@ class BoardRenderer {
         this.touchStartPos = { x: x, y: y };
         this.touchStartGrid = grid;
         this.pressGrid = { row: grid.row, column: grid.column };
+        if (!this.screen.reduceEffects) {
+            const piece = this.findPiece(grid.row, grid.column);
+            this.pressFeedback = piece ? { piece: piece, elapsed: 0 } : null;
+        }
         this.touchMoved = false;
     }
 
@@ -1115,6 +1233,7 @@ class BoardRenderer {
 
         if (!this.touchMoved && (Math.abs(dx) > threshold || Math.abs(dy) > threshold)) {
             this.touchMoved = true;
+            this.pressFeedback = null;
             const from = this.touchStartGrid;
             let to = null;
 

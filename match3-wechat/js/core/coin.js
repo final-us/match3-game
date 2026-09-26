@@ -8,6 +8,7 @@
 const COIN_KEY = 'match3_coin_v1';
 const COIN_RECEIPT_HISTORY_KEY = 'match3_coin_receipts_v1';
 const COIN_PENDING_CREDIT_KEY = 'match3_coin_pending_credit_v1';
+const REWARD_PENDING_CREDIT_KEY = 'match3_reward_pending_credit_v1';
 const ITEM_KEY = 'match3_items_v1';
 const REWARDED_ITEM_KEY = 'match3_rewarded_items_v1';
 const REWARDED_ITEM_DAILY_LIMIT = 10;
@@ -89,7 +90,35 @@ function writeStorage(store, key, value) {
 function readCoinsRaw(store) {
     const saved = readStorage(store, COIN_KEY);
     if (!saved.ok) return saved;
-    return { ok: true, value: typeof saved.value === 'number' ? saved.value : 0 };
+    if (saved.value == null || saved.value === '') return { ok: true, value: 0 };
+    if (!Number.isSafeInteger(saved.value) || saved.value < 0) {
+        return { ok: false, reason: 'coin_balance_invalid' };
+    }
+    return { ok: true, value: saved.value };
+}
+
+function emptyItems() {
+    return { hammer: 0, bomb: 0, color: 0 };
+}
+
+function readItemsRaw(store) {
+    const saved = readStorage(store, ITEM_KEY);
+    if (!saved.ok) return saved;
+    if (saved.value == null || saved.value === '') return { ok: true, value: emptyItems() };
+    if (!saved.value || typeof saved.value !== 'object') {
+        return { ok: false, reason: 'item_balance_invalid' };
+    }
+    const items = emptyItems();
+    const keys = Object.keys(items);
+    for (let i = 0; i < keys.length; i++) {
+        const value = saved.value[keys[i]];
+        if (value == null) continue;
+        if (!Number.isSafeInteger(value) || value < 0) {
+            return { ok: false, reason: 'item_balance_invalid' };
+        }
+        items[keys[i]] = value;
+    }
+    return { ok: true, value: items };
 }
 
 function readReceiptHistory(store) {
@@ -108,6 +137,19 @@ function isPendingCredit(value) {
         Number.isSafeInteger(value.amount) && value.amount > 0 &&
         Number.isSafeInteger(value.balanceBefore) && Number.isSafeInteger(value.balanceAfter) &&
         value.balanceAfter === value.balanceBefore + value.amount;
+}
+
+function isPendingReward(value) {
+    return !!value && typeof value.receiptId === 'string' &&
+        Number.isSafeInteger(value.coins) && value.coins >= 0 &&
+        Number.isSafeInteger(value.hammer) && value.hammer >= 0 &&
+        value.coins + value.hammer > 0 &&
+        Number.isSafeInteger(value.balanceBefore) && value.balanceBefore >= 0 &&
+        Number.isSafeInteger(value.balanceAfter) &&
+        value.balanceAfter === value.balanceBefore + value.coins &&
+        Number.isSafeInteger(value.hammerBefore) && value.hammerBefore >= 0 &&
+        Number.isSafeInteger(value.hammerAfter) &&
+        value.hammerAfter === value.hammerBefore + value.hammer;
 }
 
 function appendReceipt(history, receiptId) {
@@ -148,10 +190,58 @@ function recoverPendingCredit() {
     return writeStorage(store, COIN_PENDING_CREDIT_KEY, null);
 }
 
+function recoverPendingReward() {
+    const store = getStore();
+    const pendingSaved = readStorage(store, REWARD_PENDING_CREDIT_KEY);
+    if (!pendingSaved.ok) return pendingSaved;
+    if (pendingSaved.value == null || pendingSaved.value === '') return { ok: true };
+    if (!isPendingReward(pendingSaved.value)) return { ok: false, reason: 'pending_reward_invalid' };
+
+    const pending = pendingSaved.value;
+    const historySaved = readReceiptHistory(store);
+    if (!historySaved.ok) return historySaved;
+    if (historySaved.value.indexOf(pending.receiptId) === -1) {
+        const balanceSaved = readCoinsRaw(store);
+        if (!balanceSaved.ok) return balanceSaved;
+        if (pending.coins > 0 && balanceSaved.value === pending.balanceBefore) {
+            const balanceWrite = writeStorage(store, COIN_KEY, pending.balanceAfter);
+            if (!balanceWrite.ok) return balanceWrite;
+        } else if (balanceSaved.value !== pending.balanceAfter) {
+            return { ok: false, reason: 'pending_reward_coin_conflict' };
+        }
+
+        const itemsSaved = readItemsRaw(store);
+        if (!itemsSaved.ok) return itemsSaved;
+        if (pending.hammer > 0 && itemsSaved.value.hammer === pending.hammerBefore) {
+            const nextItems = {
+                hammer: pending.hammerAfter,
+                bomb: itemsSaved.value.bomb,
+                color: itemsSaved.value.color
+            };
+            const itemWrite = writeStorage(store, ITEM_KEY, nextItems);
+            if (!itemWrite.ok) return itemWrite;
+        } else if (itemsSaved.value.hammer !== pending.hammerAfter) {
+            return { ok: false, reason: 'pending_reward_item_conflict' };
+        }
+
+        const historyWrite = writeStorage(store, COIN_RECEIPT_HISTORY_KEY,
+            appendReceipt(historySaved.value, pending.receiptId));
+        if (!historyWrite.ok) return historyWrite;
+    }
+
+    return writeStorage(store, REWARD_PENDING_CREDIT_KEY, null);
+}
+
+function recoverPendingWallet() {
+    const credit = recoverPendingCredit();
+    if (!credit.ok) return credit;
+    return recoverPendingReward();
+}
+
 function getCoins() {
     const store = getStore();
     if (!store || !store.getStorageSync) return 0;
-    const recovered = recoverPendingCredit();
+    const recovered = recoverPendingWallet();
     if (!recovered.ok) return null;
     const saved = readCoinsRaw(store);
     return saved.ok ? saved.value : null;
@@ -160,7 +250,7 @@ function getCoins() {
 function addCoins(n) {
     const store = getStore();
     if (!store || !store.getStorageSync) return null;
-    const recovered = recoverPendingCredit();
+    const recovered = recoverPendingWallet();
     if (!recovered.ok) return null;
     const saved = readCoinsRaw(store);
     if (!saved.ok) return null;
@@ -172,7 +262,7 @@ function addCoins(n) {
 function spendCoins(n) {
     const store = getStore();
     if (!store || !store.getStorageSync) return false;
-    const recovered = recoverPendingCredit();
+    const recovered = recoverPendingWallet();
     if (!recovered.ok) return false;
     const saved = readCoinsRaw(store);
     if (!saved.ok || saved.value < n) return false;
@@ -193,7 +283,7 @@ function creditOnce(receiptId, amount) {
     }
 
     const store = getStore();
-    const recovered = recoverPendingCredit();
+    const recovered = recoverPendingWallet();
     if (!recovered.ok) return { ok: false, credited: false, reason: recovered.reason };
 
     const historySaved = readReceiptHistory(store);
@@ -222,46 +312,84 @@ function creditOnce(receiptId, amount) {
     return { ok: true, credited: true, balance: pending.balanceAfter };
 }
 
+/** Credits one server receipt containing coins and/or hammers exactly once. */
+function creditRewardOnce(receiptId, reward) {
+    if (typeof receiptId !== 'string' || !receiptId || receiptId.length > 160) {
+        return { ok: false, credited: false, reason: 'invalid_receipt' };
+    }
+    const coins = reward && reward.coins;
+    const items = reward && reward.items;
+    const hammer = items && items.hammer;
+    if (!reward || typeof reward !== 'object' || !Number.isSafeInteger(coins) || coins < 0 ||
+        !items || typeof items !== 'object' || !Number.isSafeInteger(hammer) || hammer < 0 ||
+        coins + hammer <= 0) {
+        return { ok: false, credited: false, reason: 'invalid_reward' };
+    }
+
+    const store = getStore();
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return { ok: false, credited: false, reason: recovered.reason };
+
+    const historySaved = readReceiptHistory(store);
+    if (!historySaved.ok) return { ok: false, credited: false, reason: historySaved.reason };
+    const balanceSaved = readCoinsRaw(store);
+    if (!balanceSaved.ok) return { ok: false, credited: false, reason: balanceSaved.reason };
+    const itemsSaved = readItemsRaw(store);
+    if (!itemsSaved.ok) return { ok: false, credited: false, reason: itemsSaved.reason };
+    if (historySaved.value.indexOf(receiptId) !== -1) {
+        return { ok: true, credited: false, balance: balanceSaved.value };
+    }
+    if (balanceSaved.value + coins > Number.MAX_SAFE_INTEGER ||
+        itemsSaved.value.hammer + hammer > Number.MAX_SAFE_INTEGER) {
+        return { ok: false, credited: false, reason: 'invalid_balance' };
+    }
+
+    const pending = {
+        receiptId: receiptId,
+        coins: coins,
+        hammer: hammer,
+        balanceBefore: balanceSaved.value,
+        balanceAfter: balanceSaved.value + coins,
+        hammerBefore: itemsSaved.value.hammer,
+        hammerAfter: itemsSaved.value.hammer + hammer
+    };
+    const pendingWrite = writeStorage(store, REWARD_PENDING_CREDIT_KEY, pending);
+    if (!pendingWrite.ok) return { ok: false, credited: false, reason: pendingWrite.reason };
+    const completed = recoverPendingReward();
+    if (!completed.ok) return { ok: false, credited: false, reason: completed.reason };
+    return { ok: true, credited: true, balance: pending.balanceAfter };
+}
+
 // ===== 道具 =====
 
 function getItems() {
     const store = getStore();
-    let items = null;
-    if (store && store.getStorageSync) {
-        items = store.getStorageSync(ITEM_KEY);
-    }
-    if (!items) {
-        items = { hammer: 0, bomb: 0, color: 0 };
-    }
-    // 兜底缺失字段
-    if (typeof items.hammer !== 'number') items.hammer = 0;
-    if (typeof items.bomb !== 'number') items.bomb = 0;
-    if (typeof items.color !== 'number') items.color = 0;
-    return items;
+    if (!hasStorage(store)) return emptyItems();
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return null;
+    const saved = readItemsRaw(store);
+    return saved.ok ? saved.value : null;
 }
 
 function saveItems(items) {
     const store = getStore();
-    if (store && store.setStorageSync) {
-        store.setStorageSync(ITEM_KEY, items);
-    }
+    return writeStorage(store, ITEM_KEY, items).ok;
 }
 
 /** 增加道具数量 */
 function addItem(type, n) {
     const items = getItems();
-    if (!(type in items)) return;
+    if (!items || !(type in items)) return false;
     items[type] += (n || 1);
-    saveItems(items);
+    return saveItems(items);
 }
 
 /** 使用一个道具（返回是否成功） */
 function useItem(type) {
     const items = getItems();
-    if (!(type in items) || items[type] <= 0) return false;
+    if (!items || !(type in items) || items[type] <= 0) return false;
     items[type]--;
-    saveItems(items);
-    return true;
+    return saveItems(items);
 }
 
 function localDateKey(now) {
@@ -275,15 +403,19 @@ function localDateKey(now) {
 
 function getRewardedItemState(now) {
     const store = getStore();
+    if (!hasStorage(store)) return null;
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return null;
     const date = localDateKey(now);
-    let saved = null;
-    if (store && store.getStorageSync) saved = store.getStorageSync(REWARDED_ITEM_KEY);
+    const stored = readStorage(store, REWARDED_ITEM_KEY);
+    if (!stored.ok) return null;
+    const saved = stored.value;
     const count = saved && saved.date === date && Number.isSafeInteger(saved.count) && saved.count >= 0
         ? Math.min(REWARDED_ITEM_DAILY_LIMIT, saved.count)
         : 0;
     const state = { date: date, count: count, remaining: REWARDED_ITEM_DAILY_LIMIT - count };
     if (!saved || saved.date !== date) {
-        if (store && store.setStorageSync) store.setStorageSync(REWARDED_ITEM_KEY, { date: date, count: 0 });
+        if (!writeStorage(store, REWARDED_ITEM_KEY, { date: date, count: 0 }).ok) return null;
     }
     return state;
 }
@@ -292,14 +424,16 @@ function getRewardedItemState(now) {
 function claimRewardedItem(type, now) {
     if (!ITEM_DEFS[type]) return { ok: false, reason: 'invalid_item' };
     const state = getRewardedItemState(now);
+    if (!state) return { ok: false, reason: 'storage_write_failed' };
     if (state.remaining <= 0) return { ok: false, reason: 'limit', state: state };
     const next = { date: state.date, count: state.count + 1 };
     const store = getStore();
     if (!store || typeof store.setStorageSync !== 'function') {
         return { ok: false, reason: 'storage_unavailable', state: state };
     }
-    store.setStorageSync(REWARDED_ITEM_KEY, next);
-    addItem(type, 1);
+    if (!writeStorage(store, REWARDED_ITEM_KEY, next).ok || !addItem(type, 1)) {
+        return { ok: false, reason: 'storage_write_failed', state: state };
+    }
     return {
         ok: true,
         state: { date: next.date, count: next.count, remaining: REWARDED_ITEM_DAILY_LIMIT - next.count }
@@ -312,6 +446,7 @@ module.exports = {
     ITEM_DEFS: ITEM_DEFS,
     COIN_RECEIPT_HISTORY_KEY: COIN_RECEIPT_HISTORY_KEY,
     COIN_PENDING_CREDIT_KEY: COIN_PENDING_CREDIT_KEY,
+    REWARD_PENDING_CREDIT_KEY: REWARD_PENDING_CREDIT_KEY,
     REWARDED_ITEM_KEY: REWARDED_ITEM_KEY,
     REWARDED_ITEM_DAILY_LIMIT: REWARDED_ITEM_DAILY_LIMIT,
     STAMINA_PRICE: STAMINA_PRICE,
@@ -319,6 +454,7 @@ module.exports = {
     addCoins: addCoins,
     spendCoins: spendCoins,
     creditOnce: creditOnce,
+    creditRewardOnce: creditRewardOnce,
     getItems: getItems,
     addItem: addItem,
     useItem: useItem,

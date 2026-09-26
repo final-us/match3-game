@@ -7,5 +7,10 @@
     "uploadFile": 10000,
     "downloadFile": 10000
   },
-  "subpackages": []
+  "subpackages": [
+    {
+      "name": "catalog",
+      "root": "catalog/"
+    }
+  ]
 }

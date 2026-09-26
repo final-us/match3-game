@@ -65,7 +65,9 @@ function fixture() {
     return { app, clock, requests, notices, modals, shares, wx, playing, wallet };
 }
 
-(async function () {
+module.exports = { fixture, flush };
+
+if (require.main === module) (async function () {
     const unhandled = [];
     const onUnhandled = function (error) { unhandled.push(error); };
     process.on('unhandledRejection', onUnhandled);
@@ -226,6 +228,27 @@ function fixture() {
             f.app.battle = b; b.completedTracked = true; f.app.state = 'battle_result';
             f.app.applyPoll({ ok: true, status: 'playing', startTime: 1000 });
             assert.strictEqual(f.app.state, 'battle_result', '已结算不可被迟到playing响应重开');
+        }
+        {
+            const f = fixture(), b = f.playing();
+            f.app.applyEffect({ item: 'disturb', until: f.clock.now + 5000 });
+            assert.strictEqual(f.app.battleCore.minMatchCount, 4);
+            assert.strictEqual(b.disturbNoticeUntil, f.clock.now + 1000,
+                '干扰中心提示仅短暂显示，不在整个效果期间遮挡棋子');
+            f.clock.now += 1200;
+            assert(b.disturbNoticeUntil < f.clock.now && b.disturbUntil > f.clock.now);
+            f.app.applyEffect({ item: 'freeze', until: f.clock.now + 500 });
+            assert.strictEqual(f.app.isFrozen(), true);
+            f.clock.now += 600;
+            assert.strictEqual(f.app.isFrozen(), false);
+            f.clock.now += 4000;
+            f.app.updateBattle(f.clock.now);
+            assert.strictEqual(f.app.battleCore.minMatchCount, 3, '到期恢复3连');
+            const noticeUntil = b.disturbNoticeUntil;
+            f.app.applyEffect({ item: 'disturb', until: f.clock.now - 1 });
+            assert.strictEqual(b.disturbNoticeUntil, noticeUntil, '过期受击不能重播提示');
+            assert.strictEqual(f.app.battleCore.minMatchCount, 3);
+            assert.strictEqual(f.app.newBattleState(false).disturbNoticeUntil, 0, '新局不继承受击提示');
         }
         for (const action of ['battleReady', 'battleAdjustItem', 'battleUseItem']) {
             const f = fixture(); f.playing();

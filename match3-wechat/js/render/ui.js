@@ -11,6 +11,7 @@ const typography = require('./typography');
 const moon = require('./moon-controls');
 const privacyReader = require('./privacy-reader');
 const levelData = require('../core/level');
+const CompanionUI = require('./companion-ui');
 
 const UI = {};
 
@@ -193,11 +194,16 @@ function drawButton(ctx, x, y, w, h, text, colorTop, colorBottom, textColor, fon
 }
 
 /** Home-only crystal capsule, with editable text and native ornament layers. */
-function drawMoonHomeButton(ctx, x, y, w, h, text, primary, enabled) {
+function drawMoonHomeButton(ctx, x, y, w, h, text, primary, enabled, pressAmount) {
     ctx.save();
+    if (pressAmount) {
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.scale(1 - pressAmount * 0.015, 1 - pressAmount * 0.055);
+        ctx.translate(-x - w / 2, -y - h / 2);
+    }
     ctx.shadowColor = 'rgba(69,67,120,0.27)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 4;
+    ctx.shadowBlur = pressAmount ? 5 : 10;
+    ctx.shadowOffsetY = pressAmount ? 2 : 4;
     const fill = ctx.createLinearGradient(x, y, x, y + h);
     fill.addColorStop(0, '#FFFFFF');
     fill.addColorStop(0.14, primary ? '#FFE9FB' : '#F0F8FF');
@@ -350,7 +356,8 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
     const titleTop = Math.max(hudY + hudHeight + 8, screen.height * 0.085);
     const titleLogo = assets.get('homeTitleLogo');
     const compactHome = screen.height < 640;
-    const titleW = Math.min(338, screen.width * (compactHome ? 0.56 : 0.76));
+    const chosen=!!(economy&&economy.companion);
+    const titleW = Math.min(338, screen.width * (compactHome ? (chosen?.46:.56) : (chosen?.68:.76)));
     const titleH = titleW * 0.5;
     if (titleLogo && titleLogo.width > 0) {
         ctx.drawImage(titleLogo, cx - titleW / 2, titleTop, titleW, titleH);
@@ -372,11 +379,14 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
     const activityH=64,activityW=64;
     const bottom = screen.height - (Number(screen.safeBottom) || 0) - (compactHome?32:52);
     const activityY=bottom-activityH;
-    const soloY=activityY-(compactHome?30:38)-soloH;
-    const battleY=soloY-(compactHome?24:28)-btnH;
+    const soloY=activityY-(compactHome?(chosen?14:30):38)-soloH;
+    const battleY=soloY-(compactHome?(chosen?12:24):28)-btnH;
     const heroY = titleTop + titleH - (compactHome ? 28 : 44);
     const heroH = Math.min(heroW * .684, Math.max(1, battleY - heroY - 12));
-    if (hero && hero.width > 0) {
+    if(economy && economy.companion){
+        const artTop=titleTop+titleH-8;
+        Object.assign(buttons,CompanionUI.drawHome(ctx,screen,{y:artTop,h:Math.max(60,battleY-artTop-8)},economy.companion,assets.getCatalogState()));
+    } else if (hero && hero.width > 0) {
         const ratio = hero.width / hero.height;
         const drawW = Math.min(heroW, heroH * ratio);
         const drawH = drawW / ratio;
@@ -407,31 +417,43 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
         ctx.restore();
     }
 
-    drawMoonHomeButton(ctx, btnX, battleY, btnW, btnH, '好友对战', true, true);
+    drawMoonHomeButton(ctx, btnX, battleY, btnW, btnH, '好友对战', true, true,
+        economy && economy.battlePress);
     buttons.battle = { x: btnX, y: battleY, w: btnW, h: btnH };
 
     ctx.fillStyle=THEME.textDark;
-    typography.drawFit(ctx,'60秒欢乐对决',cx,battleY+btnH+12,btnW,{size:11,minSize:10,align:'center',numbers:true});
+    if(!(compactHome&&chosen))typography.drawFit(ctx,'60秒欢乐对决',cx,battleY+btnH+12,btnW,{size:11,minSize:10,align:'center',numbers:true});
     const soloW=btnW*(compactHome?.85:.80);
     drawMoonHomeButton(ctx,cx-soloW/2,soloY,soloW,soloH,heart.canPlay?'单人闯关':'体力不足',false,heart.canPlay);
     buttons.start={x:cx-soloW/2,y:soloY,w:soloW,h:soloH};
     ctx.fillStyle=THEME.textDark;
     const status=heart.count>=5?'已解锁第 '+unlockedLevel+' 关 · 体力已满':heart.timeLeftText+' 后恢复体力';
-    typography.drawFit(ctx,status,cx,soloY+soloH+15,screen.width-32,{size:11,minSize:9,align:'center',numbers:true});
+    if(!(compactHome&&chosen))typography.drawFit(ctx,status,cx,soloY+soloH+15,screen.width-32,{size:11,minSize:9,align:'center',numbers:true});
 
     // User-selected combination: original main capsules, compact utility row below.
     const entries=[['shop','uiShop','商店'],['daily','uiCoin','每日挑战'],['settings','uiSettings','设置']];
+    if(economy&&economy.retentionPreview)entries.splice(2,0,['retention','uiMoves','每日金币']);
+    if(economy&&economy.catalogPreview)entries.splice(entries.length-1,0,['catalog','catalogIcon','猫咪图鉴']);
     if(showHeartAd)entries.push(['addHeart','uiHeart','看广告补体力']);
-    const utilityGap=showHeartAd?8:(compactHome?20:28);
-    const utilityLeft=cx-(entries.length*activityW+(entries.length-1)*utilityGap)/2;
+    const denseUtilities=entries.length>3;
+    const utilityGap=denseUtilities?6:showHeartAd?8:(compactHome?20:28);
+    const utilityW=denseUtilities
+        ?Math.min(activityW,(screen.width-20-(entries.length-1)*utilityGap)/entries.length):activityW;
+    const utilityLeft=cx-(entries.length*utilityW+(entries.length-1)*utilityGap)/2;
     entries.forEach(([key,icon,label],index)=>{
-        const x=utilityLeft+index*(activityW+utilityGap);
-        drawImageContain(ctx,assets.get(icon),x+10,activityY,44,44);
-        moon.button(ctx,x,activityY+42,activityW,22,label,'blue',key==='addHeart'?9:11);
-        buttons[key]={x,y:activityY,w:activityW,h:activityH};
+        const x=utilityLeft+index*(utilityW+utilityGap);
+        drawImageContain(ctx,assets.get(icon),x+(utilityW-44)/2,activityY,44,44);
+        moon.button(ctx,x,activityY+42,utilityW,22,denseUtilities?'':label,'blue',key==='addHeart'?9:11);
+        if(denseUtilities){ctx.fillStyle=THEME.textDark;typography.drawCentered(ctx,label,x+2,activityY+42,utilityW-4,22,{size:10,minSize:7,weight:'bold'});}
+        buttons[key]={x,y:activityY,w:utilityW,h:activityH};
     });
     const reward=require('../core/daily-challenge').DAILY_RULES.reward;
-    const badgeX=buttons.daily.x+35;
+    if(economy){
+        if(economy.coinsReady&&buttons.retention)CompanionUI.dot(ctx,buttons.retention,'可领');
+        if(economy.storyNew&&buttons.catalog)CompanionUI.dot(ctx,buttons.catalog,'新');
+        if(economy.companionNew&&buttons.companionStory)CompanionUI.dot(ctx,buttons.companionStory);
+    }
+    const badgeX=buttons.daily.x+(economy&&economy.retentionPreview?utilityW-30:35);
     ctx.save();ctx.fillStyle='#FFF1CA';roundRectPath(ctx,badgeX,activityY,30,16,8);ctx.fill();
     ctx.fillStyle='#775320';typography.drawCentered(ctx,String(reward),badgeX,activityY,30,16,{size:10,minSize:9,weight:'bold',numbers:true});ctx.restore();
 
@@ -551,10 +573,11 @@ UI.drawShop = function (ctx, screen, coins, items, rewardOptions) {
             ? { name: '体力', price: coin.STAMINA_PRICE, desc: '恢复 1 点体力' }
             : defs[type];
         const rowY = listTop + listPad + i * rowH;
-        const owned = type === 'heart' ? (Number(rewardOptions.heartCount) || 0) : (items[type] || 0);
+        const owned = type === 'heart' ? (Number(rewardOptions.heartCount) || 0) : (items ? items[type] || 0 : '—');
         const heartMax = Number(rewardOptions.heartMax) || 5;
         const heartFull = type === 'heart' && owned >= heartMax;
-        const affordable = coins >= def.price && !heartFull;
+        const storageReady=coins!==null&&!!items;
+        const affordable = storageReady && coins >= def.price && !heartFull;
         const atLimit = Number(rewardOptions.count) >= (Number(rewardOptions.limit) || 10);
 
         if (i > 0) {
@@ -584,7 +607,7 @@ UI.drawShop = function (ctx, screen, coins, items, rewardOptions) {
         typography.drawFit(ctx, type === 'heart' ? ('体力 ' + owned + '/' + heartMax) : ('拥有 ' + owned),
             textX, rowY + 43, textW, { size: 11, minSize: 8, numbers: true });
         ctx.fillStyle = affordable ? THEME.textSceneMuted : '#84577B';
-        typography.drawFit(ctx, heartFull ? '体力已满' : (coins < def.price ? '金币不足' : def.desc),
+        typography.drawFit(ctx, !storageReady ? '奖励待保存，请重试' : heartFull ? '体力已满' : (coins < def.price ? '金币不足' : def.desc),
             textX, rowY + 61, textW, { size: 10, minSize: 8 });
 
         const canRewardItem = rewardOptions.canReward;
@@ -596,7 +619,7 @@ UI.drawShop = function (ctx, screen, coins, items, rewardOptions) {
         typography.drawFit(ctx, String(def.price), actionX + 31, actionY + 22, buyW - 36, {
             size: 13, minSize: 8, weight: 'bold', numbers: true, align: 'left'
         });
-        buttons['buy_' + type] = { x: actionX, y: actionY, w: buyW, h: 44 };
+        if(storageReady)buttons['buy_' + type] = { x: actionX, y: actionY, w: buyW, h: 44 };
 
         if (canRewardItem) {
             const rewardX = actionX + buyW + actionGap;
@@ -807,6 +830,10 @@ UI.drawResult = function (ctx, screen, result) {
     const menuX = cardX + cardW - 18 - btnW;
     moon.button(ctx, menuX, nextBtnY, btnW, btnH, result.rewardPending ? '重试结算' : '返回首页', 'blue', 17);
     buttons.menu = { x: menuX, y: nextBtnY, w: btnW, h: btnH };
+    if(result.retentionMessage) {
+        ctx.fillStyle=THEME.textDark;
+        typography.drawFit(ctx,result.retentionMessage,cx,cardY+cardH-9,cardW-30,{size:9,minSize:9,align:'center'});
+    }
 
     return buttons;
 };
