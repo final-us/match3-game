@@ -70,6 +70,20 @@ function evidenceFor(roomId) {
 }
 
 (async function run() {
+    // Catalog routes must use SDK identity, never a caller-supplied account.
+    for (const action of ['catalogInfo','catalogAdopt','catalogFeed']) {
+        assert.strictEqual((await call('', {action, openid:'forged'})).ok, false);
+    }
+    assert.strictEqual(Object.keys(fixture.docs.retention_profiles).length, 0);
+    const catA = await call('cat-a', {action:'catalogInfo'});
+    const catB = await call('cat-b', {action:'catalogInfo', openid:'cat-a'});
+    assert(catA.ok && catB.ok);assert.notStrictEqual(catA.state.owner, catB.state.owner);
+    for (const action of ['catalogAdopt','catalogFeed']) {
+        const denied = await call('cat-b', {action, catId:'cream', requestId:'catalog_route_request_0001',
+            expectedRevision:0, expectedOwner:catA.state.owner, openid:'cat-a'});
+        assert.strictEqual(denied.code,'CATALOG_OWNER_CHANGED');
+        assert.deepStrictEqual(denied.state.owned,[]);assert.strictEqual(denied.state.fish,0);
+    }
     const opted = await createRoom(true, false, 'opted');
     assert.strictEqual(fixture.docs.battle_rooms[opted.id].retentionEnabled, true);
     await finish(opted);

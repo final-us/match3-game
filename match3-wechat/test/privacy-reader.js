@@ -33,10 +33,12 @@ const Main = moduleFixture.exports;
 
 assert.strictEqual(policy.publication.operator, '任务');
 assert.strictEqual(policy.publication.email, '452330817@qq.com');
-assert.strictEqual(policy.sections().length, 12);
+assert.strictEqual(policy.sections().length, 13);
 assert.strictEqual(policy.publication.effectiveDate, '2026年9月19日');
-assert.strictEqual(policy.publication.updatedDate, '2026年9月23日');
-assert.strictEqual(policy.publication.version, '2026-09-23.2');
+assert.strictEqual(policy.publication.updatedDate, '2026年9月27日');
+assert.strictEqual(policy.publication.version, '2026-09-27.1');
+const catalogText=policy.sections().find(s=>s.title==='猫咪领养、成长与陪伴').paragraphs.join('');
+for(const fact of ['不是匿名数据','亲密度','35天','删除本地数据不会删除云端','这些偏好不上传云端','开发演示'])assert(catalogText.includes(fact));
 const review = fs.readFileSync(require('path').join(__dirname, '../../docs/release/privacy-policy-review.md'), 'utf8');
 const expectedBody = policy.sections().map(s => '## ' + s.title + '\n\n' + s.paragraphs.join('\n\n')).join('\n\n');
 assert.strictEqual(review.split('\n---\n\n')[1].trim(), expectedBody, '确认稿须与运行正文逐段一致');

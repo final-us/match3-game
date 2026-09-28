@@ -95,7 +95,7 @@ const packages = (gameConfig.subpackages || []).map(function (entry) {
 });
 const catalogPackage = packages.find(function (entry) { return entry.name === 'catalog' && entry.root === 'catalog'; });
 assert(catalogPackage, '图鉴须声明普通 catalog/ 分包');
-assert(catalogAssets && Object.keys(catalogAssets).length === 16, '图鉴须注册 16 张成长原画');
+assert(catalogAssets && Object.keys(catalogAssets).length === 21, '图鉴须注册 16 张成长原画、初见图集和 4 张遮罩');
 const catalogPaths = new Set();
 Object.keys(catalogAssets).forEach(function (key) {
     const relative = catalogAssets[key];

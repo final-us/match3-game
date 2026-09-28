@@ -23,7 +23,6 @@ const sfxSources = [
     'https://mixkit.co/free-sound-effects/sparkle/'
 ];
 const activePaths = [
-    'res/catalog/portraits-atlas.jpg',
     'res/home/catalog-album.png',
     'res/home/moonlit-garden-bg.jpg',
     'res/home/duel-cats.png',
@@ -56,6 +55,13 @@ const movedCatalogPaths = [
     'catalog/naitang-trust.jpg',
     'catalog/naitang-attachment.jpg',
     'catalog/naitang-best-friend.jpg'
+];
+const initialCatalogPaths = [
+    'catalog/portraits-atlas.jpg',
+    'catalog/cream-silhouette.png',
+    'catalog/ragdoll-silhouette.png',
+    'catalog/siamese-silhouette.png',
+    'catalog/calico-silhouette.png'
 ];
 const pieceSourcePaths = [
     'res/piece1-v2.png',
@@ -170,6 +176,15 @@ assert.deepStrictEqual(Array.from(new Set(Object.values(assets))).sort(), active
 assert.deepStrictEqual(Object.values(assetModule.CATALOG_ASSETS).filter(function (relative) {
     return relative.startsWith('catalog/naitang-');
 }).sort(), movedCatalogPaths.slice().sort(), '奶糖成长图须从图鉴分包加载');
+assert.deepStrictEqual(Object.values(assetModule.CATALOG_ASSETS).filter(relative =>
+    relative.endsWith('-silhouette.png') || relative.endsWith('/portraits-atlas.jpg')
+).sort(), initialCatalogPaths.slice().sort(), '初见图集和遮罩须从图鉴分包加载');
+initialCatalogPaths.forEach(relative => {
+    assert(fs.existsSync(path.join(projectRoot, relative)), '分包素材缺失: ' + relative);
+    assert(!fs.existsSync(path.join(projectRoot, 'res', relative)), '主包不得保留重复图鉴素材: ' + relative);
+    assert(!isIgnored(relative, ignoreRules), '图鉴分包素材不得忽略: ' + relative);
+    assert(ledger.includes('`' + relative + '`'), '台账缺少分包素材: ' + relative);
+});
 const retiredPaths = ['res/game-background-v2.jpg', 'res/ui/level-node-current-v2.png',
     'res/ui/level-node-done-v2.png', 'res/ui/level-node-locked-v2.png'];
 retiredPaths.forEach(function (relative) {

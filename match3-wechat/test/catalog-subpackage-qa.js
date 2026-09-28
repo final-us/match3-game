@@ -106,16 +106,15 @@ function canvasTrace() {
 }
 
 (async function run() {
-    // Main preload must stay independent of every catalog illustration.
+    // All portrait art and masks stay in the subpackage; only the entry icon preloads.
     {
         const clock = timers(), wx = wxHarness();
         const api = loadAssets(wx.wx, clock);
         const mainKeys = Object.keys(api.ASSETS);
         const catalogKeys = Object.keys(api.CATALOG_ASSETS);
-        assert.strictEqual(catalogKeys.length, 16, 'all sixteen growth images belong in the catalog subpackage');
-        assert.deepStrictEqual(mainKeys.filter(key => key.startsWith('catalog')).sort(), [
-            'catalogIcon', 'catalogPortraits'
-        ], 'main preload catalog set must contain only the atlas and entry icon');
+        assert.strictEqual(catalogKeys.length, 21, 'sixteen growth images, initial atlas and four masks belong in the catalog subpackage');
+        assert.deepStrictEqual(mainKeys.filter(key => key.startsWith('catalog')), ['catalogIcon'],
+            'main preload catalog set must contain only the entry icon');
         assert(catalogKeys.every(key => !mainKeys.includes(key)), 'main and catalog asset registries must be disjoint');
         api.preload();
         assert.strictEqual(wx.createCount, mainKeys.length, 'main preload must not decode subpackage images');
@@ -347,15 +346,22 @@ function canvasTrace() {
         }
     }
 
-    // Registry paths are real decoded JPEGs inside the declared native subpackage.
+    // Registry paths contain valid JPEGs/alpha PNGs inside the native subpackage.
     const packageConfig = JSON.parse(fs.readFileSync(path.join(root, 'game.json'), 'utf8'));
     assert(packageConfig.subpackages.some(item => item.name === 'catalog' && item.root === 'catalog/'));
     for (const [key, relative] of Object.entries(realAssets.CATALOG_ASSETS)) {
         assert(relative.startsWith('catalog/'), key + ' must point into the catalog subpackage');
         const file = path.join(root, relative);
         assert(fs.existsSync(file), key + ' is missing: ' + relative);
-        const size = jpegSize(file);
-        assert(size.width > 0 && size.height > 0, key + ' must be a decodable JPEG');
+        if (relative.endsWith('.png')) {
+            const data = fs.readFileSync(file);
+            assert(data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), key + ' must be PNG');
+            assert(data.readUInt32BE(16) > 0 && data.readUInt32BE(20) > 0, key + ' must have dimensions');
+            assert([4, 6].includes(data[25]), key + ' must preserve its alpha mask');
+        } else {
+            const size = jpegSize(file);
+            assert(size.width > 0 && size.height > 0, key + ' must be a decodable JPEG');
+        }
     }
 
     console.log('catalog subpackage independent QA passed');

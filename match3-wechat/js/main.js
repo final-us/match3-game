@@ -30,6 +30,8 @@ const retentionPreview = require('./platform/retention-preview');
 const retentionClient = require('./platform/retention-client');
 const CatalogUI = require('./render/catalog-ui');
 const catalogPreview = require('./platform/catalog-preview');
+const catalogClient = require('./platform/catalog-client');
+const releaseFeatures = require('./core/release-features');
 const CompanionUI = require('./render/companion-ui');
 const companionDisplay = require('./platform/companion');
 
@@ -156,14 +158,24 @@ class Main {
         this.result = null;
         this.menuButtons = null;
         this.menuBattlePress = null;
-        this.catalogPreviewEnabled = catalogPreview.isEnabled(wx);
+        this.catalogPreviewEnabled = releaseFeatures.enabled(wx);
         this.catalogPreview = null;
-        this.companion = this.catalogPreviewEnabled ? companionDisplay.create(wx) : null;
+        const catalogSample=!!(options && options.catalogSample);
+        this.companion = catalogSample ? companionDisplay.create(wx) : null;
+        this.catalog = this.catalogPreviewEnabled && !catalogSample ? catalogClient.create(wx,cloudBattle.call,model=>{
+            if(this.companionOwner!==model.owner){
+                this.companionOwner=model.owner;
+                this.companion=companionDisplay.create(wx,'match3_companion_display_v2_'+model.owner);
+            }
+            if(this.companion.selection && !model.owned.includes(this.companion.selection.id))this.companion.restoreDefault();
+            if(this.companion.selection)assets.loadCatalog();
+        }) : null;
+        if(this.catalog)this.catalogPreview=this.catalog.model;
         this.companionView = null; this.companionTouch = null; this.companionButtons = null;
         if(this.companion && this.companion.selection)assets.loadCatalog();
         this.catalogButtons = null;
         this.catalogTouch = null;
-        this.retentionPreviewEnabled = retentionPreview.isEnabled(wx);
+        this.retentionPreviewEnabled = releaseFeatures.enabled(wx);
         this.retentionPreview = null;
         this.retentionButtons = null;
         this.retentionTouch = null;
@@ -211,6 +223,7 @@ class Main {
         // 初始化云开发（云函数对战）
         cloudBattle.init();
         if(this.retention)this.retention.sync();
+        if(this.catalog)this.catalog.sync();
 
         // 监听小游戏从后台回到前台（好友点卡片进入时拿参数）
         if (wx.onShow) {
@@ -1345,6 +1358,7 @@ class Main {
     handleShow(res) {
         this.lastTime = Date.now();
         if(this.retention)this.retention.sync();
+        if(this.catalog && (this.state==='menu'||this.state==='catalog_preview'))this.catalog.sync();
         if (this.state === 'daily_detail') this.loadDailyInfo();
         if (this.state === 'playing' && this.core && !this.guide) this.core.resumeTimer();
 
@@ -1761,6 +1775,10 @@ class Main {
         this.catalogButtons = null; this.catalogTouch = null;
         this.state = 'catalog_preview';
         this.loadCatalogResources();
+        if(this.catalog){
+            const ready=this.retention?this.retention.sync():Promise.resolve();
+            ready.then(()=>this.catalog.sync());
+        }
     }
 
     loadCatalogResources() {
@@ -1799,7 +1817,7 @@ class Main {
             this.catalogButtons=null;return;
         }
         if (t.action === 'retry-assets') { this.loadCatalogResources(); return; }
-        const navigation = catalogPreview.activate(this.catalogPreview,t.action);
+        const navigation = this.catalog ? this.catalog.activate(t.action) : catalogPreview.activate(this.catalogPreview,t.action);
         this.catalogButtons = null;
         if (navigation === 'close') this.state = 'menu';
         else if (navigation === 'play') this.state = 'menu';

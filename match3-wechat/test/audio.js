@@ -276,7 +276,8 @@ test('单人与PvP成功交换和补棋静音，保留动画及无效交换提�
             assert.strictEqual(swaps[0][1], to);
             assert.strictEqual(wx._context.sourceStarts.length, 0, mode + '成功交换不得播放音效');
             assert.strictEqual(wx._context.oscillatorCount, 0, mode + '成功交换不得使用合成音效');
-            const payload = { combo: 1, generated: [], triggeredSpecials: [], iceHits: [], jellyHits: [] };
+            // Match the GameCore callback contract, including PvP retention counters.
+            const payload = { removed: [], score: 0, combo: 1, generated: [], triggeredSpecials: [], iceHits: [], jellyHits: [] };
             assert.strictEqual(callbacks.onMatch(payload), animationResult, mode + '消除动画返回值丢失');
             const filled = { filled: [{ row: 0, column: 0 }] };
             assert.strictEqual(callbacks.onFill(filled), animationResult, mode + '补棋动画返回值丢失');

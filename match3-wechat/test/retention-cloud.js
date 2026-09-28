@@ -60,7 +60,10 @@ async function completedDaily(openid, date, runId) {
     assert.deepStrictEqual(raced[1].state.taskProgress, [1, 2, 80]);
     assert.strictEqual((await service.info('alice')).state.activity, 100);
     assert.strictEqual(Object.values(docs.retention_events).filter(function (value) { return value.owner === service.ownerId('alice'); }).length, 2);
-    assert.strictEqual((await record('alice', solo('forged-extra', 80))).eventStatus, 'capped', 'completed day must bound forged event persistence');
+    assert.strictEqual((await record('alice', solo('third-for-fish', 80))).eventStatus, 'recorded', 'third game still records fish after coin tasks complete');
+    assert.strictEqual((await service.catalogRequest('alice','info')).state.fish,2);
+    assert.strictEqual((await service.info('alice')).state.activity,100,'third game adds no task activity');
+    assert.strictEqual((await record('alice', solo('forged-extra', 80))).eventStatus, 'capped', 'completed coin and fish day must bound forged event persistence');
 
     const staleSign = await service.sign('alice', { date: '2026-09-20' });
     assert.strictEqual(staleSign.eventStatus, 'expired');
@@ -100,6 +103,30 @@ async function completedDaily(openid, date, runId) {
     assert.strictEqual(Object.values(docs.retention_battle_evidence).find(function (value) {
         return value.owner === service.ownerId('pvp-good');
     }).score, 10, 'later rematch state overwrote stable round proof');
+
+    // One shared fish allowance across solo, replay-verified daily and server-proven PvP.
+    const mixed = 'catalog-mixed';
+    const growth = async function () { return (await service.catalogRequest(mixed, 'info')).state; };
+    await record(mixed, solo('mixed-first', 80));
+    assert.strictEqual((await growth()).fish, 1);
+    const mixedDaily = await completedDaily(mixed, retention.beijingDate(time), 'D12345678cccccccccccccccc');
+    await record(mixed, mixedDaily);
+    assert.strictEqual((await growth()).roundsToday, 2);
+    assert.strictEqual((await growth()).fish, 1, 'daily must not restart its own fish allowance');
+    const mixedRoomId = 'R12345678cccccccccc';
+    const mixedRoom = { protocolVersion: 2, retentionEnabled: true, status: 'finished', finishReason: 'leave', roundId: 1,
+        finishedAt: time, players: [{ openid: mixed, score: 10 }, { openid: 'mixed-quit', score: 0 }] };
+    await db.runTransaction(function (tx) { return service.captureBattleEvidence(tx, mixedRoom, mixedRoomId, 'mixed-quit'); });
+    const mixedPvp = { id: 'pvp:' + mixedRoomId + ':1', mode: 'pvp', roomId: mixedRoomId, roundId: 1, cleared: 0 };
+    assert.strictEqual((await record(mixed, mixedPvp)).ok, true);
+    const mixedState = await growth();
+    assert.strictEqual(mixedState.days, 1);
+    assert.strictEqual(mixedState.roundsToday, 3);
+    assert.strictEqual(mixedState.fish, 2);
+    await record(mixed, mixedDaily); await record(mixed, mixedPvp);
+    assert.deepStrictEqual(await growth(), mixedState, 'cross-mode retries must not repeat fish or active days');
+    assert.strictEqual((await record(mixed, solo('mixed-fourth', 80))).eventStatus, 'capped');
+    assert.strictEqual((await growth()).fish, 2);
 
     // Complete five active days to reach every weekly chest, including day-7 and next-cycle boundaries.
     time = Date.UTC(2026, 8, 21, 4, 0, 0);

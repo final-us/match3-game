@@ -57,14 +57,28 @@ function frame(ctx,screen,r,tone) {
     ctx.strokeStyle='rgba(255,255,255,.92)';ctx.lineWidth=1;arch(ctx,r.x+4,r.y+4,r.w-8,r.h-8);ctx.stroke();
     ctx.restore();
 }
-function portrait(ctx,cat,r) {
-    const img=assets.get('catalogPortraits');
-    if(!img || !img.width || !img.height) return false;
+function portraitRect(cat,r,img) {
     const c=cat.crop,sx=img.width/700,sy=img.height/776;
     const scale=Math.min(r.w/(c[2]*sx),r.h/(c[3]*sy));
     const w=c[2]*sx*scale,h=c[3]*sy*scale;
+    return {x:r.x+(r.w-w)/2,y:r.y+(r.h-h)/2,w,h};
+}
+function portrait(ctx,cat,r) {
+    const img=assets.get('catalogPortraits');
+    if(!img || !img.width || !img.height) return false;
+    const c=cat.crop,sx=img.width/700,sy=img.height/776,draw=portraitRect(cat,r,img);
     ctx.save();round(ctx,r.x,r.y,r.w,r.h,13);ctx.clip();
-    ctx.drawImage(img,c[0]*sx,c[1]*sy,c[2]*sx,c[3]*sy,r.x+(r.w-w)/2,r.y+(r.h-h)/2,w,h);ctx.restore();return true;
+    ctx.drawImage(img,c[0]*sx,c[1]*sy,c[2]*sx,c[3]*sy,draw.x,draw.y,draw.w,draw.h);ctx.restore();return true;
+}
+function lockedArt(ctx,cat,r) {
+    const image=assets.getLockedPortrait(cat);
+    ctx.save();round(ctx,r.x,r.y,r.w,r.h,13);ctx.clip();
+    ctx.fillStyle='#DADBE5';ctx.fillRect(r.x,r.y,r.w,r.h);
+    if(image) {
+        const scale=Math.min(r.w/image.width,r.h/image.height),w=image.width*scale,h=image.height*scale;
+        ctx.drawImage(image,r.x+(r.w-w)/2,r.y+(r.h-h)/2,w,h);
+    }
+    ctx.restore();
 }
 function button(ctx,r,str,tone) {
     const colors=tone==='lavender'?['#F7F0FF','#C9B3E8','#E0D1F4']:['#F0EDF5','#D7D1E2','#E4DFED'];
@@ -111,7 +125,10 @@ function drawCard(ctx,screen,model,cat,r,buttons,v,companion) {
     frame(ctx,screen,r,cat.tone);
     const art={x:r.x+5,y:r.y+13,w:r.w-10,h:r.h-117};
     const growth=catalog.growthFor(model,cat.id);
-    if(art.y+art.h>=v.y&&art.y<=v.y+v.h)stageArt(ctx,cat,art,growth.enabled&&hasStageArt(cat,growth.displayStage)?growth.displayStage:0);
+    if(art.y+art.h>=v.y&&art.y<=v.y+v.h){
+        stageArt(ctx,cat,art,growth.enabled&&hasStageArt(cat,growth.displayStage)?growth.displayStage:0);
+        if(state==='locked')lockedArt(ctx,cat,art);
+    }
     ctx.save();ctx.fillStyle='#FFF5F0';ctx.beginPath();ctx.arc(r.x+r.w/2,r.y+3,9,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=cat.tone;ctx.lineWidth=1;ctx.stroke();paw(ctx,r.x+r.w/2,r.y+3,11,cat.tone);ctx.restore();
     const ty=r.y+r.h-94;
@@ -122,10 +139,10 @@ function drawCard(ctx,screen,model,cat,r,buttons,v,companion) {
         for(let i=0;i<5;i++)paw(ctx,r.x+r.w/2-34+i*17,ty+41,11,i<=stage?'#D88C9F':'#C8C5D0');
     } else if(state==='adoptable') {
         label(ctx,model.owned.length?'可以领养啦':'选一只陪伴你',r.x+r.w/2,ty+22,r.w-10,11,'#77608F');
-        label(ctx,model.owned.length?'累计陪伴 7 天':'首次免费领养',r.x+r.w/2,ty+40,r.w-10,10,SOFT);
+        label(ctx,model.real?'已达领养条件':model.owned.length?'累计陪伴 7 天':'首次免费领养',r.x+r.w/2,ty+40,r.w-10,10,SOFT);
     } else {
         lock(ctx,r.x+r.w/2-28,ty+25);label(ctx,'未解锁',r.x+r.w/2+10,ty+25,r.w-45,11,SOFT);
-        label(ctx,model.owned.length===1?catalog.condition(model):'解锁条件待确定',r.x+r.w/2,ty+42,r.w-10,9,SOFT);
+        label(ctx,model.real||model.owned.length===1?catalog.condition(model):'解锁条件待确定',r.x+r.w/2,ty+42,r.w-10,11,SOFT);
     }
     const action={x:r.x+10,y:r.y+r.h-45,w:r.w-20,h:40};
     button(ctx,action,state==='owned'?'去陪伴':state==='adoptable'?'查看并领养':'查看条件',state==='locked'?'muted':'lavender');
@@ -149,7 +166,11 @@ function drawDetail(ctx,screen,model,l,buttons,companion) {
     paw(ctx,x+28,y+15+artH/2,16,'rgba(168,139,191,.3)');
     paw(ctx,x+w-28,y+15+artH/2,16,'rgba(168,139,191,.3)');
     ctx.restore();
-    if(y+15+artH>=l.viewport.y)stageArt(ctx,cat,{x:x+(w-artW)/2,y:y+15,w:artW,h:artH},growth.enabled?growth.displayStage:0);
+    if(y+15+artH>=l.viewport.y){
+        const art={x:x+(w-artW)/2,y:y+15,w:artW,h:artH};
+        stageArt(ctx,cat,art,growth.enabled?growth.displayStage:0);
+        if(state==='locked')lockedArt(ctx,cat,art);
+    }
     const t=y+artH+35;
     label(ctx,cat.name,x+w/2,t,w-24,22,INK,true);
     label(ctx,cat.breed,x+w/2,t+25,w-24,11,SOFT);
@@ -178,8 +199,8 @@ function drawDetail(ctx,screen,model,l,buttons,companion) {
         label(ctx,'其他猫咪保留领养状态',x+w/2,t+121,w-20,11,SOFT);
     } else {
         label(ctx,cat.note,x+w/2,t+49,w-20,11,SOFT);
-        label(ctx,state==='adoptable'?'现在可以免费领养':catalog.condition(model),x+w/2,t+89,w-20,15,INK,true);
-        label(ctx,model.owned.length<2?'累计游玩，不要求连续':'后续规则确定后开放',x+w/2,t+116,w-20,11,SOFT);
+        label(ctx,state==='adoptable'?(model.real?'已达条件，可以领养':'现在可以免费领养'):catalog.condition(model),x+w/2,t+89,w-20,15,INK,true);
+        label(ctx,model.real?'7 / 14 / 21 / 28 天 · 不要求连续':model.owned.length<2?'累计游玩，不要求连续':'后续规则确定后开放',x+w/2,t+116,w-20,11,SOFT);
     }
     if(state==='owned'){
         const by=y+h-48,bw=(w-32)/2;
@@ -206,7 +227,7 @@ function drawOverlay(ctx,screen,model,l) {
         paw(ctx,cx,y+37,30,'#BA97CA');
         label(ctx,'喂给'+cat.name,cx,y+74,w-28,21,INK,true);
         label(ctx,'1 份小鱼干 → 亲密度 +1',cx,y+110,w-28,14,INK);
-        label(ctx,'现有 '+model.fish+' 份 · 仅本次预览有效',cx,y+138,w-28,11,SOFT);
+        label(ctx,'现有 '+model.fish+' 份 · '+(model.real?'确认后保存云端':'仅本次预览有效'),cx,y+138,w-28,12,SOFT);
         add('confirm-feed','确认喂食',y+163,'lavender');
         add('dismiss','再等等',y+212,'muted');
     }else if(kind==='food'){
@@ -215,7 +236,7 @@ function drawOverlay(ctx,screen,model,l) {
         label(ctx,'每天第 1 局和第 3 局有效完成',cx,y+111,w-24,12,INK);
         label(ctx,'各获得 1 份，每天最多 2 份',cx,y+135,w-24,12,INK);
         label(ctx,'主动退出不计入 · 食物不会跨日清空',cx,y+159,w-22,10,SOFT);
-        label(ctx,'本样板通过页面外的演示工具模拟获取',cx,y+182,w-18,10,SOFT);
+        label(ctx,model.real?'单人、每日挑战与好友对战共享次数':'本样板通过页面外的演示工具模拟获取',cx,y+182,w-18,11,SOFT);
         add('go-play','回首页玩一局',y+198,'lavender');
         add('dismiss','再陪一会儿',y+247,'muted');
     }else if(artMode){
@@ -272,7 +293,7 @@ function draw(ctx,screen,model,resources,companion) {
     ctx.fillStyle='rgba(239,237,255,.78)';round(ctx,statX,statY,statW,28,14);ctx.fill();
     label(ctx,'已领养 '+model.owned.length+'/4',statX+62,statY+14,111,12,INK);
     fish(ctx,l.x+l.w-65,statY+14,20);label(ctx,String(model.fish),l.x+l.w-33,statY+14,32,13,INK,true);
-    label(ctx,'界面预览 · 领养与进度仅本次有效',screen.width/2,l.footer,screen.width-24,10,'#FFF7EB');
+    label(ctx,model.real?'有效结算累计活跃日 · 领养与成长保存云端':'界面预览 · 领养与进度仅本次有效',screen.width/2,l.footer,screen.width-24,11,'#FFF7EB');
     if(resources && resources.status!=='ready') {
         const y=v.y+Math.max(8,(v.h-175)/2),failed=resources.status==='error';
         moon.panel(ctx,screen,l.x,y,l.w,166);
@@ -285,9 +306,9 @@ function draw(ctx,screen,model,resources,companion) {
         model.offset=0;
         const y=v.y+Math.max(8,(v.h-175)/2);
         moon.panel(ctx,screen,l.x,y,l.w,166);
-        const titles={loading:'正在寻找猫咪…',offline:'暂时没有连接',error:'暂时无法读取图鉴'};
+        const titles={loading:'正在同步猫咪进度…',pending:'正在确认操作…',offline:'暂时没有连接',error:'暂时无法读取图鉴'};
         label(ctx,titles[model.status]||titles.error,screen.width/2,y+39,l.w-28,18,INK,true);
-        label(ctx,'当前为界面状态演示',screen.width/2,y+72,l.w-24,12,SOFT);
+        label(ctx,model.real?(model.message||'云端确认前不会扣除小鱼干'):'当前为界面状态演示',screen.width/2,y+72,l.w-24,12,SOFT);
         if(model.status==='offline'||model.status==='error') {
             buttons.retry={x:l.x+24,y:y+102,w:l.w-48,h:44};button(ctx,buttons.retry,'重试','lavender');
         }
@@ -304,13 +325,13 @@ function draw(ctx,screen,model,resources,companion) {
         const growth=catalog.growthFor(model,model.selectedId),next=catalog.stages[growth.stage+1];
         const condition=growth.enabled?(next?catalog.stages[growth.stage].name+' · '+growth.affection+'/'+next.threshold+' → '+next.name:'挚友 · 已满级，不再消耗小鱼干'):state==='owned'?'已领养 · 本轮先体验第一只猫':catalog.condition(model);
         label(ctx,condition,screen.width/2,v.y+v.h+12,l.w-12,11,INK);
-        if(state==='adoptable'){button(ctx,r,'免费领养','lavender');buttons.adopt=r;}
+        if(state==='adoptable'){button(ctx,r,model.real?'领养这只猫':'免费领养','lavender');buttons.adopt=r;}
         else if(growth.enabled){
             const action=next?'feed':'interaction';buttons[action]=r;
             button(ctx,r,next?(model.fish?'喂食 · 1 份小鱼干':'小鱼干不足 · 看看如何获取'):'摸摸它 · 免费互动','lavender');
         }
         else if(state==='owned')button(ctx,r,'其他猫咪成长 · 后续开放','muted');
-        else button(ctx,r,model.owned.length<2?'陪伴满 7 天即可领养':'解锁规则待确定','muted');
+        else button(ctx,r,model.real?'活跃满 '+((model.owned.length+1)*7)+' 天即可领养':model.owned.length<2?'陪伴满 7 天即可领养':'解锁规则待确定','muted');
     }
     if(buttons.maxScroll>0){
         const th=Math.max(28,v.h*v.h/contentH),ty=v.y+(v.h-th)*model.offset/buttons.maxScroll;

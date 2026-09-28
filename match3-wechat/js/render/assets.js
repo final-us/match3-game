@@ -6,8 +6,7 @@
  */
 
 const ASSETS = {
-    // Accepted v8 concept sampled only for its four illustration regions.
-    catalogPortraits: 'res/catalog/portraits-atlas.jpg',
+    // Only the catalog entry icon is startup-critical.
     catalogIcon: 'res/home/catalog-album.png',
     // 首页（月夜花园方向，无文字背景，动态 UI 由 Canvas 绘制）
     homeBackground: 'res/home/moonlit-garden-bg.jpg',
@@ -46,6 +45,11 @@ const ASSETS = {
 
 // Loaded only after the native catalog subpackage is ready.
 const CATALOG_ASSETS = {
+    catalogPortraits: 'catalog/portraits-atlas.jpg',
+    catalogCreamSilhouette: 'catalog/cream-silhouette.png',
+    catalogRagdollSilhouette: 'catalog/ragdoll-silhouette.png',
+    catalogSiameseSilhouette: 'catalog/siamese-silhouette.png',
+    catalogCalicoSilhouette: 'catalog/calico-silhouette.png',
     catalogNaitangFamiliar: 'catalog/naitang-familiar.jpg',
     catalogNaitangTrust: 'catalog/naitang-trust.jpg',
     catalogNaitangAttachment: 'catalog/naitang-attachment.jpg',
@@ -65,6 +69,7 @@ const CATALOG_ASSETS = {
 };
 
 const images = {};
+const lockedPortraits = {};
 let loadedCount = 0;
 const total = Object.keys(ASSETS).length;
 const isWx = typeof wx !== 'undefined' && wx.createImage;
@@ -94,6 +99,15 @@ function preload(onAllLoaded) {
 }
 
 function get(key) { return images[key]; }
+
+function getLockedPortrait(cat) {
+    if(lockedPortraits[cat.id])return lockedPortraits[cat.id];
+    const maskKey={cream:'catalogCreamSilhouette',ragdoll:'catalogRagdollSilhouette',siamese:'catalogSiameseSilhouette',calico:'catalogCalicoSilhouette'}[cat.id];
+    const image=images.catalogPortraits,mask=images[maskKey];
+    if(!isWx || !image || !image.width || !mask || !mask.width)return null;
+    const createLockedArt=require('./catalog-locked-art');
+    return lockedPortraits[cat.id]=createLockedArt(image,mask,cat.crop,()=>wx.createCanvas());
+}
 
 function isReady() { return loadedCount === total; }
 
@@ -171,6 +185,7 @@ module.exports = {
     getCatalogState: getCatalogState,
     preload: preload,
     get: get,
+    getLockedPortrait: getLockedPortrait,
     isReady: isReady,
     getProgress: getProgress
 };

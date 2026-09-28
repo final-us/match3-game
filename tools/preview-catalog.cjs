@@ -11,6 +11,8 @@ const path = require('path');
 const root = path.resolve(__dirname, '../match3-wechat');
 const out = path.resolve(__dirname, '../assets/_incoming/cat-catalog-v1/screens');
 const sources = Object.create(null);
+const {createBattleLocal}=require('../match3-wechat/test/helpers/battle-local');
+let serviceTime=Date.UTC(2026,8,27,4),service=createBattleLocal(()=>serviceTime),activeDays=0;
 
 function collect(file) {
     const id = path.relative(root, file).replaceAll('\\', '/');
@@ -48,6 +50,7 @@ button:hover{background:#fff2fa}.sizes a{margin-right:7px;color:#4054a1}
 
 const fixture = `
 const sources=${packedSources},cache=Object.create(null),params=new URLSearchParams(location.search),events={};
+const functional=params.get('live')==='1';
 const width=Number(params.get('width'))||390,height=Number(params.get('height'))||844;
 const canvas=document.querySelector('canvas'),statusLine=document.querySelector('#status');
 canvas.style.width=width+'px';canvas.style.height=height+'px';
@@ -55,24 +58,28 @@ const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
 const initialStorage={match3_music_enabled_v1:false,match3_sfx_enabled_v1:false,match3_coin_v1:2460,match3_onboarding_v1:{pvp_wait:true}};
 const storedCompanion=sessionStorage.getItem('catalog-preview-companion');
 if(storedCompanion)initialStorage.match3_companion_display_v1=JSON.parse(storedCompanion);
-const storage=clone(initialStorage),storageWrites=[],cloudAttempts=[],notices=[];
+const storage=functional?JSON.parse(sessionStorage.getItem('catalog-live-storage')||JSON.stringify(initialStorage)):clone(initialStorage),storageWrites=[],cloudAttempts=[],notices=[];
 window.fixture={width,height,storage,storageWrites,cloudAttempts,notices,events};
+// Reproducible cold-start resource states for local-only visual acceptance.
+fixture.holdPackage=params.get('package')==='hold';
 window.wx={
- createCanvas:()=>canvas,createImage:()=>new Image(),
- loadSubpackage:options=>{fixture.subpackageRequests=(fixture.subpackageRequests||0)+1;fixture.packageRequest=options;if(!fixture.holdPackage)setTimeout(()=>options.success(),50);return {onProgressUpdate(){}};},
+ createCanvas:()=>{if(!fixture.mainCanvasCreated){fixture.mainCanvasCreated=true;return canvas;}return document.createElement('canvas');},createImage:()=>new Image(),
+ loadSubpackage:options=>{fixture.subpackageRequests=(fixture.subpackageRequests||0)+1;fixture.packageRequest=options;if(!fixture.holdPackage)setTimeout(()=>params.get('package')==='fail'?options.fail():options.success(),50);return {onProgressUpdate(){}};},
  getStorageSync:key=>key in storage?clone(storage[key]):'',
- setStorageSync:(key,value)=>{if(key==='match3_companion_display_v1'){if(fixture.failCompanionWrite)throw Error('fixture write failure');sessionStorage.setItem('catalog-preview-companion',JSON.stringify(value));}storage[key]=clone(value);storageWrites.push({type:'set',key,value:clone(value)});},
+ setStorageSync:(key,value)=>{if(key==='match3_companion_display_v1'){if(fixture.failCompanionWrite)throw Error('fixture write failure');sessionStorage.setItem('catalog-preview-companion',JSON.stringify(value));}storage[key]=clone(value);if(functional)sessionStorage.setItem('catalog-live-storage',JSON.stringify(storage));storageWrites.push({type:'set',key,value:clone(value)});},
  removeStorageSync:key=>{delete storage[key];storageWrites.push({type:'remove',key});},
  getSystemInfoSync:()=>({windowWidth:width,windowHeight:height,pixelRatio:2,platform:'devtools',safeArea:{top:47,bottom:height-34,left:0,right:width}}),
  getMenuButtonBoundingClientRect:()=>({top:51,bottom:83,left:width-92,right:width-8,width:84,height:32}),
- getAccountInfoSync:()=>({miniProgram:{envVersion:'develop'}}),
+ getAccountInfoSync:()=>({miniProgram:{envVersion:functional?'release':'develop'}}),
  onTouchStart:fn=>events.start=fn,onTouchMove:fn=>events.move=fn,onTouchEnd:fn=>events.end=fn,onTouchCancel:fn=>events.cancel=fn,
  onShow:fn=>events.show=fn,onHide:fn=>events.hide=fn,onError:()=>{},onUnhandledRejection:()=>{},
  showToast:options=>{const message=String(options&&options.title||'');notices.push(message);statusLine.textContent='本地提示：'+message;},
  showModal:options=>{statusLine.textContent='本地提示：'+String(options&&options.content||'');},
  showShareMenu:()=>{},onShareAppMessage:()=>{},
  createInnerAudioContext:()=>({play(){},pause(){},stop(){},destroy(){},onPlay(){},onError(){},onEnded(){},set src(value){},set loop(value){},set volume(value){}}),
- cloud:{init:()=>{},callFunction:options=>{const payload=clone(options&&options.data||{});cloudAttempts.push(payload);const error={errMsg:'local catalog preview rejects all cloud requests'};if(options&&options.fail)setTimeout(()=>options.fail(error),0);return Promise.resolve();}}
+ cloud:{init:()=>{},callFunction:options=>{const payload=clone(options&&options.data||{});cloudAttempts.push(payload);
+  if(functional)return fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json()).then(result=>{if(fixture.loseReply){fixture.loseReply=false;throw Error('injected lost response');}options.success&&options.success({result});}).catch(error=>options.fail&&options.fail(error));
+  const error={errMsg:'local catalog preview rejects all cloud requests'};if(options&&options.fail)setTimeout(()=>options.fail(error),0);return Promise.resolve();}}
 };
 function load(id){if(cache[id])return cache[id].exports;const module=cache[id]={exports:{}};
  const req=relative=>{const parts=id.split('/');parts.pop();relative.split('/').forEach(part=>part==='..'?parts.pop():part!=='.'&&parts.push(part));return load(parts.join('/')+'.js');};
@@ -83,7 +90,20 @@ canvas.onpointerdown=event=>{canvas.setPointerCapture(event.pointerId);events.st
 canvas.onpointermove=event=>{if(event.buttons&&events.move)events.move({touches:[point(event)]});};
 canvas.onpointerup=event=>{events.end&&events.end({changedTouches:[point(event)]});};
 canvas.onpointercancel=event=>{events.cancel&&events.cancel({changedTouches:[point(event)]});};
-window.app=new (load('js/main.js'))({retentionSample:true});
+window.app=new (load('js/main.js'))({retentionSample:!functional,catalogSample:!functional});
+if(functional){
+ document.querySelector('#toolbar').innerHTML='<strong>正式逻辑联调：真实Main与云函数代码＋隔离内存数据库。不是微信云端，不读取玩家存档。</strong><div class="row"><button id="real-open">打开图鉴</button><button id="real-days">模拟7个活跃日</button><button id="real-lost">下次请求丢失回包</button><button id="real-reset">重置隔离测试数据</button><button id="real-home">回首页</button><span id="real-status"></span></div>';
+ document.querySelector('#real-open').onclick=()=>app.openCatalogPreview();
+ document.querySelector('#real-home').onclick=()=>{app.state='menu';};
+ document.querySelector('#real-days').onclick=async()=>{await fetch('/advance',{method:'POST'});await app.retention.sync();await app.catalog.sync();document.querySelector('#real-status').textContent='云端累计 '+app.catalog.model.days+' 天';};
+ document.querySelector('#real-lost').onclick=()=>{fixture.loseReply=true;document.querySelector('#real-status').textContent='仅下一次回包丢失';};
+ document.querySelector('#real-reset').onclick=async()=>{await fetch('/reset',{method:'POST'});sessionStorage.removeItem('catalog-live-storage');location.reload();};
+ const controls=document.createElement('div');controls.className='row';document.querySelector('#toolbar').append(controls);
+ for(const [label,action] of [['查看奶糖','cat:cream'],['查看团子','cat:ragdoll'],['领养','adopt'],['喂食','feed'],['确认喂食','confirm-feed'],['返回','back'],['重试确认','retry']]){
+  const b=document.createElement('button');b.textContent=label;b.onclick=()=>tapRect(app.catalogButtons&&app.catalogButtons[action]);controls.append(b);
+ }
+ setInterval(()=>{canvas.dataset.controls=JSON.stringify(app.catalogButtons||{});document.querySelector('#real-status').textContent='状态 '+app.catalog.model.status+' · '+app.catalog.model.days+'天 · 请求 '+cloudAttempts.length;},250);
+}
 const catalogModel=load('js/platform/catalog-preview.js');
 function replaceCatalogModel(next){if(next&&typeof next==='object')app.catalogPreview=next;app.catalogButtons=null;app.catalogTouch=null;return clone(app.catalogPreview);}
 window.applyPreset=name=>replaceCatalogModel(catalogModel.create(name));
@@ -93,6 +113,17 @@ window.catalogStatus=id=>catalogModel.statusFor(app.catalogPreview,id);
 window.activateCatalog=action=>replaceCatalogModel(catalogModel.activate(app.catalogPreview,action));
 window.simulateRound=completed=>replaceCatalogModel(catalogModel.completeRound(app.catalogPreview,completed));
 window.simulateNextDay=()=>replaceCatalogModel(catalogModel.nextDay(app.catalogPreview));
+if(!functional){
+const scene=params.get('scene');
+if(scene){
+ applyPreset(params.get('preset')||(scene==='catalog'?'locked':'growth'));
+ if(scene==='catalog')app.openCatalogPreview();
+ else if(scene==='companion-home'||scene==='companion-story'){
+  app.companion.select(app.catalogPreview,'cream');
+  if(scene==='companion-story')app.openCompanion('story');
+  else load('js/render/assets.js').loadCatalog();
+ }
+}
 document.querySelector('#open').onclick=()=>{if(!openCatalog())statusLine.textContent='请先返回首页，或等待真实 Main 提供 menuButtons.catalog。';};
 document.querySelector('#reset').onclick=()=>{sessionStorage.removeItem('catalog-preview-companion');location.reload();};
 document.querySelector('#hide-show').onclick=()=>{events.hide&&events.hide();events.show&&events.show();};
@@ -101,6 +132,7 @@ document.querySelector('#round-win').onclick=()=>simulateRound(true);
 document.querySelector('#round-exit').onclick=()=>simulateRound(false);
 document.querySelector('#next-day').onclick=()=>simulateNextDay();
 setInterval(()=>{statusLine.textContent='真实 Main Canvas｜'+width+'×'+height+'｜状态 '+app.state+'｜临时图鉴 '+JSON.stringify(app.catalogPreview&&app.catalogPreview.owned||[])+'｜存储写入 '+storageWrites.length+'｜云请求已拒绝 '+cloudAttempts.length;},250);
+}
 `;
 
 function contentType(file) {
@@ -108,8 +140,28 @@ function contentType(file) {
     return ({ '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.json': 'application/json; charset=utf-8' })[ext] || 'application/octet-stream';
 }
 
-const server = http.createServer((request, response) => {
+const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
+    if(request.method==='POST'&&['/rpc','/advance','/reset'].includes(url.pathname)){
+        try{
+            // Local-only synthetic actor and store; no external SDK is constructed.
+            let result;
+            if(url.pathname==='/reset'){serviceTime=Date.UTC(2026,8,27,4);activeDays=0;service=createBattleLocal(()=>serviceTime);result={ok:true};}
+            else if(url.pathname==='/advance'){
+                for(let day=0;day<7;day++){
+                    serviceTime=Date.UTC(2026,8,27+activeDays,4);activeDays++;
+                    const date=new Date(serviceTime+8*3600000).toISOString().slice(0,10);
+                    for(let i=0;i<3;i++)await service.call('catalog-local',{action:'retentionRecord',event:{id:'solo:preview:'+activeDays+':'+i,mode:'solo',date,completed:true,validMove:true,levelId:1,cleared:80}});
+                }
+                result={ok:true};
+            }else{
+                let body='';for await(const chunk of request){body+=chunk;if(body.length>32000)throw Error('too large');}
+                result=await service.call('catalog-local',JSON.parse(body));
+            }
+            response.setHeader('Content-Type','application/json');response.end(JSON.stringify(result));
+        }catch(error){response.statusCode=500;response.end(JSON.stringify({ok:false,err:'local fixture error'}));}
+        return;
+    }
     if (url.pathname === '/') {
         response.setHeader('Content-Type', 'text/html; charset=utf-8');
         response.end(html);

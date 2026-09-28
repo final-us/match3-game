@@ -98,6 +98,47 @@ function appWith(display,model){
 }
 
 try{
+    // Initial art now shares the existing loading/error/retry contract, including cold-start home.
+    for (const [width,height,homeHeight] of [[320,568,100],[390,844,260],[430,932,300]]) {
+        const sized=Object.assign({},screen,{width,height});
+        const saved={version:1,selection:{id:'cream',stage:0,unlocked:0}};
+        const api=storage(saved,{value:false}),display=companionModule.create(api);
+        const model=catalog.create('growth'),app=appWith(display,model);
+        app.screen=sized;
+        const before=JSON.stringify(model),selection=JSON.stringify(display.selection);
+        for (const status of ['idle','loading','error','ready']) {
+            const resources={status,progress:40,message:status==='error'?'下载失败，请检查网络后重试':''};
+            stageCalls=[];labels=[];
+            const home=CompanionUI.drawHome(context().ctx,sized,{y:180,h:homeHeight},display.selection,resources);
+            assert.strictEqual(stageCalls.length,status==='ready'?1:0,'initial home art must wait: '+status);
+            assert(home.companionStory&&home.companionSwitch,'loading home keeps recovery/navigation controls');
+            assertTargets(home,'initial home '+width);
+            const view={kind:'story',catId:'cream',stage:0,unlocked:0,returnState:'menu',offset:0};
+            stageCalls=[];
+            const buttons=CompanionUI.draw(context().ctx,sized,view,model,display,resources);
+            assert.strictEqual(stageCalls.length,status==='ready'?1:0,'initial story art must wait: '+status);
+            if(status!=='ready')assert.strictEqual(view.readVisible,false,'unloaded initial story must not be marked read');
+            assert.strictEqual(!!buttons.retry,status==='error');
+            assert(buttons.close,'resource failures must always allow leaving');
+            if(status!=='ready')assert(!buttons.select,'unloaded art must not allow companion selection');
+            stageCalls=[];
+            CompanionUI.draw(context().ctx,sized,{kind:'switch',offset:0},model,display,resources);
+            assert.strictEqual(stageCalls.length,status==='ready'?model.owned.length:0,'switch initial thumbnails must wait');
+        }
+        resourceState={status:'error',progress:0,message:'下载失败'};
+        app.openCompanion('story');
+        app.render();
+        assert.strictEqual(api.writes,0,'failed initial art must not persist read state');
+        const loads=assetFixture.loads;
+        app.companionAction('retry');
+        assert.strictEqual(assetFixture.loads,loads+1,'initial story reuses retry loader');
+        app.companionAction('close');
+        assert.strictEqual(app.state,'menu');
+        assert.strictEqual(JSON.stringify(display.selection),selection,'failure/retry keeps saved companion');
+        assert.strictEqual(JSON.stringify(model),before,'failure/retry cannot alter progression');
+    }
+    resourceState={status:'ready',progress:100,message:''};
+
     // Naitang stage art now follows the same subpackage readiness contract as every other cat.
     for(const key of ['catalogNaitangFamiliar','catalogNaitangTrust','catalogNaitangAttachment','catalogNaitangBestFriend']){
         assert(!Object.prototype.hasOwnProperty.call(assets.ASSETS,key),key+' must not remain in main preload');

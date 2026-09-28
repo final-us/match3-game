@@ -1,6 +1,7 @@
 'use strict';
 
 const dailyEngine = require('./daily-engine/daily-challenge');
+const catalog = require('./catalog');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECEIPT_RETENTION_MS = 35 * DAY_MS;
@@ -156,6 +157,7 @@ function createService(db, crypto, clock) {
         const ref = tx.collection('retention_profiles').doc(profileId(owner));
         const stored = await getData(ref);
         const profile = normalizeProfile(stored, owner, at);
+        profile.catalog = catalog.normalize(profile.catalog, beijingDate(at));
         return { ref: ref, profile: profile };
     }
 
@@ -363,12 +365,13 @@ function createService(db, crypto, clock) {
                 await loaded.ref.set({ data: profile });
                 return { profile: profile, eventStatus: 'expired' };
             }
-            if (profile.day.eventCount >= MAX_EVENTS_PER_DAY || profile.day.tasks.every(Boolean)) {
+            if (profile.day.eventCount >= MAX_EVENTS_PER_DAY || (profile.day.tasks.every(Boolean) && profile.catalog.roundsToday>=3)) {
                 await loaded.ref.set({ data: profile });
                 return { profile: profile, eventStatus: 'capped' };
             }
             const priorGames = profile.day.games; const priorCleared = profile.day.cleared;
             profile.day.eventCount++;
+            catalog.record(profile.catalog);
             profile.day.games = Math.min(2, priorGames + 1);
             profile.day.cleared = Math.min(80, priorCleared + proof.cleared);
             const values = [profile.day.games, profile.day.games, profile.day.cleared];
@@ -452,6 +455,16 @@ function createService(db, crypto, clock) {
         return response(owner, profile, at);
     }
 
+    async function catalogRequest(openid, kind, input) {
+        const at=now(),owner=ownerId(openid);
+        return db.runTransaction(async function(tx){
+            const loaded=await loadProfile(tx,owner,at);
+            const result=kind==='info'?{ok:true}:catalog.change(loaded.profile.catalog,owner,kind,input);
+            if(result.ok)await loaded.ref.set({data:loaded.profile});
+            return Object.assign(result,{state:catalog.publicState(loaded.profile.catalog,owner,at)});
+        });
+    }
+
     async function captureBattleEvidence(tx, room, roomId, quitterOpenid) {
         if (!tx || !room || room.retentionEnabled !== true || room.protocolVersion !== 2 || room.status !== 'finished' ||
             !Number.isSafeInteger(room.roundId) || !Number.isFinite(room.finishedAt) || !Array.isArray(room.players)) return;
@@ -489,7 +502,7 @@ function createService(db, crypto, clock) {
     }
 
     return { info: info, sign: sign, record: record, claim: claim, ack: ack, cleanup: cleanup,
-        captureBattleEvidence: captureBattleEvidence, ownerId: ownerId, battleEvidenceId: battleEvidenceId };
+        catalogRequest:catalogRequest, captureBattleEvidence: captureBattleEvidence, ownerId: ownerId, battleEvidenceId: battleEvidenceId };
 }
 
 module.exports = { createService: createService, beijingDate: beijingDate, weekFor: weekFor };

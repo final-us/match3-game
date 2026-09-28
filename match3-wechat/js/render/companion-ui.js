@@ -13,7 +13,7 @@ function drawHome(ctx,screen,r,selection,resources){
     if(r.h<150){
         const size=Math.min(96,r.h-6),rightX=x+size+12,rightW=width-size-12;
         moon.panel(ctx,screen,x,r.y,width,r.h);
-        if(selection.stage===0||resources.status==='ready')art.stageArt(ctx,cat,{x:x+3,y:r.y+3,w:size,h:size},selection.stage);
+        if(resources.status==='ready')art.stageArt(ctx,cat,{x:x+3,y:r.y+3,w:size,h:size},selection.stage);
         else text(ctx,resources.status==='error'?'原画待重试':'加载中…',x+size/2,r.y+size/2,size-8,11);
         text(ctx,cat.name+'陪伴着你',rightX+rightW/2,r.y+19,rightW-4,12,true);
         const bw=(rightW-8)/2;
@@ -24,7 +24,7 @@ function drawHome(ctx,screen,r,selection,resources){
     const h=Math.max(1,r.h-54),size=Math.min(width,h),ax=(screen.width-size)/2;
     ctx.save();ctx.shadowColor='rgba(47,32,84,.3)';ctx.shadowBlur=12;
     moon.panel(ctx,screen,ax-5,r.y-2,size+10,size+5);ctx.restore();
-    const ready=selection.stage===0||resources.status==='ready';
+    const ready=resources.status==='ready';
     if(ready)art.stageArt(ctx,cat,{x:ax,y:r.y,w:size,h:size},selection.stage);
     else text(ctx,resources.status==='error'?'原画加载失败 · 点击小故事重试':'正在迎接'+cat.name,screen.width/2,r.y+h/2,width,12);
     moon.panel(ctx,screen,x,barY,width,44);
@@ -66,7 +66,7 @@ function drawSwitch(ctx,screen,view,model,companion,resources){
         const growth=owned.includes(cat.id)?catalog.growthFor(model,cat.id):null;
         const stage=current?selected.stage:growth&&growth.enabled?growth.displayStage:0;
         moon.panel(ctx,screen,r.x,r.y,r.w,r.h);
-        if(stage===0||resources.status==='ready')art.stageArt(ctx,cat,{x:r.x+8,y:r.y+7,w:64,h:64},stage);
+        if(resources.status==='ready')art.stageArt(ctx,cat,{x:r.x+8,y:r.y+7,w:64,h:64},stage);
         else text(ctx,resources.status==='error'?'待重试':'加载中',r.x+40,r.y+39,62,10);
         text(ctx,cat.name,r.x+76+(r.w-82)/2,r.y+24,r.w-88,16,true);
         text(ctx,current?(owned.includes(cat.id)?'正在陪伴 · 更换形象':'正在陪伴 · 查看已存故事'):'查看形象与故事',r.x+76+(r.w-82)/2,r.y+53,r.w-88,11);
@@ -86,7 +86,7 @@ function draw(ctx,screen,view,model,companion,resources){
     const x=Math.max(16,(screen.safeLeft||0)+8),w=screen.width-x-Math.max(16,(screen.safeRight||0)+8);
     const top=Math.max(screen.contentTop||0,(screen.safeTop||0)+10,18),bottom=screen.height-(screen.safeBottom||0)-16;
     const buttons={maxScroll:0},cat=catalog.cats.find(c=>c.id===view.catId),stage=view.stage,unlocked=stage<=view.unlocked;
-    const ready=stage===0||resources.status==='ready',owned=model&&model.status==='ready'&&model.owned.includes(cat.id);
+    const ready=resources.status==='ready',owned=model&&model.status==='ready'&&model.owned.includes(cat.id);
     const growth=owned?catalog.growthFor(model,cat.id):null;
     button(ctx,{x,y:top,w:44,h:44},'‹',buttons,'close');
     moon.panel(ctx,screen,x+52,top,w-52,44);

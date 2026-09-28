@@ -28,6 +28,36 @@
 
 ## 当前发布素材
 
+### 最新本地候选（2026-09-29）
+
+本段覆盖下方制作历史中“仅develop样板”“旧原画”“25张活跃图”等旧状态，不等于正式客户端已经上传或发布。当前主包 `ASSETS` 注册27个用途键、26个唯一图片文件；首页/棋盘背景共用一份文件。图鉴 `CATALOG_ASSETS` 共21个文件：16张成长原画、初见图集和4张猫体遮罩。9月29日将初见图集与遮罩原样移入已有catalog分包，共227214字节；不重新生成、编码或改变画质，首页图鉴入口图标仍留主包，首页陪伴/故事初见原画等待分包就绪后绘制。
+
+- **图鉴v2**：初见图集及16张成长图已替换为本项目内置ImageGen生成的首页同风格原画。来源、输入范围和动作说明见 [`cat-catalog-assets.md`](../design/cat-catalog-assets.md) 顶部及 `assets/_incoming/cat-catalog-v2/README.md`；生成源保留在 `initial-atlas-v2.png` / `sheets/`。本轮只补台账，没有新生成、第三方素材引入或新的授权声明。下方v1字节数、接受及迁移时间均保留为历史，不作为v2文件的现况。
+- **锁定态遮罩**：沿用项目中现有的四张猫体alpha轮廓PNG，当前只用于划定原画局部模糊区域，不直接绘制黑色剪影。来源关系是本项目图鉴原画与对应猫体轮廓，具体使用及用户对灰底/模糊效果的确认见 [`UI制作记录`](../../project-status/ui-production.md) 的2026-09-28条目。原始PNG制备工具、精确参数没有独立制作记录，本台账不补造工具、模型、种子或费用。运行合成由 `js/render/catalog-locked-art.js` 在本地Canvas完成，不向外部服务传输图片。
+- **普通棋子柔光**：`res/piece1-v2.png` 至 `res/piece5-v2.png` 及对应 `res/piece1-runtime.png` 至 `res/piece5-runtime.png`，已按既有本地确定性像素处理减弱大片镜面高光，保留alpha、五色识别与表情，512源图缩放为256运行图；无新生成或第三方图源。处理说明、原文件备份、派生图与棋盘截图见 `assets/_incoming/moon-ui-runtime/piece-gloss-softened-v2/README.md` 的 `original/`、`edited/`、`screens/`。原ImageGen来源不变；该制作记录仍标用户棋盘视觉确认待完成，不借补台账自动宣布接受。
+
+图鉴专用发布文件（入口图标在主包，其余位于图鉴分包）：
+
+| 发布路径 | 当前用途与来源 |
+| --- | --- |
+| `catalog/portraits-atlas.jpg` | 本项目ImageGen v2初见图集，700×776；来源见上述v2记录。 |
+| `res/home/catalog-album.png` | 本项目ImageGen已接受的图鉴入口图标；来源及转换见下方2026-09-24记录。 |
+| `catalog/cream-silhouette.png` | 奶糖原画猫体alpha轮廓；仅作局部模糊遮罩，继承项目自有图鉴素材来源。 |
+| `catalog/ragdoll-silhouette.png` | 团子原画猫体alpha轮廓；仅作局部模糊遮罩，继承项目自有图鉴素材来源。 |
+| `catalog/siamese-silhouette.png` | 芝麻原画猫体alpha轮廓；仅作局部模糊遮罩，继承项目自有图鉴素材来源。 |
+| `catalog/calico-silhouette.png` | 布丁原画猫体alpha轮廓；仅作局部模糊遮罩，继承项目自有图鉴素材来源。 |
+
+16张图鉴v2分包原画均为512×512 JPEG，来自同一项目原画板，运行路径如下（按熟悉/信任/依恋/挚友顺序）：
+
+- 奶糖：`catalog/naitang-familiar.jpg`、`catalog/naitang-trust.jpg`、`catalog/naitang-attachment.jpg`、`catalog/naitang-best-friend.jpg`。
+- 团子：`catalog/tuanzi-familiar.jpg`、`catalog/tuanzi-trust.jpg`、`catalog/tuanzi-attachment.jpg`、`catalog/tuanzi-best-friend.jpg`。
+- 芝麻：`catalog/zhima-familiar.jpg`、`catalog/zhima-trust.jpg`、`catalog/zhima-attachment.jpg`、`catalog/zhima-best-friend.jpg`。
+- 布丁：`catalog/buding-familiar.jpg`、`catalog/buding-trust.jpg`、`catalog/buding-attachment.jpg`、`catalog/buding-best-friend.jpg`。
+
+以上不改变项目默认版权、供应商依赖例外或既有素材条款，也不把“来源记录已补齐”当作法律保证或微信审核保证。
+
+### 图鉴制作与迁移历史（当前状态以上方为准）
+
 2026-09-24图鉴开发样板新增：`res/catalog/portraits-atlas.jpg`（700×776，102460字节）从用户接受的内置ImageGen v8概念确定性提取四块插画，注册为 `catalogPortraits`。仅开发样板使用，trial/release入口隐藏，未发布；来源、接受范围、提示与本地处理见 [`cat-catalog-assets.md`](../design/cat-catalog-assets.md)。不是整张概念UI作为交互页面，也不是完整20张成长原画。
 
 同日按用户反馈新增图鉴入口 `res/home/catalog-album.png`（160×160透明PNG，37859字节），内置ImageGen原创猫爪收藏册经本地Canvas缩放，注册为 `catalogIcon`。原图、提示、透明检查和使用范围见上述图鉴来源记录；图鉴底板及淡紫色按钮为原生Canvas绘制。新视觉仍待用户运行验收，未部署或发布。
@@ -54,7 +84,7 @@
 
 当前工作区的 `res/home/moonlit-garden-bg.jpg`、`res/game-background-v2.jpg`、`res/level-background-v2.jpg`、`res/home/title-logo.png`、`res/piece1-runtime.png` 至 `res/piece4-runtime.png` 及对应 512px 源图，已被本项目内置 OpenAI ImageGen 的 B 风格候选覆盖。最新来源/提示/透明报告、未采用项和回滚副本见 [运行候选记录](../../assets/_incoming/moon-ui-runtime/README.md)。下文旧来源与压缩字节表对这些文件仅作历史记录；第五枚和双猫仍是旧图。平台发布、关键视觉和真机验收未完成。
 
-以下25张是 `js/render/assets.js` 当前注册的唯一活跃图片（26个用途键，首页/棋盘背景共用一份文件），来源均记录为本项目内 Codex/OpenAI ImageGen 生成。2026-09-23无损包体清理只改变映射和忽略规则，不重新编码图片；旧节点及重复背景保留在下方回退来源表，不再随客户端发布。
+以下四张表列出25张基础场景/棋子/UI图片；加上首页图鉴入口图标，合计26张主包图片、27个用途键，首页/棋盘背景共用一份文件。图鉴16张成长图、初见图集和4张遮罩单列于分包。2026-09-23无损包体清理只改变映射和忽略规则，不重新编码图片；旧节点及重复背景保留在下方回退来源表，不再随客户端发布。棋子和图鉴后续改版以顶部最新来源指针为准。
 
 本地文件时间可佐证的制作批次为：首页 5 张生成于 2026-08-20（Asia/Shanghai），游戏场景与 512×512 棋子源图生成于 2026-08-22，256×256 运行图于 2026-08-22 使用 macOS `sips` 从对应源图缩放生成。这些时间只作为仓库内制作记录，不替代生成服务的原始任务记录或账户授权证明。
 

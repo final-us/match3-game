@@ -163,4 +163,18 @@ assert.deepStrictEqual(stories.cream[2],{title:'第一次安心睡在你身边',
     '那天，你没有急着离开。','奶糖把脑袋轻轻放下，','第一次，在你身边安心打起了盹。'
 ]});
 
+{
+    const saved = {[KEY]:{version:1,selection:{id:'cream',stage:4,unlocked:4}}};
+    const api = {getStorageSync:key=>saved[key],setStorageSync:(key,value)=>{saved[key]=value;}};
+    const aKey='match3_companion_display_v2_account-a',bKey='match3_companion_display_v2_account-b';
+    const a=companion.create(api,aKey),b=companion.create(api,bKey);
+    assert.strictEqual(a.selection,null,'developer sample is not migrated into production preferences');
+    const model=catalog.create('adopted');model.real=true;model.affection.ragdoll=10;
+    assert(a.select(model,'ragdoll'));assert(a.markRead('ragdoll',2,2));
+    assert.strictEqual(b.selection,null);assert.deepStrictEqual(b.read,{});
+    assert.deepStrictEqual(companion.create(api,aKey).selection,{id:'ragdoll',stage:2,unlocked:2});
+    assert.strictEqual(companion.create(api,bKey).selection,null);
+    assert.strictEqual(saved[KEY].selection.stage,4,'isolated production writes preserve the developer sample');
+}
+
 console.log('companion storage and stories passed');

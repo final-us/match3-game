@@ -17,7 +17,8 @@ function validRead(read){
             read[id]>=0 && read[id]<32));
 }
 
-function create(api){
+function create(api, storageKey){
+    const key=storageKey||KEY;
     const state={selection:null,read:{},error:''};
     let persisted=false;
     const storageReady=!!api && typeof api.getStorageSync==='function' && typeof api.setStorageSync==='function';
@@ -25,7 +26,7 @@ function create(api){
         state.error='陪伴展示存储不可用';
     } else {
         try {
-            const saved=api.getStorageSync(KEY);
+            const saved=api.getStorageSync(key);
             if(saved!==undefined && saved!==null && saved!==''){
                 if(!saved || typeof saved!=='object' || saved.version!==1 ||
                     !valid(saved.selection) || !validRead(saved.read))
@@ -49,7 +50,7 @@ function create(api){
         try {
             const snapshot={version:1,selection};
             if(Object.keys(read).length)snapshot.read=read;
-            if(api.setStorageSync(KEY,snapshot)===false)throw new Error('write failed');
+            if(api.setStorageSync(key,snapshot)===false)throw new Error('write failed');
         } catch(error){state.error='陪伴展示保存失败，请重试';return false;}
         state.selection=selection;state.read=read;state.error='';persisted=true;return true;
     }

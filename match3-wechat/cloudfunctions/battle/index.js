@@ -799,6 +799,9 @@ exports.main = async function (event) {
             case 'dailyCheckpoint': return await dailyService.checkpoint(openid, input);
             case 'dailySubmit': return await dailyService.submit(openid, input);
             case 'retentionInfo': return await retentionService.info(openid);
+            case 'catalogInfo': return await retentionService.catalogRequest(openid, 'info', input);
+            case 'catalogAdopt': return await retentionService.catalogRequest(openid, 'adopt', input);
+            case 'catalogFeed': return await retentionService.catalogRequest(openid, 'feed', input);
             case 'retentionSign': return await retentionService.sign(openid, input);
             case 'retentionRecord': return await retentionService.record(openid, input);
             case 'retentionClaim': return await retentionService.claim(openid, input);

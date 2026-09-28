@@ -52,17 +52,19 @@ function growthFor(model, id) {
     const stored=Number(model && model.displayStages && model.displayStages[id]);
     const displayStage=Number.isInteger(stored) && stored>=0 && stored<=stage?stored:stage;
     const owned=!!model && Array.isArray(model.owned)?model.owned:[];
-    return {affection,stage,displayStage,enabled:owned[0]===id && owned.indexOf(id)>=0};
+    return {affection,stage,displayStage,enabled:(model.real || owned[0]===id) && owned.indexOf(id)>=0};
 }
 
 function statusFor(model, id) {
     if (!cats.some(cat=>cat.id===id)) return 'locked';
     if (model.owned.indexOf(id)>=0) return 'owned';
+    if (model.real) return model.owned.length<4 && model.days>=(model.owned.length+1)*7?'adoptable':'locked';
     if (!model.owned.length || (model.owned.length === 1 && model.days >= 7)) return 'adoptable';
     return 'locked';
 }
 
 function condition(model) {
+    if(model.real)return model.owned.length===4?'四只猫咪都已领养':'累计活跃 '+Math.min(model.days,(model.owned.length+1)*7)+'/'+((model.owned.length+1)*7)+' 天';
     if (!model.owned.length) return '首次可任选一只，免费领养';
     if (model.owned.length === 1) return '累计陪伴 ' + Math.min(7,model.days) + '/7 天';
     return '后续解锁条件待确定';
@@ -75,6 +77,7 @@ function activate(model, action) {
         model.view='list';model.selectedId=null;model.offset=model.listOffset;model.message='';return;
     }
     if (model.status !== 'ready') {
+        if(model.real)return;
         if (action === 'retry' && (model.status === 'offline' || model.status === 'error')) {
             model.status='ready';model.offset=0;model.message='已恢复演示画面';
         }
@@ -86,6 +89,7 @@ function activate(model, action) {
         return;
     }
     if (action === 'confirm-feed') {
+        if(model.real)return; // Production mutations only go through catalog-client.
         const overlay=model.overlay;
         const id=model.selectedId;
         const growth=growthFor(model,id);
@@ -138,6 +142,7 @@ function activate(model, action) {
         if (!cats.some(cat=>cat.id===id)) return;
         model.listOffset=model.offset;model.offset=0;model.selectedId=id;model.view='detail';model.message='';model.overlay=null;
     } else if (action==='adopt' && model.view==='detail' && statusFor(model,model.selectedId)==='adoptable') {
+        if(model.real)return;
         model.owned.push(model.selectedId);
         if(model.affection[model.selectedId]===undefined)model.affection[model.selectedId]=0;
         if(model.displayStages[model.selectedId]===undefined)model.displayStages[model.selectedId]=0;
@@ -146,6 +151,7 @@ function activate(model, action) {
 }
 
 function completeRound(model, completed) {
+    if(model.real)return;
     if(completed===false)return;
     model.roundsToday=(Number(model.roundsToday)||0)+1;
     if(model.roundsToday===1 || model.roundsToday===3)model.fish=(Number(model.fish)||0)+1;
@@ -156,6 +162,7 @@ function completeRound(model, completed) {
 }
 
 function nextDay(model) {
+    if(model.real)return;
     model.previewDay=(Number(model.previewDay)||0)+1;
     model.roundsToday=0;
 }
