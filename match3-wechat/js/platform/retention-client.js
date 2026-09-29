@@ -148,11 +148,9 @@ function create(api, call, wallet, notify, clock) {
                         if(notify)notify(model.message);
                     } else {
                         accept(response,p);
-                        const awarded=applyReceipts();
-                        if(!awarded&&p.action==='retentionRecord'&&response.eventStatus!=='expired') {
-                            model.message='每日任务已同步 · '+response.state.date.slice(5).replace('-','.');
-                            if(notify)notify(model.message);
-                        }
+                        // Background progress confirmation is silent, including late/replayed
+                        // results. Real credits and actionable failures retain their notices.
+                        applyReceipts();
                     }
                 } else if(!fetched) {
                     accept(await request('retentionInfo',{}));applyReceipts();fetched=true;

@@ -32,11 +32,14 @@ function fixture(options) {
             return { ok: true, credited: true, balance: 40 };
         }
     };
-    let releaseInfo;
+    let releaseInfo, releaseRecord;
     const call = (action, input) => {
         calls.push({ action: action, input: copy(input) });
         if (options.holdInfo && action === 'retentionInfo') {
             return new Promise(resolve => { releaseInfo = resolve; });
+        }
+        if (options.holdRecord && action === 'retentionRecord') {
+            return new Promise(resolve => { releaseRecord = resolve; });
         }
         const receipts = action === 'retentionRecord' && options.recordReceipt
             ? [{ id: 'task:1', coins: 40, items: { hammer: 0 }, kind: 'task', date: state.date }]
@@ -47,6 +50,8 @@ function fixture(options) {
         notices: notices,
         calls: calls,
         releaseInfo: value => releaseInfo(value),
+        releaseRecord: value => releaseRecord(value),
+        values: values,
         controller: client.create(api, call, wallet, message => notices.push(message), () => now)
     };
 }
@@ -66,7 +71,33 @@ function fixture(options) {
         cleared: 15, validMove: true, completed: true
     }).ok, true);
     await test.controller.sync();
-    assert(test.notices.includes('每日任务已同步 · 09.23'));
+    assert.deepStrictEqual(test.notices, [], 'routine progress sync must stay silent');
+    assert.deepStrictEqual(test.controller.model.taskProgress, state.taskProgress,
+        'silent synchronization must still update task progress');
+    // Reconfirming a settled game must not produce a new success notice either.
+    test.controller.record({id:'solo:i:1',mode:'solo',levelId:1,date:state.date,
+        cleared:15,validMove:true,completed:true});
+    await test.controller.sync();
+    assert.deepStrictEqual(test.notices, [], 'repeated result confirmation must stay silent');
+
+    test = fixture({ holdRecord: true });
+    await test.controller.sync();
+    const previous = test.controller.startSolo(1);
+    previous.validMove = true; previous.cleared = 15;
+    test.controller.finishSolo(previous);
+    const next = test.controller.startSolo(2);
+    test.releaseRecord({ok:true,state:copy(state),receipts:[]});
+    await test.controller.sync();
+    assert.deepStrictEqual(test.notices, [], 'late success must not interrupt the next game');
+    assert.strictEqual(test.values[client.KEY].solo.id, next.id, 'late sync must preserve the new run');
+    assert.strictEqual(test.values[client.KEY].pending.length, 0, 'late result still clears its outbox entry');
+
+    test = fixture({ recordReceipt: true });
+    await test.controller.sync();
+    test.controller.record({id:'solo:reward:1',mode:'solo',levelId:1,date:state.date,
+        cleared:15,validMove:true,completed:true});
+    await test.controller.sync();
+    assert.deepStrictEqual(test.notices, ['每日金币 +40金币'], 'real credited rewards keep their notice');
 
     test = fixture({ recordReceipt: true, walletFailure: true });
     await test.controller.sync();
