@@ -331,12 +331,12 @@ try{
         assert.strictEqual(JSON.stringify(model),beforeModel);
     }
 
-    // Reminder derives only from real, ready, server-dated claim state; task rewards are automatic.
+    // Reminder derives only from real, ready, server-dated unclaimed rewards.
     {
         const at=Date.UTC(2026,8,26,4,0,0);
         const date=retention.beijingDate(at);
         const base={real:true,status:'ready',date,week:'2026-09-21',serverNow:at,weekEndsAt:at+3*86400000,
-            signDay:5,signed:true,taskProgress:[0,0,0],activity:0,claimed:[false,false,false]};
+            signDay:5,signed:true,taskProgress:[0,0,0],activity:0,claimed:[false,false,false],taskClaimMode:'manual-v1',taskClaimed:[false,false,false]};
         const claimable=overrides=>retention.hasClaimable(Object.assign({},base,overrides),at);
         assert.strictEqual(claimable({signed:false}),true,'today sign-in must show reminder');
         assert.strictEqual(claimable({activity:200}),true,'reached current weekly chest must show reminder');
@@ -354,8 +354,8 @@ try{
             'cross-day stale state must not remind');
         assert.strictEqual(retention.hasClaimable(Object.assign({},base,{signed:false,weekEndsAt:at}),at),false,
             'expired current week must not remind');
-        assert.strictEqual(claimable({taskProgress:[99,99,99],activity:199}),false,
-            'task completion is auto-credited and must not create a pending claim reminder');
+        assert.strictEqual(claimable({taskProgress:[1,2,80],activity:0}),true,'completed unclaimed task reminds');
+        assert.strictEqual(claimable({taskProgress:[1,2,80],taskClaimed:[true,true,true],activity:80}),false,'claimed tasks do not remind');
     }
 
     console.log('companion polish independent QA passed');

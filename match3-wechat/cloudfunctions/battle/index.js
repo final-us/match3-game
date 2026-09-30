@@ -798,13 +798,14 @@ exports.main = async function (event) {
             case 'dailyStart': return await dailyService.start(openid, input);
             case 'dailyCheckpoint': return await dailyService.checkpoint(openid, input);
             case 'dailySubmit': return await dailyService.submit(openid, input);
-            case 'retentionInfo': return await retentionService.info(openid);
+            case 'retentionInfo': return await retentionService.info(openid, input);
             case 'catalogInfo': return await retentionService.catalogRequest(openid, 'info', input);
             case 'catalogAdopt': return await retentionService.catalogRequest(openid, 'adopt', input);
             case 'catalogFeed': return await retentionService.catalogRequest(openid, 'feed', input);
             case 'retentionSign': return await retentionService.sign(openid, input);
             case 'retentionRecord': return await retentionService.record(openid, input);
             case 'retentionClaim': return await retentionService.claim(openid, input);
+            case 'retentionClaimTask': return await retentionService.claimTask(openid, input);
             case 'retentionAck': return await retentionService.ack(openid, input);
             default: return { ok: false, err: '未知操作' };
         }

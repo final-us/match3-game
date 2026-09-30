@@ -71,10 +71,14 @@ function evidenceFor(roomId) {
 
 (async function run() {
     // Catalog routes must use SDK identity, never a caller-supplied account.
-    for (const action of ['catalogInfo','catalogAdopt','catalogFeed']) {
+    for (const action of ['catalogInfo','catalogAdopt','catalogFeed','retentionClaimTask']) {
         assert.strictEqual((await call('', {action, openid:'forged'})).ok, false);
     }
     assert.strictEqual(Object.keys(fixture.docs.retention_profiles).length, 0);
+    const manual = await call('manual-route', {action:'retentionInfo', taskClaimMode:'manual-v1'});
+    assert.strictEqual(manual.state.taskClaimMode,'manual-v1');
+    const deniedTask = await call('manual-other', {action:'retentionClaimTask',date:manual.state.date,index:0,openid:'manual-route'});
+    assert.strictEqual(deniedTask.code,'NOT_ELIGIBLE');
     const catA = await call('cat-a', {action:'catalogInfo'});
     const catB = await call('cat-b', {action:'catalogInfo', openid:'cat-a'});
     assert(catA.ok && catB.ok);assert.notStrictEqual(catA.state.owner, catB.state.owner);

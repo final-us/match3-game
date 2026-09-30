@@ -8,7 +8,8 @@ const now = Date.UTC(2026, 8, 23, 5);
 const state = {
     date: '2026-09-23', week: '2026-09-21', serverNow: now,
     weekEndsAt: Date.UTC(2026, 8, 27, 16), signDay: 1, signed: false,
-    taskProgress: [1, 1, 15], activity: 20, claimed: [false, false, false]
+    taskProgress: [1, 1, 15], activity: 20, claimed: [false, false, false],
+    taskClaimMode: 'manual-v1', taskClaimed: [false, false, false]
 };
 
 function fixture(options) {
@@ -86,6 +87,7 @@ function fixture(options) {
     previous.validMove = true; previous.cleared = 15;
     test.controller.finishSolo(previous);
     const next = test.controller.startSolo(2);
+    await new Promise(resolve=>setImmediate(resolve)); // Manual-mode handshake precedes the record request.
     test.releaseRecord({ok:true,state:copy(state),receipts:[]});
     await test.controller.sync();
     assert.deepStrictEqual(test.notices, [], 'late success must not interrupt the next game');

@@ -21,8 +21,11 @@ function summarizeError(error) {
             break;
         }
     }
+    // The SDK may wrap the useful CloudBase code in a generic -1.
+    if (code === '-1' && labelledCode) code = labelledCode[1];
     let kind = 'UNKNOWN';
-    if (/timeout|timed out|超时/i.test(message)) kind = 'TIMEOUT';
+    if (code === '-504002' || /functions execute fail|code exit unexpected/i.test(message)) kind = 'FUNCTION';
+    else if (/timeout|timed out|超时/i.test(message)) kind = 'TIMEOUT';
     else if (/permission|unauthori[sz]ed|access denied|无权限|权限不足/i.test(message)) kind = 'PERMISSION';
     else if (/quota|arrears|欠费|配额/i.test(message)) kind = 'QUOTA';
     else if (/environment|invalid env|环境/i.test(message)) kind = 'ENV';
@@ -161,6 +164,28 @@ function isValidRoomId(value) {
     return typeof value === 'string' && ROOM_ID_PATTERN.test(value);
 }
 
+function describeRetentionFailure(error) {
+    const diagnostic = error && error.battleDiagnostic;
+    const summary = diagnostic && diagnostic.error || summarizeError(error);
+    const stage = diagnostic && diagnostic.stage === 'SDK' ? 'SDK' : 'CALL';
+    const messages = {
+        FUNCTION: '云端服务运行异常，请稍后重试',
+        TIMEOUT: '连接超时，请稍后重试',
+        NETWORK: '网络连接失败，请检查网络后重试',
+        PERMISSION: '云服务访问受限，请稍后重试',
+        QUOTA: '云服务暂不可用，请稍后重试',
+        ENV: '云服务配置异常，请稍后重试',
+        UNKNOWN: '暂时无法连接服务，请稍后重试'
+    };
+    const kind = Object.prototype.hasOwnProperty.call(messages, summary.kind) ? summary.kind : 'UNKNOWN';
+    const code = /^-?\d{1,10}$/.test(String(summary.code)) ? String(summary.code) : 'NA';
+    return {
+        status: stage !== 'SDK' && kind === 'NETWORK' ? 'offline' : 'error',
+        message: stage === 'SDK' ? '当前环境无法使用云服务，请重新进入' : messages[kind],
+        diagnostic: 'R1/' + stage + '/' + code + '/' + kind
+    };
+}
+
 function init() {
     initFailure = null;
     if (typeof wx !== 'undefined' && wx.cloud) {
@@ -223,5 +248,6 @@ module.exports = {
     init: init,
     describeCreateFailure: describeCreateFailure,
     describeDailyFailure: describeDailyFailure,
+    describeRetentionFailure: describeRetentionFailure,
     call: call
 };

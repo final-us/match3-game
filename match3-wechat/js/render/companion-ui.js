@@ -38,7 +38,8 @@ function notice(ctx,screen,x,y,w,message){
     text(ctx,message,x+w/2,y,w,11,true);
 }
 function dot(ctx,r,label){
-    ctx.fillStyle='#884675';ctx.beginPath();ctx.arc(r.x+r.w-8,r.y+8,5,0,Math.PI*2);ctx.fill();
+    ctx.save();ctx.fillStyle='#F5222D';
+    ctx.beginPath();ctx.arc(r.x+r.w-8,r.y+8,6,0,Math.PI*2);ctx.fill();ctx.restore();
     if(label)text(ctx,label,r.x+r.w-18,r.y-7,40,10,true);
 }
 function selectedOutline(ctx,r){

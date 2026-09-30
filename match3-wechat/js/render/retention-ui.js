@@ -11,6 +11,7 @@ const TASKS = [
     { title: '累计消除80枚棋子', goal: 80, coins: 60, points: 30 }
 ];
 const INK = '#353465', SOFT = '#6D6A94', GOLD = '#D9BA87';
+const TASK_CARD_HEIGHT = 70, TASK_CARD_GAP = 8, TASK_TOP = 10, TASK_FOOTER = 54;
 
 function rect(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -125,7 +126,7 @@ function frame(ctx,screen,l) {
 
 function drawSign(ctx,screen,l,data,y,buttons) {
     const x=l.innerX,w=l.innerW,gap=9,cw=(w-gap*2)/3,ch=74;
-    text(ctx,'累计签到，漏签不清零',x+w/2,y+7,w,11,SOFT);y+=23;
+    y+=10;
     for(let i=0;i<6;i++){
         const px=x+(i%3)*(cw+gap),py=y+Math.floor(i/3)*(ch+11);
         const past=i+1<data.signDay || (i+1===data.signDay&&data.signed);
@@ -152,25 +153,29 @@ function drawSign(ctx,screen,l,data,y,buttons) {
 }
 
 function drawTasks(ctx,screen,l,data,y,buttons) {
-    const x=l.innerX,w=l.innerW,h=64;
-    y+=12;
+    const x=l.innerX,w=l.innerW,h=TASK_CARD_HEIGHT;
+    y+=TASK_TOP;
     TASKS.forEach((task,i)=>{
         catCard(ctx,screen,x,y,w,h,false);
         const done=Math.min(task.goal,Math.max(0,data.taskProgress[i]||0));
-        const icon=40,tx=x+icon+13,tw=w-icon-22;
+        const claimed=!!(data.taskClaimed&&data.taskClaimed[i]);
+        const ready=done>=task.goal&&!claimed&&data.taskClaimMode==='manual-v1';
+        const icon=32,tx=x+icon+13,tw=w-icon-96;
         if(i===0)paw(ctx,x+27,y+31,27,'#DF95BE');
         else contain(ctx,i===1?'piece3':'uiMoves',x+7,y+12,icon,icon);
         ctx.fillStyle=INK;type.drawFit(ctx,task.title,tx,y+17,tw,{size:14,minSize:12,weight:'bold'});
         const barY=y+33;
         ctx.fillStyle='#DEDBEE';rect(ctx,tx,barY,tw,7,3.5);ctx.fill();
         if(done){ctx.fillStyle=gradient(ctx,tx,barY,7,['#F5CADE','#CF91BF']);rect(ctx,tx,barY,Math.max(7,tw*done/task.goal),7,3.5);ctx.fill();}
-        text(ctx,done+'/'+task.goal,tx+17,y+52,38,10,SOFT,true);
-        text(ctx,done>=task.goal?'已完成 · 自动到账':task.coins+'金币 · '+task.points+'活跃',tx+44+(tw-44)/2,y+52,tw-44,10,done>=task.goal?'#527C79':SOFT);
-        y+=h+11;
+        text(ctx,done+'/'+task.goal,tx+tw/2,y+46,tw,11,SOFT,true);
+        text(ctx,task.coins+'金币 · '+task.points+'活跃',x+w/2,y+60,w-24,12,SOFT);
+        const claim={x:x+w-76,y:y+9,w:64,h:44};
+        moon.button(ctx,claim.x,claim.y,claim.w,claim.h,claimed?'已领取':ready?'领取':'未完成',ready?'pink':'muted',14);
+        if(ready)buttons['task'+i]=claim;
+        y+=h+TASK_CARD_GAP;
     });
-    const primary={x:x+8,y:y+1,w:w-16,h:46};ribbonButton(ctx,primary,'去玩一局',true,true);buttons.primary=primary;
-    text(ctx,'任务完成，奖励自动到账',x+w/2,y+60,w,10,SOFT);
-    return y+72;
+    const primary={x:x+8,y:y+1,w:w-16,h:44};ribbonButton(ctx,primary,'去玩一局',true,true);buttons.primary=primary;
+    return y+TASK_FOOTER;
 }
 
 function drawWeekly(ctx,screen,l,data,y,buttons) {
@@ -192,10 +197,9 @@ function drawWeekly(ctx,screen,l,data,y,buttons) {
         text(ctx,opened?'已领取':ready?'点击领取':'待解锁',cx,y+83+size,cellW-4,9,ready?'#AA6B43':SOFT,ready);
         if(ready)buttons['weekly'+i]={x:x+cellW*i+2,y:y+66,w:cellW-4,h:size+28};
     }
-    text(ctx,data.real&&data.weekEndsAt?'北京时间 '+beijingTime(data.weekEndsAt)+' 刷新':'每周一刷新 · 玩满5天可拿齐',x+w/2,y+167,w,10,SOFT);
     if(data.previousWeek){
-        const py=y+188,cw=(w-12)/3;
-        text(ctx,data.real?'上周待领 · '+beijingTime(data.previousWeek.expiresAt)+' 到期':'上周待领 · 本周日结束到期',x+w/2,py+12,w,11,SOFT,true);
+        const py=y+164,cw=(w-12)/3;
+        text(ctx,'上周待领',x+w/2,py+12,w,11,SOFT,true);
         WEEKLY.forEach((reward,i)=>{
             const claimed=!!data.previousWeek.claimed[i],available=!!data.previousWeek.available[i];
             const r={x:x+i*(cw+6),y:py+29,w:cw,h:44};
@@ -204,45 +208,22 @@ function drawWeekly(ctx,screen,l,data,y,buttons) {
         });
         return py+84;
     }
-    return y+176;
+    return y+160;
 }
 
 function drawStatus(ctx,screen,l,data,y,buttons) {
-    const messages={loading:['猫咪正在整理金币','正在加载，请稍候…'],offline:['暂时没有连接网络','请检查网络，联网后再试一次'],error:['暂时无法获取奖励','可以重试，也可以先关闭页面'],pending:['奖励还在确认中','确认后会自动更新领取状态']};
+    const messages={loading:['猫咪正在整理金币','正在加载，请稍候…'],offline:['网络连接暂时失败','请检查网络后重试'],error:['暂时无法同步每日金币','可以重试，也可以先关闭页面'],pending:['奖励还在确认中','确认后会自动更新领取状态']};
     const value=messages[data.status]||messages.error;
     const short=l.viewport.h<280;
     contain(ctx,'uiResultSadCat',l.innerX+l.innerW/2-(short?42:52),y+(short?12:24),short?84:104,short?74:92);
     text(ctx,value[0],l.innerX+l.innerW/2,y+(short?105:137),l.innerW,short?16:18,INK,true);
     text(ctx,data.message||value[1],l.innerX+l.innerW/2,y+(short?132:168),l.innerW,short?10:11,SOFT);
+    if(data.diagnostic)text(ctx,'诊断：'+data.diagnostic,l.innerX+l.innerW/2,y+(short?151:188),l.innerW,10,SOFT);
     const r={x:l.innerX+20,y:y+(short?164:203),w:l.innerW-40,h:46};
     const retry=data.status==='offline'||data.status==='error'||(data.real&&data.status==='pending');
     ribbonButton(ctx,r,retry?'重试':data.status==='loading'?'加载中…':'待同步',retry,true);
     if(retry)buttons.primary=r;
     return y+(short?226:280);
-}
-
-const RULE_LINES=[
-    ['七日累计签到','每天领取一次，漏签保留进度。','第7次领取后，次日开始新一轮。'],
-    ['每日小任务','正式结算胜负均计，主动退出不计。','完成任务后，金币与活跃度自动到账。','全部任务80活跃，签到另得20活跃。'],
-    ['每周宝箱','200／350／500活跃，分别可领取','300／500／1000金币，不扣活跃度。','每周一北京时间00:00刷新。','上周已达标未领宝箱保留一周。'],
-    ['连接与时间','按北京时间换日，领奖需要联网。','未确认的离线任务，仅当天可同步。'],
-    ['当前为界面预览','点击只演示状态，不写入真实资产。']
-];
-function ruleLines(data) {
-    return data.real?RULE_LINES.slice(0,-1).concat([
-        ['奖励保存','确认的奖励会自动恢复到账。','资产保存在本机，请勿清除游戏存储。'],
-        ['任务日期','每日挑战计入原挑战日期。','单人和好友对战按正式结算日计入。']
-    ]):RULE_LINES;
-}
-function beijingTime(at) {
-    return new Date(at+8*3600000).toISOString().slice(5,16).replace('T',' ');
-}
-function drawRules(ctx,l,y,data) {
-    for(const lines of ruleLines(data)){
-        text(ctx,lines[0],l.innerX+l.innerW/2,y+18,l.innerW,16,INK,true);y+=45;
-        for(const line of lines.slice(1)){text(ctx,line,l.innerX+l.innerW/2,y,l.innerW,11,SOFT);y+=23;}
-        y+=15;
-    }return y;
 }
 
 function draw(ctx,screen,data) {
@@ -259,26 +240,30 @@ function draw(ctx,screen,data) {
     const tw=(l.innerW-6)/2;
     [['signinTab','七日签到','signin'],['tasksTab','每日任务','tasks']].forEach((tab,i)=>{
         const r={x:l.innerX+i*(tw+6),y:l.tabsY,w:tw,h:44};
-        moon.button(ctx,r.x,r.y,r.w,r.h,tab[1],data.tab===tab[2]&&!data.rules?'pink':'blue',17);buttons[tab[0]]=r;
+        moon.button(ctx,r.x,r.y,r.w,r.h,tab[1],data.tab===tab[2]?'pink':'blue',17);buttons[tab[0]]=r;
+        if(tab[2]==='tasks'&&data.status==='ready'&&data.taskClaimMode==='manual-v1'&&
+            TASKS.some((task,index)=>data.taskProgress[index]>=task.goal&&!data.taskClaimed[index])){
+            ctx.save();ctx.fillStyle='#F5222D';
+            ctx.beginPath();ctx.arc(r.x+r.w-12,r.y+9,6,0,Math.PI*2);ctx.fill();ctx.restore();
+        }
     });
     const viewport=l.viewport;
     // Content uses its own scroll plane; header/tabs/close never move.
-    const signHeight=23+74*2+20+60+10+52;
-    const tasksHeight=12+(64+11)*3+72;
-    const naturalH=data.rules?ruleLines(data).reduce((n,a)=>n+60+(a.length-1)*23,0):data.status!=='ready'?(viewport.h<280?226:280):(data.tab==='tasks'?tasksHeight:signHeight)+(data.previousWeek?272:176);
+    const signHeight=10+74*2+20+60+10+52;
+    const tasksHeight=TASK_TOP+(TASK_CARD_HEIGHT+TASK_CARD_GAP)*TASKS.length+TASK_FOOTER;
+    const naturalH=data.status!=='ready'?(viewport.h<280?226:280):(data.tab==='tasks'?tasksHeight:signHeight)+(data.previousWeek?248:160);
     const maxScroll=Math.max(0,naturalH-viewport.h);
     const offset=Math.max(0,Math.min(maxScroll,data.offset||0));
     ctx.save();ctx.beginPath();ctx.rect(viewport.x,viewport.y,viewport.w,viewport.h);ctx.clip();
     const y=viewport.y-offset;
-    if(data.rules)drawRules(ctx,l,y,data);
-    else if(data.status!=='ready')drawStatus(ctx,screen,l,data,y,buttons);
+    if(data.status!=='ready')drawStatus(ctx,screen,l,data,y,buttons);
     else {
         const end=data.tab==='tasks'?drawTasks(ctx,screen,l,data,y,buttons):drawSign(ctx,screen,l,data,y,buttons);
         drawWeekly(ctx,screen,l,data,end,buttons);
     }
     ctx.restore();
     // Only visible controls receive hits; a clipped card cannot be claimed underneath footer.
-    for(const key of ['primary','weekly0','weekly1','weekly2','previous0','previous1','previous2']){
+    for(const key of ['primary','task0','task1','task2','weekly0','weekly1','weekly2','previous0','previous1','previous2']){
         const r=buttons[key];if(!r)continue;
         if(r.y<viewport.y||r.y+r.h>viewport.y+viewport.h)delete buttons[key];
     }
@@ -287,14 +272,10 @@ function draw(ctx,screen,data) {
         ctx.fillStyle='#DBD1E7';rect(ctx,railX,viewport.y,3,viewport.h,1.5);ctx.fill();
         ctx.fillStyle='#B5A1CA';rect(ctx,railX,viewport.y+travel*offset/maxScroll,3,thumbH,1.5);ctx.fill();
     }
-    const rule={x:l.innerX+l.innerW-48,y:l.bottom-37,w:48,h:24};
-    ctx.fillStyle='#EEE7F8';rect(ctx,l.innerX-1,l.bottom-42,l.innerW+2,31,15);ctx.fill();
-    text(ctx,data.rules?'返回':'规则',rule.x+rule.w/2,rule.y+12,rule.w,11,SOFT);
-    buttons.rules={x:rule.x,y:l.bottom-44,w:48,h:44};
     // Reserve a distinct footer, so the sample is never mistaken for real rewards.
-    text(ctx,data.real?'北京时间 · '+(data.date||'连接后更新'):'界面预览 · 奖励不入账',l.innerX+(l.innerW-56)/2,l.bottom-25,l.innerW-56,10,SOFT);
+    if(!data.real)text(ctx,'界面预览 · 奖励不入账',l.innerX+l.innerW/2,l.bottom-25,l.innerW,10,SOFT);
     star(ctx,screen.width/2,l.bottom-10,4);
-    if(data.message&&data.status==='ready'&&!data.rules){
+    if(data.message&&data.status==='ready'){
         const mw=Math.min(330,screen.width-32),my=Math.max(viewport.y,l.bottom-92);
         ctx.fillStyle='rgba(62,52,92,.94)';rect(ctx,(screen.width-mw)/2,my,mw,40,14);ctx.fill();
         text(ctx,data.message,screen.width/2,my+20,mw-18,11,'#FFFFFF');

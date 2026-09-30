@@ -11,6 +11,7 @@ function create() {
     return {
         tab: 'signin', offset: 0, signDay: 1, signed: false,
         taskProgress: [0, 0, 0], activity: 0, claimed: [false, false, false],
+        taskClaimMode: 'manual-v1', taskClaimed: [false, false, false],
         status: 'ready', message: '', rules: false
     };
 }
@@ -20,12 +21,11 @@ function activate(data, action) {
     if (action === 'close') {
         return 'close';
     }
-    if (action === 'rules') { data.rules = !data.rules; data.offset = 0; return; }
     if (action === 'signinTab' || action === 'tasksTab') {
         data.tab = action === 'signinTab' ? 'signin' : 'tasks';
         data.rules = false; data.offset = 0; data.message = ''; return;
     }
-    if (data.rules || data.status === 'loading' || data.status === 'pending') return;
+    if (data.status === 'loading' || data.status === 'pending') return;
     if (data.status === 'offline' || data.status === 'error') {
         if (action === 'primary') { data.status = 'ready'; data.offset = 0; data.message = '连接恢复演示 · 未调用云端'; }
         return;
@@ -37,6 +37,11 @@ function activate(data, action) {
         data.activity = Math.min(700, data.activity + 20);
         const reward = [100, 100, 150, 100, 100, 150, 200][data.signDay - 1];
         data.message = '预览奖励：' + reward + '金币' + (data.signDay === 7 ? '＋锤子×1' : '') + '（未入账）';
+    }
+    const task = ['task0', 'task1', 'task2'].indexOf(action);
+    if(task>=0 && data.taskProgress[task]>=[1,2,80][task] && !data.taskClaimed[task]) {
+        data.taskClaimed[task]=true;data.activity+=[20,30,30][task];
+        data.message='预览奖励：'+[40,60,60][task]+'金币（未入账）';
     }
     const index = ['weekly0', 'weekly1', 'weekly2'].indexOf(action);
     if (index >= 0 && data.activity >= [200, 350, 500][index] && !data.claimed[index]) {

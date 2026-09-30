@@ -5,9 +5,11 @@ const UI=require('../js/render/retention-ui');
 const home=require('../js/render/ui');
 const assets=require('../js/render/assets');
 assets.preload();
+const drawnText=[];
 const ctx=new Proxy({}, {get(target,key){
     if(key in target)return target[key];
     if(key==='measureText')return s=>({width:String(s).length*7});
+    if(key==='fillText'||key==='strokeText')return s=>drawnText.push(String(s));
     if(key==='createLinearGradient'||key==='createRadialGradient')return ()=>({addColorStop(){}});
     return ()=>{};
 },set(target,key,value){target[key]=value;return true;}});
@@ -37,15 +39,25 @@ assert(!app.retentionPreview.signed,'drag that returns to button must not claim'
 render();app.handleTouchStart({touches:[center(app.retentionButtons.primary)]});app.handleHide();app.handleTouchEnd({changedTouches:[p]});
 assert(!app.retentionPreview.signed,'background cancels pending tap');
 tap('tasksTab');assert.equal(app.retentionPreview.tab,'tasks');assert.equal(app.retentionPreview.offset,0);
-tap('rules');assert(app.retentionPreview.rules);tap('rules');assert(!app.retentionPreview.rules);assert.equal(app.state,'retention_preview');
-tap('rules');tap('close');assert.equal(app.state,'menu');app.openRetentionPreview();
+render();assert(!app.retentionButtons.rules,'rules entry removed');
+tap('close');assert.equal(app.state,'menu');app.openRetentionPreview();
 app.retentionPreview.status='offline';app.retentionPreview.offset=20;tap('primary');assert.equal(app.retentionPreview.status,'ready');assert.equal(app.retentionPreview.offset,0);
 app.retentionPreview.status='pending';render();assert(!app.retentionButtons.primary);tap('close');assert.equal(app.state,'menu');
 
 for(const [width,height] of [[320,568],[390,844],[430,932]]){
     const s={...screen,width,height};
+    const taskPage={...preview.create(),tab:'tasks',activity:500,taskProgress:[1,2,80]};
+    const taskButtons=UI.draw(ctx,s,taskPage);
+    if(width>=390){
+        assert.equal(taskButtons.maxScroll,0,'standard phones show all tasks and complete weekly chests without scrolling');
+        for(const key of ['task0','task1','task2','primary','weekly0','weekly1','weekly2'])assert(taskButtons[key],key+' visible on first page');
+    }else{
+        assert(taskButtons.maxScroll>0,'short screens retain scrolling');
+        const bottom=UI.draw(ctx,s,{...taskPage,offset:taskButtons.maxScroll});
+        for(const key of ['weekly0','weekly1','weekly2'])assert(bottom[key],key+' fully visible at scroll bottom');
+    }
     for(const tab of ['signin','tasks'])for(const status of ['ready','loading','offline','error','pending'])for(const offset of [0,9999]){
-        const data={...preview.create(),tab,status,offset,activity:500};
+        const data={...preview.create(),tab,status,offset,activity:500,taskProgress:[1,2,80]};
     const b=UI.draw(ctx,s,data),targets=Object.entries(b).filter(([k])=>!['viewport','maxScroll'].includes(k));
         if(status==='offline'||status==='error')assert(b.primary,'retry must be visible without scrolling');
         for(const [key,r] of targets){
@@ -62,6 +74,9 @@ for(const [width,height] of [[320,568],[390,844],[430,932]]){
     for(const key of ['shop','daily','retention','settings','addHeart'])assert(h[key].w>=44&&h[key].x>=0&&h[key].x+h[key].w<=width);
     assert(!home.drawMenu(ctx,s,5,{count:5,canPlay:true},{coins:1000}).retention,'default homepage must not expose preview');
 }
+app.openRetentionPreview();app.retentionPreview={...preview.create(),tab:'tasks',taskProgress:[1,2,80]};
+tap('task0');assert(app.retentionPreview.taskClaimed[0]);assert.equal(app.retentionPreview.activity,20);
+render();assert(!app.retentionButtons.task0);tap('task1');assert.equal(app.retentionPreview.activity,50);
 const day7={...preview.create(),signDay:7};preview.activate(day7,'primary');assert(day7.message.includes('200金币＋锤子×1'));assert(day7.signed);
 const weekly={...preview.create(),activity:500};
 for(let i=0;i<3;i++){preview.activate(weekly,'weekly'+i);assert(weekly.claimed[i]);assert(weekly.message.includes([300,500,1000][i]+'金币'));}
@@ -77,3 +92,4 @@ for(const [width,height] of [[320,568],[390,844],[430,932]]){
 app.openRetentionPreview();app.retentionPreview={...previous,offset:9999};tap('previous2');
 assert(app.retentionPreview.previousWeek.claimed[2],'Main dispatches previous-week claims');assert.equal(app.retentionPreview.activity,20);
 console.log('retention preview: channel isolation, temporary claims, touch/scroll/cancel, safe targets and fixed rewards passed');
+assert(!drawnText.some(s=>/北京时间|刷新|规则|漏签不清零|当日领取|到期/.test(s)),'removed explanatory copy must not render');

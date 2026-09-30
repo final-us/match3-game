@@ -1841,7 +1841,7 @@ class Main {
         if (!touch || touch.dragged || !this.retentionButtons || !this.retentionPreview) return;
         const point = e && e.changedTouches && e.changedTouches[0];
         if (!point || Math.abs(point.clientY-touch.y)>8 || Math.abs(point.clientX-touch.x)>8) return;
-        for (const action of ['close','signinTab','tasksTab','rules','primary','weekly0','weekly1','weekly2','previous0','previous1','previous2']) {
+        for (const action of ['close','signinTab','tasksTab','primary','task0','task1','task2','weekly0','weekly1','weekly2','previous0','previous1','previous2']) {
             const r = this.retentionButtons[action];
             if (!UI.hitTest(touch.x,touch.y,r) || !UI.hitTest(point.clientX,point.clientY,r)) continue;
             AudioFX.click();

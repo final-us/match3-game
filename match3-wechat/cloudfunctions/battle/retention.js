@@ -97,7 +97,9 @@ function createService(db, crypto, clock) {
             Number.isSafeInteger(day.cleared) && day.cleared >= 0 && day.cleared <= 80 &&
             Number.isSafeInteger(day.eventCount) && day.eventCount >= 0 && day.eventCount <= MAX_EVENTS_PER_DAY &&
             validBooleans(day.tasks, 3) && day.tasks[0] === (day.games >= 1) && day.tasks[1] === (day.games >= 2) &&
-            day.tasks[2] === (day.cleared >= 80);
+            day.tasks[2] === (day.cleared >= 80) &&
+            (day.claimed === undefined || (validBooleans(day.claimed, 3) &&
+                day.claimed.every(function (claimed, index) { return !claimed || day.tasks[index]; })));
         const validCurrent = storedCurrent && validDate(storedCurrent.week) && Number.isSafeInteger(storedCurrent.activity) &&
             storedCurrent.activity >= 0 && storedCurrent.activity <= 700 && validBooleans(storedCurrent.claimed, 3) &&
             storedCurrent.claimed.every(function (claimed, index) { return !claimed || storedCurrent.activity >= WEEK_TARGETS[index]; });
@@ -112,7 +114,9 @@ function createService(db, crypto, clock) {
             (!previous || (dateValue(storedCurrent.week) - dateValue(previous.week) === 7 * DAY_MS &&
                 previous.expiresAt === dateValue(storedCurrent.week) - 8 * 60 * 60 * 1000 + 7 * DAY_MS));
         if (stored.kind !== 'retention_profile' || stored.owner !== owner || !validSign || !validDay || !validCurrent ||
-            !validPrevious || !validChronology) {
+            !validPrevious || !validChronology ||
+            (stored.taskClaimMode !== undefined && stored.taskClaimMode !== 'manual-v1') ||
+            (stored.taskClaimMode === 'manual-v1' && !validBooleans(day.claimed, 3))) {
             throw corrupt('retention profile is corrupt');
         }
         const profile = Object.assign({}, stored);
@@ -121,8 +125,10 @@ function createService(db, crypto, clock) {
         delete profile._id;
         delete profile._openid;
         profile.day = day.date === date ? {
-            date: date, games: day.games, cleared: day.cleared, eventCount: day.eventCount, tasks: day.tasks.slice()
-        } : { date: date, games: 0, cleared: 0, eventCount: 0, tasks: [false, false, false] };
+            date: date, games: day.games, cleared: day.cleared, eventCount: day.eventCount, tasks: day.tasks.slice(),
+            // Legacy completed tasks already issued both activity and a receipt.
+            claimed: (day.claimed || day.tasks).slice()
+        } : { date: date, games: 0, cleared: 0, eventCount: 0, tasks: [false, false, false], claimed: [false, false, false] };
 
         const storedWeek = profile.currentWeek && profile.currentWeek.week;
         if (storedWeek !== current.week) {
@@ -157,6 +163,7 @@ function createService(db, crypto, clock) {
         const ref = tx.collection('retention_profiles').doc(profileId(owner));
         const stored = await getData(ref);
         const profile = normalizeProfile(stored, owner, at);
+        if (!profile.day.claimed) profile.day.claimed = [false, false, false];
         profile.catalog = catalog.normalize(profile.catalog, beijingDate(at));
         return { ref: ref, profile: profile };
     }
@@ -172,6 +179,8 @@ function createService(db, crypto, clock) {
             signDay: Math.max(1, Math.min(7, signDay || 1)),
             signed: signed,
             taskProgress: [Math.min(1, profile.day.games), Math.min(2, profile.day.games), Math.min(80, profile.day.cleared)],
+            taskClaimMode: profile.taskClaimMode || 'legacy-auto',
+            taskClaimed: profile.day.claimed.slice(),
             activity: profile.currentWeek.activity,
             claimed: bools(profile.currentWeek.claimed, 3)
         };
@@ -233,10 +242,12 @@ function createService(db, crypto, clock) {
         } });
     }
 
-    async function info(openid) {
+    async function info(openid, input) {
         const at = now(); const owner = ownerId(openid);
         const profile = await db.runTransaction(async function (tx) {
             const loaded = await loadProfile(tx, owner, at);
+            // Upgrade is sticky: an older client must not auto-claim newer progress.
+            if (input && input.taskClaimMode === 'manual-v1') loaded.profile.taskClaimMode = 'manual-v1';
             await loaded.ref.set({ data: loaded.profile });
             return loaded.profile;
         });
@@ -378,12 +389,48 @@ function createService(db, crypto, clock) {
             for (let index = 0; index < TASK_TARGETS.length; index++) {
                 if (!profile.day.tasks[index] && values[index] >= TASK_TARGETS[index]) {
                     profile.day.tasks[index] = true;
-                    profile.currentWeek.activity += TASK_ACTIVITY[index];
-                    await writeReceipt(tx, owner, receiptId(owner, 'task', today + ':' + index), TASK_COINS[index], 0, 'task', today, at);
+                    if (profile.taskClaimMode !== 'manual-v1') {
+                        profile.day.claimed[index] = true;
+                        profile.currentWeek.activity += TASK_ACTIVITY[index];
+                        await writeReceipt(tx, owner, receiptId(owner, 'task', today + ':' + index), TASK_COINS[index], 0, 'task', today, at);
+                    }
                 }
             }
             await canonicalRef.set({ data: { kind: 'retention_event', owner: owner, mode: event.mode,
                 canonical: proof.canonical, date: proof.date, status: 'recorded', createdAt: at } });
+            await loaded.ref.set({ data: profile });
+            return { profile: profile, eventStatus: 'recorded' };
+        });
+        if (outcome.error) return outcome.error;
+        return response(owner, outcome.profile, at, outcome.eventStatus);
+    }
+
+    async function claimTask(openid, input) {
+        const at = now(); const owner = ownerId(openid); const today = beijingDate(at);
+        if (!input || !validDate(input.date) || input.date > today ||
+            !Number.isSafeInteger(input.index) || input.index < 0 || input.index >= TASK_TARGETS.length) {
+            return terminal('INVALID_TASK_CLAIM', '任务领取参数非法');
+        }
+        const outcome = await db.runTransaction(async function (tx) {
+            const loaded = await loadProfile(tx, owner, at); const profile = loaded.profile;
+            const id = receiptId(owner, 'task', input.date + ':' + input.index);
+            const existing = await getData(tx.collection('retention_receipts').doc(id));
+            if (existing) {
+                if (!validReceipt(existing, owner) || existing.rewardKind !== 'task' ||
+                    existing.date !== input.date || existing.coins !== TASK_COINS[input.index]) throw corrupt('retention task receipt is corrupt');
+                await loaded.ref.set({ data: profile });
+                return { profile: profile, eventStatus: 'recorded' };
+            }
+            if (input.date !== today) {
+                await loaded.ref.set({ data: profile });
+                return { profile: profile, eventStatus: 'expired' };
+            }
+            if (!profile.day.tasks[input.index]) return { error: terminal('NOT_ELIGIBLE', '任务尚未完成，请完成后再领取') };
+            if (!profile.day.claimed[input.index]) {
+                profile.day.claimed[input.index] = true;
+                profile.currentWeek.activity += TASK_ACTIVITY[input.index];
+                await writeReceipt(tx, owner, id, TASK_COINS[input.index], 0, 'task', today, at);
+            }
             await loaded.ref.set({ data: profile });
             return { profile: profile, eventStatus: 'recorded' };
         });
@@ -501,7 +548,7 @@ function createService(db, crypto, clock) {
         }, 0);
     }
 
-    return { info: info, sign: sign, record: record, claim: claim, ack: ack, cleanup: cleanup,
+    return { info: info, sign: sign, record: record, claim: claim, claimTask: claimTask, ack: ack, cleanup: cleanup,
         catalogRequest:catalogRequest, captureBattleEvidence: captureBattleEvidence, ownerId: ownerId, battleEvidenceId: battleEvidenceId };
 }
 

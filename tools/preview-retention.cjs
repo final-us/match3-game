@@ -40,7 +40,12 @@ const staticControls = `<div class="row">快捷状态
 <label><input id="rules" type="checkbox">规则</label><button id="apply">应用</button></div>`;
 const functionalControls = `<div class="row"><strong>功能模式：仅本机内存服务与临时钱包。</strong>
 <button id="advance-day">服务器与页面日期 +1 天</button><button id="toggle-offline">切换离线</button>
-<button id="run-solo">运行真实单人关卡</button></div>`;
+<button id="run-solo">运行真实单人关卡</button></div>
+<div class="row">Canvas触控辅助（仅点击当前可见控件）
+<button data-touch="tasksTab">任务页</button><button data-touch="signinTab">签到页</button>
+<button data-touch="task0">领取任务1</button><button data-touch="task1">领取任务2</button><button data-touch="task2">领取任务3</button>
+<button data-touch="primary">主按钮</button><button data-touch="close">关闭任务页</button>
+<button id="scroll-tasks">向下滑动任务页</button></div>`;
 const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>每日金币 · 本地临时数据预览</title>
@@ -69,7 +74,7 @@ const width=Number(params.get('width'))||390,height=Number(params.get('height'))
 const canvas=document.querySelector('canvas'),statusLine=document.querySelector('#status'),events={};
 canvas.style.width=width+'px';canvas.style.height=height+'px';
 const clone=value=>value==null?value:JSON.parse(JSON.stringify(value));
-const initialStorage={match3_music_enabled_v1:false,match3_sfx_enabled_v1:false,match3_coin_v1:2460,match3_onboarding_v1:{pvp_wait:true}};
+const initialStorage={match3_music_enabled_v1:false,match3_sfx_enabled_v1:false,match3_coin_v1:2460,match3_items_v1:{hammer:0,bomb:0,color:0},match3_onboarding_v1:{pvp_wait:true}};
 if(functional)initialStorage.match3_progress_infinite_v1={unlockedLevel:99,stars:{},failures:{}};
 const storage=clone(initialStorage),storageWrites=[],cloudAttempts=[];
 const presets={
@@ -81,7 +86,7 @@ const presets={
  previous:{tab:'tasks',offset:0,signDay:4,signed:true,taskProgress:[1,2,64],activity:180,claimed:[false,false,false],status:'ready',message:'',rules:false,previousWeek:{available:[true,true,true],claimed:[false,false,false]}},
  loading:{tab:'signin',offset:0,signDay:1,signed:false,taskProgress:[0,0,0],activity:0,claimed:[false,false,false],status:'loading',message:'正在读取今日进度',rules:false},
  offline:{tab:'signin',offset:0,signDay:2,signed:false,taskProgress:[1,0,22],activity:40,claimed:[false,false,false],status:'offline',message:'网络未连接，请重试',rules:false},
- error:{tab:'signin',offset:0,signDay:2,signed:false,taskProgress:[1,0,22],activity:40,claimed:[false,false,false],status:'error',message:'暂时无法读取进度，请重试',rules:false},
+ error:{tab:'signin',offset:0,signDay:2,signed:false,taskProgress:[1,0,22],activity:40,claimed:[false,false,false],status:'error',message:'云端服务运行异常，请稍后重试',diagnostic:'R1/CALL/-504002/FUNCTION',rules:false},
  pending:{tab:'tasks',offset:0,signDay:3,signed:true,taskProgress:[1,1,46],activity:70,claimed:[false,false,false],status:'pending',message:'奖励待同步，恢复网络后重试',rules:false},
  rules:{tab:'signin',offset:0,signDay:3,signed:true,taskProgress:[1,2,80],activity:180,claimed:[false,false,false],status:'ready',message:'',rules:true}
 };
@@ -120,9 +125,9 @@ function point(event){const rect=canvas.getBoundingClientRect();return {clientX:
 canvas.onpointerdown=event=>{canvas.setPointerCapture(event.pointerId);events.start&&events.start({touches:[point(event)]});};
 canvas.onpointermove=event=>{if(event.buttons&&events.move)events.move({touches:[point(event)]});};
 canvas.onpointerup=event=>{events.end&&events.end({changedTouches:[point(event)]});};
-window.app=new (load('js/main.js'))({retentionSample:!functional});
+window.app=new (load('js/main.js'))({retentionSample:!functional,catalogSample:true});
 function cleanModel(value){const model={tab:value.tab==='tasks'?'tasks':'signin',offset:Math.max(0,Number(value.offset)||0),signDay:Math.max(1,Math.min(7,Number(value.signDay)||1)),signed:!!value.signed,taskProgress:(value.taskProgress||[0,0,0]).slice(0,3).map(n=>Math.max(0,Number(n)||0)),activity:Math.max(0,Number(value.activity)||0),claimed:(value.claimed||[false,false,false]).slice(0,3).map(Boolean),status:['ready','loading','offline','error','pending'].includes(value.status)?value.status:'ready',message:String(value.message||''),rules:!!value.rules};if(value.previousWeek)model.previousWeek={available:(value.previousWeek.available||[false,false,false]).slice(0,3).map(Boolean),claimed:(value.previousWeek.claimed||[false,false,false]).slice(0,3).map(Boolean)};return model;}
-window.setFixtureModel=value=>{if(functional)throw Error('functional fixture cannot replace the real controller model');app.retentionPreview=cleanModel(value);fillControls(app.retentionPreview);return clone(app.retentionPreview);};
+window.setFixtureModel=value=>{if(functional)throw Error('functional fixture cannot replace the real controller model');app.retentionPreview=Object.assign(cleanModel(value),{taskClaimMode:'manual-v1',taskClaimed:(value.taskClaimed||[false,false,false]).slice(),diagnostic:value.diagnostic||''});fillControls(app.retentionPreview);return clone(app.retentionPreview);};
 window.applyPreset=name=>setFixtureModel(presets[name]||presets.unsigned);
 window.tapRect=rect=>{if(!rect)return false;const p={clientX:rect.x+rect.w/2,clientY:rect.y+rect.h/2};events.start&&events.start({touches:[p]});events.end&&events.end({changedTouches:[p]});return true;};
 window.openRetention=()=>tapRect(app.menuButtons&&app.menuButtons.retention);
@@ -151,11 +156,13 @@ window.finishActualSolo=async()=>{
  if(app.state!=='menu')throw Error('solo result did not close');await app.retention.sync();return clone(app.retention.model);
 };
 if(functional){
+ document.querySelectorAll('[data-touch]').forEach(button=>button.onclick=()=>tapRect(app.retentionButtons&&app.retentionButtons[button.dataset.touch]));
+ document.querySelector('#scroll-tasks').onclick=()=>{const r=app.retentionButtons&&app.retentionButtons.viewport;if(!r)return;const p={clientX:r.x+r.w/2,clientY:r.y+r.h*.8},q={clientX:p.clientX,clientY:r.y+r.h*.2};events.start({touches:[p]});events.move({touches:[q]});events.end({changedTouches:[q]});};
  document.querySelector('#advance-day').onclick=async()=>{await fetch('/functional-control?session='+encodeURIComponent(session),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'advanceDay'})});await app.retention.sync();};
  document.querySelector('#toggle-offline').onclick=()=>{window.fixture.offline=!window.fixture.offline;if(window.fixture.offline)app.retention.sync();};
  document.querySelector('#run-solo').onclick=async event=>{try{if(app.state==='result'){await finishActualSolo();event.target.textContent='运行真实单人关卡';}else{await playActualSolo();event.target.textContent='结束并同步本局';}}catch(error){statusLine.textContent='本地夹具错误：'+error.message;}};
 }
-setInterval(()=>{const wallet=storage.match3_coin_v1;statusLine.textContent='真实 Main Canvas｜'+width+'×'+height+'｜状态 '+app.state+'｜临时钱包 '+wallet+'｜存储写入 '+storageWrites.length+'｜'+(functional?'本地服务请求 ':'云请求已拒绝 ')+cloudAttempts.length;},250);
+setInterval(()=>{const wallet=storage.match3_coin_v1;statusLine.textContent='真实 Main Canvas｜'+width+'×'+height+'｜状态 '+app.state+'｜临时钱包 '+wallet+'｜存储写入 '+storageWrites.length+'｜'+(functional?'本地服务请求 ':'云请求已拒绝 ')+cloudAttempts.length+(functional?'｜任务 '+app.retentionPreview.taskProgress.join('/')+'｜已领 '+(app.retentionPreview.taskClaimed||[]).map(Number).join('/')+'｜活跃 '+app.retentionPreview.activity:'');},250);
 `;
 
 function contentType(file) {
@@ -166,7 +173,7 @@ function contentType(file) {
 const functionalSessions = new Map();
 const functionalRoutes = {
     retentionInfo: 'info', retentionSign: 'sign', retentionRecord: 'record',
-    retentionClaim: 'claim', retentionAck: 'ack'
+    retentionClaim: 'claim', retentionClaimTask: 'claimTask', retentionAck: 'ack'
 };
 
 function functionalSession(id) {
@@ -360,19 +367,19 @@ async function runFunctionalChecks(browser, base, errors) {
         await page.locator('canvas').screenshot({ path: path.join(out, 'functional-result-' + width + '.png') });
         await page.evaluate(() => finishActualSolo());
         await page.waitForFunction(() => app.state === 'menu' && app.retentionPreview.status === 'ready');
-        assert([2600, 2660].includes(await page.evaluate(() => fixture.storage.match3_coin_v1)),
-            'first real game credited outside its eligible task rewards');
+        assert.strictEqual(await page.evaluate(() => fixture.storage.match3_coin_v1),2560,
+            'first real game must not automatically claim task rewards');
         assert(!(await page.evaluate(() => fixture.storage.match3_coin_receipts_v1 || [])).includes('solo:first:1'),
             'old fixture level received a first-clear reward');
 
         const second = await page.evaluate(() => playActualSolo());
         assert(second.cleared > 0 && second.id !== first.id, 'second solo did not create independent real match evidence');
         await page.evaluate(() => finishActualSolo());
-        await page.waitForFunction(() => app.state === 'menu' && app.retentionPreview.status === 'ready' && fixture.storage.match3_coin_v1 === 2720);
+        await page.waitForFunction(() => app.state === 'menu' && app.retentionPreview.status === 'ready' && fixture.storage.match3_coin_v1 === 2560);
         assert.deepStrictEqual(await page.evaluate(() => app.retentionPreview.taskProgress), [1, 2, 80]);
         const taskFeedbackTotal = (await page.evaluate(start => fixture.notices.slice(start), signinNoticeCount))
             .reduce((sum, message) => sum + Number((/\+(\d+)金币/.exec(message) || [0, 0])[1]), 0);
-        assert.strictEqual(taskFeedbackTotal, 160, 'task reward feedback did not total 160 coins');
+        assert.strictEqual(taskFeedbackTotal, 0, 'unclaimed task must not produce reward feedback');
         assert(!(await page.evaluate(() => fixture.storage.match3_coin_receipts_v1 || [])).includes('solo:first:1'),
             'repeated old level received a first-clear reward');
 
@@ -383,6 +390,12 @@ async function runFunctionalChecks(browser, base, errors) {
         if (width === 320) {
             await page.locator('canvas').screenshot({ path: path.join(out, 'functional-tasks-top-320.png') });
         }
+        for(let index=0;index<3;index++){
+            await page.evaluate(index=>{app.retentionPreview.offset=index*78;},index);
+            await clickRect(page,'retentionButtons','task'+index);
+            await page.waitForFunction(index=>app.retentionPreview.status==='ready'&&app.retentionPreview.taskClaimed[index],index);
+        }
+        assert.strictEqual(await page.evaluate(()=>fixture.storage.match3_coin_v1),2720,'manual claims award exactly 160 coins');
         await page.evaluate(() => { app.retentionPreview.offset = app.retentionButtons.maxScroll; });
         await page.waitForTimeout(100);
         await page.locator('canvas').screenshot({ path: path.join(out, 'functional-tasks-' + width + '.png') });
@@ -520,14 +533,7 @@ async function runChecks(base) {
                 await setModel(page, 'pending');
                 await page.locator('canvas').screenshot({ path: path.join(out, 'retention-pending-320.png') });
 
-                await setModel(page, 'rules');
-                await page.locator('canvas').screenshot({ path: path.join(out, 'retention-rules-320.png') });
-                await scrollRetentionToBottom(page);
-                await page.locator('canvas').screenshot({ path: path.join(out, 'retention-rules-bottom-320.png') });
-                await clickRect(page, 'retentionButtons', 'rules');
-                assert.strictEqual(await page.evaluate(() => app.state), 'retention_preview', 'rules return left the retention page');
-                assert.strictEqual(await page.evaluate(() => app.retentionPreview.rules), false, 'rules return did not restore the main retention page');
-                assert.strictEqual(await page.evaluate(() => app.retentionPreview.offset), 0, 'rules return did not restore offset 0');
+                assert.strictEqual(await page.evaluate(() => !!app.retentionButtons.rules), false, 'rules entry must stay removed');
 
                 await setModel(page, 'day7');
                 await page.locator('canvas').screenshot({ path: path.join(out, 'retention-day7-top-before-320.png') });
@@ -580,7 +586,11 @@ async function runChecks(base) {
     }
 }
 
-server.listen(0, '127.0.0.1', async () => {
+const previewPort = Number(process.env.MATCH3_PREVIEW_PORT || 0);
+if (!Number.isInteger(previewPort) || previewPort < 0 || previewPort > 65535) {
+    throw new Error('MATCH3_PREVIEW_PORT must be an integer from 0 to 65535');
+}
+server.listen(previewPort, '127.0.0.1', async () => {
     const base = 'http://127.0.0.1:' + server.address().port;
     if (!process.argv.includes('--check')) {
         console.log('Retention local preview: ' + base);

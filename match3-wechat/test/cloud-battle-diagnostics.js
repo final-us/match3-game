@@ -146,5 +146,16 @@ async function rejected(cloud) {
     assert(!message.includes('-4'));
     platformError = null;
     assert(dev.describeCreateFailure(await rejected(dev), false).includes('平台未提供文字说明'));
+    platformError = {errCode:-1,errMsg:'cloud.callFunction:fail Error: errCode: -504002 functions execute fail | errMsg: 0 code exit unexpected token=PRIVATE_SECRET'};
+    failure=await rejected(dev);
+    const retentionFailure=dev.describeRetentionFailure(failure);
+    assert.equal(retentionFailure.status,'error');
+    assert.equal(retentionFailure.diagnostic,'R1/CALL/-504002/FUNCTION');
+    assert(retentionFailure.message.includes('云端服务运行异常'));
+    assert(!JSON.stringify(retentionFailure).includes('PRIVATE'));
+    assert.equal(dev.describeRetentionFailure(Error('network offline')).status,'offline');
+    assert.equal(dev.describeRetentionFailure(Error('timeout')).status,'error');
+    assert.equal(dev.describeRetentionFailure(Error('unknown')).status,'error');
+    assert.equal(dev.describeRetentionFailure({battleDiagnostic:{stage:'SDK',error:{kind:'NETWORK',code:'NA'}}}).status,'error');
     console.log('cloud battle diagnostic tests passed');
 })().catch(function (error) { console.error(error); process.exitCode = 1; });

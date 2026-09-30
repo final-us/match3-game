@@ -5,7 +5,7 @@ const coin=require('../js/core/coin');
 const copy=x=>x==null?x:JSON.parse(JSON.stringify(x));
 const now=Date.UTC(2026,8,23,5);
 const state={date:'2026-09-23',week:'2026-09-21',serverNow:now,weekEndsAt:Date.UTC(2026,8,27,16),
-    signDay:7,signed:false,taskProgress:[0,0,0],activity:0,claimed:[false,false,false]};
+    signDay:7,signed:false,taskProgress:[0,0,0],activity:0,claimed:[false,false,false],taskClaimMode:'manual-v1',taskClaimed:[false,false,false]};
 const reward={id:'retention:signin:2026-09-23',coins:200,items:{hammer:1},kind:'signin',date:state.date};
 function fixture() {
     const values={match3_coin_v1:500,match3_items_v1:{hammer:2,bomb:1,color:1}};
@@ -31,7 +31,7 @@ function fixture() {
 (async()=>{
     let f=fixture(),c=f.make();await c.sync();assert.equal(c.model.status,'ready');
     f.lose('retentionSign');c.activate('primary');await c.sync();
-    assert.equal(c.model.status,'offline');assert.equal(f.values.match3_coin_v1,500);
+    assert.equal(c.model.status,'error');assert.equal(f.values.match3_coin_v1,500);
     assert.equal(f.values[client.KEY].pending.length,1,'unconfirmed request remains durable');
     c=f.make();await c.sync();assert.equal(c.model.signed,true);assert.equal(f.values.match3_coin_v1,700);
     assert.equal(f.values.match3_items_v1.hammer,3);assert.equal(f.values[client.KEY].pending.length,0);
@@ -39,7 +39,7 @@ function fixture() {
     assert.equal(f.calls.filter(c=>c.action==='retentionSign').length,2,'retry retains original request');
 
     f=fixture();c=f.make();await c.sync();f.lose('retentionAck');c.activate('primary');await c.sync();
-    assert.equal(f.values.match3_coin_v1,700);assert.equal(c.model.status,'offline');
+    assert.equal(f.values.match3_coin_v1,700);assert.equal(c.model.status,'error');
     c=f.make();await c.sync();assert.equal(f.values.match3_coin_v1,700);assert.equal(f.values.match3_items_v1.hammer,3);
     assert.equal(f.values[client.KEY].acks.length,0,'lost ACK safely retries');
 
@@ -73,5 +73,20 @@ function fixture() {
     assert.equal(f.calls.length,0);
     assert(!client.validReceipt({...reward,coins:999999}));assert(!client.validReceipt({...reward,items:{hammer:7}}));
     assert(!client.validState({...state,activity:900}));
+    for (const [kind,code,status] of [['FUNCTION','-504002','error'],['TIMEOUT','NA','error'],['NETWORK','-9003','offline'],['PERMISSION','-501000','error'],['UNKNOWN','-1','error']]) {
+        f=fixture();let broken=true;
+        c=client.create(f.api,async()=>{
+            if(broken)throw {battleDiagnostic:{stage:'CALL',error:{kind,code},details:{text:'PRIVATE_SECRET'}}};
+            return {ok:true,state,receipts:[]};
+        },coin,null,()=>now);
+        c.record({id:'solo:diagnostic',date:state.date,validMove:true,completed:true,cleared:80,mode:'solo',levelId:1});
+        await c.sync();assert.equal(c.model.status,status);
+        assert.equal(c.model.diagnostic,'R1/CALL/'+code+'/'+kind);
+        assert(!JSON.stringify(c.model).includes('PRIVATE_SECRET'));
+        assert.equal(f.values[client.KEY].pending.length,1,'failure preserves pending progress');
+        assert.equal(f.values.match3_coin_v1,500,'diagnosis never grants rewards');
+        broken=false;await c.sync();assert.equal(c.model.status,'ready');assert.equal(c.model.diagnostic,'');
+        assert.equal(f.values[client.KEY].pending.length,0);
+    }
     console.log('retention client: durable claims, lost response/ACK, wallet interruption, solo revival/restart, validation passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

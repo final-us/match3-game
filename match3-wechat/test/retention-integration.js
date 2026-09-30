@@ -12,7 +12,7 @@ const store={match3_coin_v1:1000,match3_music_enabled_v1:false,match3_sfx_enable
     match3_items_v1:{hammer:0,bomb:0,color:0},match3_onboarding_v1:{solo_intro:true}};
 global.wx={getStorageSync:k=>copy(store[k]===undefined?'':store[k]),setStorageSync:(k,v)=>{store[k]=copy(v);},showToast(){}};
 const fixture=createRetentionDb(),service=backend.createService(fixture.db,crypto,()=>time);
-const routes={retentionInfo:'info',retentionSign:'sign',retentionRecord:'record',retentionClaim:'claim',retentionAck:'ack'};
+const routes={retentionInfo:'info',retentionSign:'sign',retentionRecord:'record',retentionClaim:'claim',retentionClaimTask:'claimTask',retentionAck:'ack'};
 const requests=[];
 let offline=false;
 async function call(action,input){requests.push({action,input:copy(input)});if(offline)throw Error('offline');return service[routes[action]]('integration-cat',input);}
@@ -49,7 +49,14 @@ async function playOne() {
     await app.retention.sync();app.retention.activate('primary');await app.retention.sync();
     assert.equal(coin.getCoins(),1100);assert.equal(app.retention.model.activity,20);
     const first=await playOne();const second=await playOne();assert.notEqual(first,second);
-    assert.deepEqual(app.retention.model.taskProgress,[1,2,80]);assert.equal(coin.getCoins(),1260);
+    assert.deepEqual(app.retention.model.taskProgress,[1,2,80]);assert.equal(coin.getCoins(),1100,'games must not auto-claim tasks');
+    assert.equal(app.retention.model.activity,20);assert(app.retention.hasClaimable());
+    const beforeVisit=notices.length;
+    app.retention.activate('tasksTab');await app.retention.sync();
+    assert.equal(coin.getCoins(),1100,'visiting tasks must not claim');assert.equal(notices.length,beforeVisit);
+    for(let i=0;i<3;i++){app.retention.activate('task'+i);await app.retention.sync();}
+    assert.equal(coin.getCoins(),1260);assert(!app.retention.hasClaimable());
+    app.retention.activate('signinTab');
     assert.equal(app.retention.model.activity,100,'all task activity + sign');
     await app.retention.sync();assert.equal(coin.getCoins(),1260,'repeat refresh never grants again');
     const before=requests.filter(r=>r.action==='retentionRecord').length;
@@ -63,6 +70,7 @@ async function playOne() {
             for(let game=0;game<2;game++)app.retention.record({id:'solo:integration:'+day+':'+game,mode:'solo',levelId:1,
                 date:app.retention.date(),validMove:true,completed:true,cleared:40});
             await app.retention.sync();
+            for(let i=0;i<3;i++){app.retention.activate('task'+i);await app.retention.sync();}
         }
     }
     assert.equal(coin.getItems().hammer,1);assert.equal(app.retention.model.signDay,7);assert(app.retention.model.signed);
