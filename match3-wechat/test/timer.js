@@ -124,6 +124,40 @@ async function run() {
     cascadeCore.checkLevelEnd('timeout');
     assert.strictEqual(cascadeEvents[0].win, true, '连消完成目标未优先于超时');
 
+    // Real accepted swap, suspended in its renderer callback while frames advance.
+    for (const scenario of [
+        { moves: 1, target: 10, time: 1000, win: true, reason: 'goal' },
+        { moves: 1, target: 999999, time: 1000, win: false, reason: 'moves' },
+        { moves: 2, target: 10, time: 1, win: true, reason: 'goal' },
+        { moves: 2, target: 999999, time: 1, win: false, reason: 'timeout' }
+    ]) {
+        let finishSwap;
+        const settled = [];
+        const swapCore = new GameCore(makeLevel({ moveCount: scenario.moves,
+            goals: [{ type: 'score', target: scenario.target }] }), {
+            onSwap: () => new Promise(resolve => { finishSwap = resolve; }),
+            onLevelEnd: result => settled.push(result)
+        });
+        swapCore.timerStarted = true;
+        swapCore.timeLeftMs = scenario.time;
+        const accepted = findValidMove(swapCore);
+        assert(accepted);
+        const pending = swapCore.trySwap(...accepted);
+        assert(finishSwap, '有效交换必须开始onSwap动画');
+        assert.strictEqual(swapCore.isPlaying(), false, '交换动画期间拒绝新输入');
+        assert.strictEqual(await swapCore.trySwap(...accepted), false, '交换动画期间不能再次扣步');
+        assert.strictEqual(swapCore.movesLeft, scenario.moves - 1);
+        for (let elapsed = 0; elapsed < 220; elapsed += 16) swapCore.updateTime(Math.min(16, 220 - elapsed));
+        assert.strictEqual(swapCore.timeLeftMs, Math.max(0, scenario.time - 220), 'onSwap期间正常推进时钟');
+        assert.strictEqual(settled.length, 0, 'onSwap期间不能按消除前分数提前结算');
+        finishSwap();
+        assert.strictEqual(await pending, true);
+        assert.strictEqual(settled.length, 1, '完整操作只能结算一次');
+        assert.strictEqual(settled[0].win, scenario.win);
+        assert.strictEqual(settled[0].reason, scenario.reason);
+        assert(swapCore.score >= 10, '有效交换必须先结算真实消除得分');
+    }
+
     const revived = new GameCore(makeLevel({ timeLimitSec: 1 }), {});
     await makeFirstMove(revived);
     revived.updateTime(1000);

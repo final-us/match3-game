@@ -18,6 +18,13 @@ assert.strictEqual(onboarding.markSeen(onboarding.GUIDE_KEYS.SOLO), true);
 assert.strictEqual(onboarding.hasSeen(onboarding.GUIDE_KEYS.SOLO), true);
 assert.strictEqual(onboarding.shouldShow(onboarding.GUIDE_KEYS.SOLO), false);
 assert.strictEqual(onboarding.shouldShow('unknown'), false);
+assert.strictEqual(onboarding.shouldShow(onboarding.GUIDE_KEYS.JELLY), true);
+assert.strictEqual(onboarding.shouldShow(onboarding.GUIDE_KEYS.ICE), true);
+onboarding.markSeen(onboarding.GUIDE_KEYS.JELLY);
+assert.strictEqual(onboarding.shouldShow(onboarding.GUIDE_KEYS.ICE), true, '果冻教学不能提前完成冰块教学');
+storage[onboarding.STORAGE_KEY] = { obstacle: true };
+assert.strictEqual(onboarding.shouldShow(onboarding.GUIDE_KEYS.JELLY), false, '旧玩家障碍教学完成标记保持有效');
+assert.strictEqual(onboarding.shouldShow(onboarding.GUIDE_KEYS.ICE), false);
 
 const textRecords = [];
 const ctx = new Proxy({}, {
@@ -54,9 +61,14 @@ Object.keys(GuideUI.CONTENT).forEach(function (key) {
 });
 }
 
+assert(GuideUI.CONTENT.moonbud.lines.join('').includes('不能交换或下落'));
+assert(GuideUI.CONTENT.moonbud.lines.join('').includes('保护猫和花苞'));
+assert(GuideUI.CONTENT.yarn_spread.lines.join('').includes('邻消不伤延伸藤'));
+assert(GuideUI.CONTENT.yarn_spread.lines.join('').includes('解开留猫'));
+
 const mainSource = fs.readFileSync(path.join(__dirname, '../js/main.js'), 'utf8');
 [
-    'GUIDE_KEYS.SOLO', 'GUIDE_KEYS.SPECIAL', 'GUIDE_KEYS.OBSTACLE',
+    'GUIDE_KEYS.SOLO', 'GUIDE_KEYS.SPECIAL', 'GUIDE_KEYS.JELLY', 'GUIDE_KEYS.ICE',
     'GUIDE_KEYS.SOLO_ITEM', 'GUIDE_KEYS.PVP_WAIT', 'GUIDE_KEYS.YARN'
 ].forEach(function (marker) {
     assert(mainSource.includes(marker), '主流程缺少引导触发点 ' + marker);

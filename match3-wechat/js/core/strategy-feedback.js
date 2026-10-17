@@ -6,13 +6,18 @@ function collectGoal(level) {
 }
 
 function collectCells(core) {
-    const goal = collectGoal(core.level);
-    if (!goal) return [];
+    const goals = (core.level.goals || []).filter(function (goal) {
+        return goal.type === 'collect' && (core.collectedCounts[goal.pieceType] || 0) < goal.target;
+    });
     const cells = [];
+    const counts = {};
     for (let row = 0; row < core.grid.length; row++) {
         for (let column = 0; column < core.grid[row].length; column++) {
-            if (core.grid[row][column] === goal.pieceType) cells.push({ row: row, column: column });
-            if (cells.length === 3) return cells;
+            const type = core.grid[row][column];
+            if ((counts[type] || 0) < 3 && goals.some(function (goal) { return Number(goal.pieceType) === type; })) {
+                cells.push({ row: row, column: column });
+                counts[type] = (counts[type] || 0) + 1;
+            }
         }
     }
     return cells;

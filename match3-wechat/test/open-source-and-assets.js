@@ -14,6 +14,8 @@ const upstreamCommit = '658679250f30ef8d01ff570eb976017c5727cbf0';
 const upstreamFile = 'src/match3/Match3Utility.ts';
 const sfxPath = 'res/audio/sfx-acoustic.mp3';
 const sfxSha256 = 'dffb3257a79902f517013afdf09597fc13e36ba4e92e095d74444c542521337e';
+const newSpecialSfxPath = 'res/audio/sfx-new-specials.wav';
+const newSpecialSfxSha256 = 'e1002e38f672d4eb43d35d84cccc30d325815b31172d5cda7ba4311402ead2d3';
 const sfxSources = [
     'https://freesound.org/people/Kinoton/sounds/347163/',
     'https://freesound.org/people/animationIsaac/sounds/207322/',
@@ -120,6 +122,19 @@ assert(notices.includes('https://creativecommons.org/licenses/by/3.0/'), '四连
 assert(notices.includes('Changes: resampled'), '四连音效缺少改编说明');
 assert(ledger.includes('`' + sfxPath + '`'), '台账缺少正式音效精灵');
 assert(ledger.includes(sfxSha256), '台账缺少正式音效精灵 SHA256');
+assert(ledger.includes('`' + newSpecialSfxPath + '`') && ledger.includes(newSpecialSfxSha256), '台账缺少已选新特殊音效');
+assert(!isIgnored(newSpecialSfxPath, ignoreRules), '已选新特殊音效不得被包体忽略');
+const newSpecialSfx = fs.readFileSync(path.join(projectRoot, newSpecialSfxPath));
+assert.strictEqual(newSpecialSfx.length, 81628, '已选新特殊音效字节数漂移');
+assert.strictEqual(crypto.createHash('sha256').update(newSpecialSfx).digest('hex'), newSpecialSfxSha256);
+assert.strictEqual(newSpecialSfx.toString('ascii', 0, 4), 'RIFF');
+assert.strictEqual(newSpecialSfx.toString('ascii', 8, 12), 'WAVE');
+assert.strictEqual(newSpecialSfx.readUInt16LE(20), 1);
+assert.strictEqual(newSpecialSfx.readUInt16LE(22), 1);
+assert.strictEqual(newSpecialSfx.readUInt32LE(24), 22050);
+assert.strictEqual(newSpecialSfx.readUInt16LE(34), 16);
+const newSpecialMapping = require('../js/sfx-new-specials-map');
+assert.strictEqual(Math.round(newSpecialMapping.decodedSeconds * newSpecialMapping.sampleRate), newSpecialSfx.readUInt32LE(40) / 2);
 const sfxFile = path.join(projectRoot, sfxPath);
 assert(fs.existsSync(sfxFile), '正式音效精灵不存在');
 assert(!isIgnored(sfxPath, ignoreRules), '正式音效精灵不得被包体忽略');

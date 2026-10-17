@@ -4,14 +4,17 @@
  */
 
 const SFX_SPRITE = require('./sfx-acoustic-map');
+const SPECIAL_SFX = require('./sfx-new-specials-map');
+const specialTriggerDelays = require('./special-trigger-timing');
 
 let ctx = null;
 let sfxMaster = null;
 let sfxMasterCtx = null;
-let activeSfxVoices = 0;
-let sfxSpriteBuffer = null;
-let sfxSpriteLoading = false;
-let sfxSpriteUnavailable = false;
+const activeSfxVoices = new Set();
+const sfxBanks = {
+    acoustic: { definition: SFX_SPRITE, buffer: null, loading: false, unavailable: false },
+    specials: { definition: SPECIAL_SFX, buffer: null, loading: false, unavailable: false }
+};
 let clickVariant = 0;
 let noiseSeed = 2463534242;
 let musicEnabled = true;
@@ -27,6 +30,7 @@ let localMusicDuckTimer = null;
 let unlocked = false;
 let hidden = false;
 let interrupted = false;
+let adActive = false;
 let lifecycleStore = null;
 const musicSources = [];
 const localMusicFailed = { calm: false, battle: false };
@@ -70,7 +74,7 @@ function ensureCtx() {
 }
 
 function ensureSfxOutput() {
-    if (!sfxEnabled) return null;
+    if (!sfxEnabled || hidden || interrupted || adActive) return null;
     const c = ensureCtx();
     if (!c) return null;
     if (!sfxMaster || sfxMasterCtx !== c) {
@@ -87,50 +91,55 @@ function ensureSfxOutput() {
     return sfxMaster;
 }
 
-function markSfxSpriteUnavailable() {
-    sfxSpriteLoading = false;
-    sfxSpriteUnavailable = true;
+function markSfxSpriteUnavailable(bank) {
+    bank.loading = false;
+    bank.unavailable = true;
 }
 
-function loadSfxSprite() {
-    if (!sfxEnabled || sfxSpriteBuffer || sfxSpriteLoading || sfxSpriteUnavailable) return;
+function loadSfxSprite(bank) {
+    if (!sfxEnabled || bank.buffer || bank.loading || bank.unavailable) return;
     const store = getStore();
     const c = ensureCtx();
     if (!store || typeof store.getFileSystemManager !== 'function' || !c || typeof c.decodeAudioData !== 'function') {
-        markSfxSpriteUnavailable();
+        markSfxSpriteUnavailable(bank);
         return;
     }
     let fileSystem = null;
     try { fileSystem = store.getFileSystemManager(); } catch (e) {}
     if (!fileSystem || typeof fileSystem.readFile !== 'function') {
-        markSfxSpriteUnavailable();
+        markSfxSpriteUnavailable(bank);
         return;
     }
-    sfxSpriteLoading = true;
+    bank.loading = true;
     try {
         fileSystem.readFile({
-            filePath: SFX_SPRITE.file,
+            filePath: bank.definition.file,
             success: function (result) {
                 let settled = false;
                 function accept(buffer) {
                     if (settled) return;
                     settled = true;
-                    sfxSpriteLoading = false;
-                    if (buffer) sfxSpriteBuffer = buffer; else markSfxSpriteUnavailable();
+                    bank.loading = false;
+                    if (buffer) bank.buffer = buffer; else markSfxSpriteUnavailable(bank);
                 }
                 function reject() {
                     if (settled) return;
                     settled = true;
-                    markSfxSpriteUnavailable();
+                    markSfxSpriteUnavailable(bank);
                 }
                 try {
                     const pending = c.decodeAudioData(result.data, accept, reject);
                     if (pending && typeof pending.then === 'function') pending.then(accept).catch(reject);
                 } catch (e) { reject(); }
             },
-            fail: markSfxSpriteUnavailable
+            fail: function () { markSfxSpriteUnavailable(bank); }
         });
-    } catch (e) { markSfxSpriteUnavailable(); }
+    } catch (e) { markSfxSpriteUnavailable(bank); }
+}
+
+function loadSfxSprites() {
+    loadSfxSprite(sfxBanks.acoustic);
+    loadSfxSprite(sfxBanks.specials);
 }
 
 function readBool(store, key) {
@@ -159,7 +168,7 @@ function loadSettings(store) {
 }
 
 function canPlayMusic() {
-    return unlocked && musicEnabled && !hidden && !interrupted;
+    return unlocked && musicEnabled && !hidden && !interrupted && !adActive;
 }
 
 function stopProceduralMusic() {
@@ -303,25 +312,33 @@ function resumeMusic() {
 function registerLifecycleListeners(store) {
     if (!store || lifecycleStore === store) return;
     lifecycleStore = store;
-    if (store.onHide) store.onHide(function () { hidden = true; stopMusic(); });
+    if (store.onHide) store.onHide(function () { hidden = true; stopSfxVoices(); stopMusic(); });
     if (store.onShow) store.onShow(function () { hidden = false; resumeMusic(); });
-    if (store.onAudioInterruptionBegin) store.onAudioInterruptionBegin(function () { interrupted = true; stopMusic(); });
+    if (store.onAudioInterruptionBegin) store.onAudioInterruptionBegin(function () { interrupted = true; stopSfxVoices(); stopMusic(); });
     if (store.onAudioInterruptionEnd) store.onAudioInterruptionEnd(function () { interrupted = false; resumeMusic(); });
 }
 
 function claimVoice(node) {
-    if (activeSfxVoices >= MAX_SFX_VOICES) return false;
-    activeSfxVoices++;
-    node.onended = function () { activeSfxVoices = Math.max(0, activeSfxVoices - 1); };
+    if (activeSfxVoices.size >= MAX_SFX_VOICES) return false;
+    activeSfxVoices.add(node);
+    node.onended = function () { activeSfxVoices.delete(node); };
     return true;
 }
 
+function stopSfxVoices() {
+    for (const node of activeSfxVoices) {
+        try { node.stop(); } catch (e) {}
+        activeSfxVoices.delete(node);
+    }
+}
+
 function playSprite(name, gain, delay, rate) {
-    if (!sfxEnabled) return true;
-    const cue = SFX_SPRITE.cues[name];
+    if (!sfxEnabled || hidden || interrupted || adActive) return true;
+    const bank = SPECIAL_SFX.cues[name] ? sfxBanks.specials : sfxBanks.acoustic;
+    const cue = bank.definition.cues[name];
     if (!cue) return false;
-    if (!sfxSpriteBuffer) {
-        loadSfxSprite();
+    if (!bank.buffer) {
+        loadSfxSprite(bank);
         return false;
     }
     const output = ensureSfxOutput();
@@ -331,12 +348,11 @@ function playSprite(name, gain, delay, rate) {
     rate = rate == null ? 1 : rate;
     if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return false;
     const startTime = c.currentTime + (delay || 0);
-    let claimed = false;
+    let source = null;
     try {
-        const source = c.createBufferSource();
+        source = c.createBufferSource();
         if (!claimVoice(source)) return true;
-        claimed = true;
-        source.buffer = sfxSpriteBuffer;
+        source.buffer = bank.buffer;
         if (gain !== 1) {
             const localGain = c.createGain();
             localGain.gain.setValueAtTime(gain, startTime);
@@ -354,7 +370,7 @@ function playSprite(name, gain, delay, rate) {
         source.start(startTime, cue.offset, cue.duration);
         return true;
     } catch (e) {
-        if (claimed) activeSfxVoices = Math.max(0, activeSfxVoices - 1);
+        activeSfxVoices.delete(source);
         return false;
     }
 }
@@ -363,11 +379,10 @@ function tone(freq, duration, type, volume, delay, freqEnd) {
     const output = ensureSfxOutput();
     const c = ctx;
     if (!output || !c) return;
-    let claimed = false;
+    let osc = null;
     try {
-        const osc = c.createOscillator();
+        osc = c.createOscillator();
         if (!claimVoice(osc)) return;
-        claimed = true;
         const t0 = c.currentTime + (delay || 0);
         const gain = c.createGain();
         osc.type = type || 'sine';
@@ -380,7 +395,7 @@ function tone(freq, duration, type, volume, delay, freqEnd) {
         osc.start(t0);
         osc.stop(t0 + duration + 0.03);
     } catch (e) {
-        if (claimed) activeSfxVoices = Math.max(0, activeSfxVoices - 1);
+        activeSfxVoices.delete(osc);
     }
 }
 
@@ -388,7 +403,7 @@ function noise(duration, volume, delay, filterFrequency) {
     const output = ensureSfxOutput();
     const c = ctx;
     if (!output || !c || !c.createBuffer || !c.createBufferSource) return;
-    let claimed = false;
+    let source = null;
     try {
         const count = Math.max(1, Math.floor(c.sampleRate * duration));
         const buffer = c.createBuffer(1, count, c.sampleRate);
@@ -399,9 +414,8 @@ function noise(duration, volume, delay, filterFrequency) {
             noiseSeed ^= noiseSeed << 5;
             data[i] = ((noiseSeed >>> 0) / 4294967295 * 2 - 1) * (1 - i / count);
         }
-        const source = c.createBufferSource();
+        source = c.createBufferSource();
         if (!claimVoice(source)) return;
-        claimed = true;
         source.buffer = buffer;
         const gain = c.createGain();
         const t0 = c.currentTime + (delay || 0);
@@ -420,7 +434,7 @@ function noise(duration, volume, delay, filterFrequency) {
         gain.connect(output);
         source.start(t0);
     } catch (e) {
-        if (claimed) activeSfxVoices = Math.max(0, activeSfxVoices - 1);
+        activeSfxVoices.delete(source);
     }
 }
 
@@ -429,26 +443,30 @@ function specialKind(type) {
     if (type === 102 || type === 'vertical' || type === 'vRocket') return 'vertical';
     if (type === 103 || type === 'bomb') return 'bomb';
     if (type === 104 || type === 'color' || type === 'colorBall') return 'color';
+    if (type === 105 || type === 'paw' || type === 'trackingPaw') return 'paw';
+    if (type === 106 || type === 'bell' || type === 'colorBell') return 'bell';
     return '';
 }
 
-function playSpecial(type, triggered) {
+function playSpecial(type, triggered, delay) {
     const kind = specialKind(type);
     const sprite = kind === 'horizontal' || kind === 'vertical' ? 'rocket' : kind;
-    if (sprite && playSprite(sprite)) return;
+    if (sprite && playSprite(sprite, undefined, delay)) return;
+    if ((kind === 'paw' || kind === 'bell') && playSprite('color', undefined, delay)) return;
     const lift = triggered ? 1.08 : 1;
+    const start = delay || 0;
     if (kind === 'horizontal') {
-        tone(560 * lift, 0.15, 'triangle', 0.14, 0, 980 * lift);
-        tone(840 * lift, 0.12, 'sine', 0.07, 0.045, 1280 * lift);
+        tone(560 * lift, 0.15, 'triangle', 0.14, start, 980 * lift);
+        tone(840 * lift, 0.12, 'sine', 0.07, start + 0.045, 1280 * lift);
     } else if (kind === 'vertical') {
-        tone(690 * lift, 0.17, 'triangle', 0.13, 0, 1320 * lift);
-        tone(1040 * lift, 0.10, 'sine', 0.06, 0.06, 760 * lift);
+        tone(690 * lift, 0.17, 'triangle', 0.13, start, 1320 * lift);
+        tone(1040 * lift, 0.10, 'sine', 0.06, start + 0.06, 760 * lift);
     } else if (kind === 'bomb') {
-        tone(150, 0.18, 'sine', 0.18, 0, 72);
-        noise(0.11, 0.10, 0.015, 720);
-    } else if (kind === 'color') {
+        tone(150, 0.18, 'sine', 0.18, start, 72);
+        noise(0.11, 0.10, start + 0.015, 720);
+    } else if (kind === 'color' || kind === 'paw' || kind === 'bell') {
         const notes = [659, 784, 1047, 1319];
-        for (let i = 0; i < notes.length; i++) tone(notes[i] * lift, 0.13, 'sine', 0.09, i * 0.045);
+        for (let i = 0; i < notes.length; i++) tone(notes[i] * lift, 0.13, 'sine', 0.09, (delay || 0) + i * 0.045);
     }
 }
 
@@ -497,11 +515,15 @@ function playLoseFallback() {
 }
 
 const AudioFX = {
+    setAdActive: function (value) {
+        adActive = !!value;
+        if (adActive) { stopSfxVoices(); stopMusic(); } else resumeMusic();
+    },
     init: function () {
         const store = getStore();
         loadSettings(store);
         registerLifecycleListeners(store);
-        if (sfxEnabled) { ensureCtx(); loadSfxSprite(); }
+        if (sfxEnabled) { ensureCtx(); loadSfxSprites(); }
     },
 
     setMusicEnabled: function (value) {
@@ -514,13 +536,14 @@ const AudioFX = {
     setSfxEnabled: function (value) {
         sfxEnabled = !!value;
         writeBool(getStore(), SFX_KEY, sfxEnabled);
-        if (sfxEnabled) { ensureSfxOutput(); loadSfxSprite(); }
+        if (!sfxEnabled) stopSfxVoices();
+        if (sfxEnabled) { ensureSfxOutput(); loadSfxSprites(); }
     },
     isSfxEnabled: function () { return sfxEnabled; },
 
     unlock: function () {
         unlocked = true;
-        if (sfxEnabled) { ensureSfxOutput(); loadSfxSprite(); }
+        if (sfxEnabled) { ensureSfxOutput(); loadSfxSprites(); }
         resumeMusic();
     },
 
@@ -551,9 +574,10 @@ const AudioFX = {
     },
 
     /** data 可为旧版 numeric combo，也可为完整 onMatch payload。 */
-    match: function (data) {
+    match: function (data, reduceEffects) {
         const payload = typeof data === 'number' ? { combo: data } : (data || {});
         const triggered = payload.triggeredSpecials || [];
+        const delays = specialTriggerDelays(payload, reduceEffects);
         if (triggered.length >= 2) {
             // 特殊组合不再使用一条独立的“组合音效”。同时触发组合中的
             // 两个真实特殊棋子音色，听感和画面动作保持一致。
@@ -563,7 +587,7 @@ const AudioFX = {
                 const kind = specialKind(type);
                 if (!kind || played[kind]) continue;
                 played[kind] = true;
-                playSpecial(type, true);
+                playSpecial(type, true, delays[i] / 1000);
             }
             return;
         }
@@ -590,7 +614,11 @@ const AudioFX = {
         const seenTriggered = {};
         for (let i = 0; i < triggered.length && i < 12; i++) {
             const type = triggered[i].type;
-            if (!seenTriggered[type]) { seenTriggered[type] = true; playSpecial(type, true); }
+            if (!seenTriggered[type]) {
+                seenTriggered[type] = true;
+                const kind = specialKind(type);
+                playSpecial(type, true, kind === 'paw' || kind === 'bell' ? delays[i] / 1000 : 0);
+            }
         }
         if (payload.jellyHits && payload.jellyHits.length) playObstacle('jelly');
         if (payload.iceHits && payload.iceHits.length) playObstacle('ice');

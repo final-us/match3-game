@@ -8,6 +8,7 @@ const THEME = require('./theme');
 const assets = require('./assets');
 const typography = require('./typography');
 const moon = require('./moon-controls');
+const gameLayout = require('./game-layout');
 
 const BattleUI = {};
 
@@ -257,23 +258,59 @@ BattleUI.drawWait = function (ctx, screen, data) {
  * @param data { timeLeft, myScore, oppScore, myName, oppName }
  */
 BattleUI.drawTop = function (ctx, screen, data) {
-    const cx=screen.width/2, top=Math.max(72,Number(screen.contentTop)||Number(screen.safeTop)||0)+4;
-    const urgent=data.urgent||data.timeLeft<=10;
-    const cardW=(screen.width-92)/2;
-    for(const [x,label,score,key] of [[8,'我',data.myScore,'piece1'],[screen.width-8-cardW,'对手',data.oppScore,'piece2']]) {
-        moon.button(ctx,x,top+2,cardW,54,'','blue');
-        drawAvatar(ctx,x+21,top+29,16,null,key);
-        ctx.fillStyle=THEME.textDark;
-        typography.drawFit(ctx,label,x+40+(cardW-46)/2,top+15,cardW-46,{size:10,minSize:8,align:'center'});
-        typography.drawFit(ctx,String(score),x+40+(cardW-46)/2,top+37,cardW-46,{size:18,minSize:8,weight:'bold',numbers:true,align:'center'});
+    const cx = screen.width / 2;
+    const layout = gameLayout.pvp(screen);
+    const top = layout.hudY;
+    const x = 10, w = screen.width - 20, h = layout.hudH;
+    const roomy = h >= 110, footerH = roomy ? 28 : 19;
+    const labelY = top + h * .21, scoreY = top + h * .54;
+    const timerY = top + h * .32, timerCaptionY = top + h * .62;
+    const footerY = top + h - footerH / 2;
+    const urgent = !data.settling && (data.urgent || data.timeLeft <= 10);
+    const sideW = (w - 76) / 2;
+    ctx.save();
+    if (layout.headlineY) {
+        ctx.save();
+        ctx.fillStyle = '#FFF7EB';
+        ctx.shadowColor = 'rgba(25, 32, 63, .95)';
+        ctx.shadowBlur = 3; ctx.shadowOffsetY = 1.5;
+        typography.drawFit(ctx, '好友对战', 14, layout.headlineY, Math.min(150, screen.width - 170),
+            { size: roomy ? 17 : 14, minSize: 12, weight: 'bold' });
+        ctx.restore();
     }
-    moon.button(ctx,cx-30,top-2,60,60,'',urgent?'pink':'blue');
-    ctx.save();ctx.beginPath();ctx.arc(cx,top+28,26,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.max(0,Math.min(1,data.timeLeft/60)));ctx.strokeStyle=urgent?'#B35B86':'#F4DAA5';ctx.lineWidth=3;ctx.stroke();ctx.restore();
-    ctx.fillStyle=urgent?'#923957':THEME.textDark;
-    typography.drawFit(ctx,String(data.timeLeft),cx,top+24,46,{size:27,minSize:16,weight:'bold',numbers:true,align:'center'});
-    typography.drawFit(ctx,'秒',cx,top+44,30,{size:10,minSize:8,align:'center'});
-    ctx.fillStyle=THEME.textDark;
-    typography.drawFit(ctx,data.protocolVersion===2?'第 '+data.roundNumber+' 局 · 累计胜场 '+data.myWins+' : '+data.oppWins:'好友对战 · 60秒挑战',cx,top+74,screen.width-32,{size:11,minSize:9,align:'center',numbers:true});
+    moon.scorePanel(ctx,screen,x,top,w,h);
+    ctx.strokeStyle = '#DCD7E8'; ctx.lineWidth = 1;
+    ctx.beginPath();ctx.moveTo(x + 12, top + h - footerH);ctx.lineTo(x + w - 12, top + h - footerH);ctx.stroke();
+
+    for (const side of [
+        { x: x, label: '我的得分', score: data.myScore, wins: data.myWins, color: '#914E73', key: 'piece1', right: false },
+        { x: cx + 38, label: '对手得分', score: data.oppScore, wins: data.oppWins, color: '#426494', key: 'piece2', right: true }
+    ]) {
+        const center = side.x + sideW / 2;
+        const avatarX = side.right ? side.x + sideW - 17 : side.x + 17;
+        drawAvatar(ctx, avatarX, labelY, roomy ? 14 : 11, null, side.key);
+        ctx.fillStyle = side.color;
+        typography.drawFit(ctx, side.label, side.right ? avatarX - 18 : avatarX + 18, labelY, sideW - 42,
+            { size: roomy ? 14 : 11, minSize: 9, weight: '600', align: side.right ? 'right' : 'left' });
+        typography.drawFit(ctx, String(side.score), center, scoreY, sideW - 18,
+            { size: roomy ? 38 : 28, minSize: 10, weight: 'bold', numbers: true, align: 'center' });
+        if (data.protocolVersion === 2) {
+            typography.drawFit(ctx, '胜场 ' + side.wins, center, footerY, sideW - 12,
+                { size: roomy ? 14 : 10, minSize: 8, numbers: true, align: 'center' });
+        }
+    }
+
+    // The timer is typography, not a third item button. Urgency uses a calm color change.
+    ctx.fillStyle = urgent ? '#963E60' : '#353D69';
+    typography.drawFit(ctx, data.settling ? '确认' : String(data.timeLeft), cx, timerY, 64,
+        { size: data.settling ? (roomy ? 27 : 22) : (roomy ? 40 : 32), minSize: 18, weight: 'bold', numbers: !data.settling, align: 'center' });
+    typography.drawFit(ctx, data.settling ? '成绩' : urgent ? '即将结束' : '剩余秒数', cx, timerCaptionY, 72,
+        { size: roomy ? 12 : 9, minSize: 9, align: 'center' });
+    ctx.fillStyle = '#656482';
+    typography.drawFit(ctx, data.protocolVersion === 2 ? '第 ' + data.roundNumber + ' 局' : '好友对战 · 60秒挑战',
+        cx, footerY, data.protocolVersion === 2 ? 72 : w - 24,
+        { size: roomy ? 14 : 10, minSize: 8, numbers: true, align: 'center' });
+    ctx.restore();
 };
 
 BattleUI.drawCountdown = function (ctx, screen, data) {
@@ -293,55 +330,77 @@ BattleUI.drawCountdown = function (ctx, screen, data) {
 };
 
 BattleUI.drawWarning = function (ctx, screen) {
-    const top=Math.max(72,Number(screen.contentTop)||Number(screen.safeTop)||0);
-    moon.button(ctx,12,top+66,screen.width-24,24,'还剩 30 秒！','pink',13);
+    const layout = gameLayout.pvp(screen), roomy = layout.hudH >= 110;
+    const cy = layout.hudY + layout.hudH * .62, h = roomy ? 23 : 18;
+    ctx.save();
+    ctx.fillStyle = '#F7E0EB';
+    roundRect(ctx, screen.width / 2 - 37, cy - h / 2, 74, h, 7); ctx.fill();
+    ctx.fillStyle = '#8A3E61';
+    typography.drawFit(ctx, '还剩30秒', screen.width / 2, cy, 68,
+        { size: roomy ? 12 : 10, minSize: 9, align: 'center', numbers: true });
+    ctx.restore();
 };
 
 /**
  * 对战道具栏（房间配置的四道具；旧房间保持冰冻/干扰）
- * @param data { itemRulesVersion, freeze, disturb, reflect, cheer, cooldownRemaining, active, pending, frozen }
+ * @param data { itemRulesVersion, freeze, disturb, reflect, cheer, cooldowns, sharedCooldown, pending, frozen }
  * @returns { freeze, disturb, reflect?, cheer? } 按钮区域
  */
 BattleUI.drawItems = function (ctx, screen, data) {
-    if(data.itemRulesVersion===3) {
-        const width=screen.width-24,x=12,y=screen.height-(Number(screen.safeBottom)||0)-98;
-        moon.panel(ctx,screen,x,y,width,86);
-        const cooling=Number(data.cooldownRemaining)>0;
-        const pending=!!(data.pending||data.actionPending);
-        const status=data.frozen?'冰冻中 · 无法使用道具':pending?'正在确认道具…':cooling?'共享冷却 '+Math.ceil(data.cooldownRemaining/1000)+'秒':data.active?'效果生效中':'对战道具';
-        ctx.fillStyle=THEME.textDark;
-        typography.drawFit(ctx,status,screen.width/2,y+14,width-20,{size:11,minSize:9,numbers:true,align:'center'});
-        const gap=4,cellW=(width-16-3*gap)/4,buttons={};
-        for(let i=0;i<V3_ITEMS.length;i++) {
-            const [key,name]=V3_ITEMS[i],bx=x+8+i*(cellW+gap),by=y+27;
-            const count=Number(data[key])||0,enabled=count>0&&!data.active&&!cooling&&!pending&&!data.frozen;
-            moon.button(ctx,bx,by,cellW,52,'',enabled?(key==='freeze'||key==='reflect'?'blue':'pink'):'muted');
-            ctx.save();ctx.globalAlpha=enabled?1:.5;moon.battleIcon(ctx,key,bx+8,by+5,22);ctx.restore();
-            ctx.fillStyle=THEME.textDark;
-            typography.drawFit(ctx,count>0?'×'+count:'用尽',bx+cellW-20,by+19,cellW-38,{size:12,minSize:10,weight:'bold',numbers:count>0,align:'center'});
-            typography.drawFit(ctx,name,bx+cellW/2,by+41,cellW-8,{size:11,minSize:10,weight:'bold',align:'center'});
-            buttons[key]={x:bx,y:by,w:cellW,h:52};
+    const layout = gameLayout.pvp(screen), y = layout.dockY, h = layout.dockH;
+    const roomy = h >= 120, v3 = data.itemRulesVersion === 3;
+    const items = v3 ? V3_ITEMS : [['freeze', '冰冻'], ['disturb', '干扰']];
+    const width = screen.width - 24, x = 12, cellW = width / items.length;
+    const cooldowns = data.cooldowns || {};
+    const sharedRemaining = data.sharedCooldown ? Math.max(0, ...Object.values(cooldowns)) : Number(data.cooldownRemaining) || 0;
+    const pending = !!(data.pending || data.actionPending);
+    const status = data.settling ? '正在确认成绩…' : data.frozen ? '冰冻中 · 无法使用道具' :
+        pending ? '正在确认道具…' : sharedRemaining > 0 ? '共享冷却 ' + Math.ceil(sharedRemaining / 1000) + '秒' : '对战道具';
+    ctx.save();
+    ctx.save();
+    ctx.fillStyle = '#FFF7EB';
+    ctx.shadowColor = 'rgba(25, 32, 63, .95)';
+    ctx.shadowBlur = 3; ctx.shadowOffsetY = 1.5;
+    typography.drawFit(ctx, status, screen.width / 2, y + (roomy ? 16 : 11), width - 12,
+        { size: roomy ? 14 : 11, minSize: 11, numbers: true, align: 'center' });
+    ctx.restore();
+    const iconSize = roomy ? Math.min(60, h * .38) : 30;
+    const iconY = y + (roomy ? 32 : 22);
+    const countY = iconY + iconSize + (roomy ? 15 : 9);
+    const nameY = countY + (roomy ? 24 : 18);
+    const buttons = {};
+    for (let i = 0; i < items.length; i++) {
+        const [key, name] = items[i], bx = x + i * cellW, center = bx + cellW / 2;
+        const count = Number(data[key]) || 0;
+        const remaining = Math.max(0, Number(cooldowns[key]) || sharedRemaining);
+        const enabled = count > 0 && remaining <= 0 && !data.settling && !pending && !data.frozen;
+        ctx.save();
+        ctx.globalAlpha = enabled ? 1 : .48;
+        moon.battleIcon(ctx, key, center - iconSize / 2, iconY, iconSize);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#FFF7EB';
+        ctx.shadowColor = 'rgba(25, 32, 63, .95)';
+        ctx.shadowBlur = 3; ctx.shadowOffsetY = 1.5;
+        typography.drawFit(ctx, count > 0 ? '×' + count : '用尽', center, countY, cellW - 10,
+            { size: roomy ? 15 : 11, minSize: 11, weight: 'bold', numbers: count > 0, align: 'center' });
+        typography.drawFit(ctx, name, center, nameY, cellW - 8,
+            { size: roomy ? 14 : 11, minSize: 11, weight: 'bold', align: 'center' });
+        ctx.restore();
+        if (remaining > 0 && count > 0) {
+            const pillW = roomy ? 44 : 30, pillH = roomy ? 28 : 22;
+            ctx.save();
+            ctx.fillStyle = 'rgba(30, 37, 69, .92)';
+            roundRect(ctx, center - pillW / 2, iconY + (iconSize - pillH) / 2, pillW, pillH, pillH / 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFF7EB';
+            typography.drawFit(ctx, Math.ceil(remaining / 1000) + 's', center, iconY + iconSize / 2, pillW - 4,
+                { size: roomy ? 18 : 13, minSize: 11, weight: 'bold', numbers: true, align: 'center', baseline: 'middle' });
+            ctx.restore();
         }
-        return buttons;
+        // Unframed items still have distinct full-size interaction targets.
+        buttons[key] = { x: bx + 2, y: iconY - 2, w: cellW - 4, h: h - (iconY - y) };
     }
-    const width=Math.min(274,screen.width-24), x=(screen.width-width)/2;
-    const y=screen.height-(Number(screen.safeBottom)||0)-98;
-    moon.panel(ctx,screen,x,y,width,86);
-    const cooling=Number(data.cooldownRemaining)>0;
-    const status=cooling?'共享冷却 '+Math.ceil(data.cooldownRemaining/1000)+'秒':data.active?'效果生效中':'对战道具';
-    ctx.fillStyle=THEME.textDark;
-    typography.drawFit(ctx,status,screen.width/2,y+14,width-24,{size:11,minSize:8,numbers:true,align:'center'});
-    const buttons={};
-    for(const [index,key,name] of [[0,'freeze','冰冻'],[1,'disturb','干扰']]) {
-        const bx=x+10+index*(width/2), bw=width/2-20, by=y+28;
-        const count=Number(data[key])||0, enabled=count>0&&!data.active&&!cooling;
-        moon.button(ctx,bx,by,bw,48,'',enabled?(key==='freeze'?'blue':'pink'):'muted');
-        ctx.save();ctx.globalAlpha=enabled?1:.5;moon.battleIcon(ctx,key,bx+5,by+5,38);ctx.restore();
-        ctx.fillStyle=THEME.textDark;
-        typography.drawFit(ctx,name,bx+43+(bw-47)/2,by+16,bw-47,{size:12,minSize:9,align:'center'});
-        typography.drawFit(ctx,count>0?'×'+count:'用尽',bx+43+(bw-47)/2,by+35,bw-47,{size:12,minSize:9,weight:'bold',numbers:count>0,align:'center'});
-        buttons[key]={x:bx,y:by,w:bw,h:48};
-    }
+    ctx.restore();
     return buttons;
 };
 
@@ -414,14 +473,19 @@ BattleUI.drawEffects = function (ctx, screen, data) {
         ctx.strokeStyle=data.frozen?'#6BAAD4':'#B765A5';ctx.lineWidth=1;ctx.stroke();
     }
     if(data.disturb||reflect||cheer) {
-        // Persistent states sit on the upper rim; the board center stays playable.
+        const compact=Number(!!data.disturb)+Number(reflect)+Number(cheer)>1;
         const badges=[];
-        if(data.disturb) badges.push(['干扰中 · 需要4连 · '+seconds(data.disturbRemaining)+'秒','pink']);
-        if(reflect) badges.push(['镜面反弹 '+seconds(data.reflectRemaining)+'秒','blue']);
+        if(data.disturb) badges.push([(compact?'四连 ':'干扰中 · 需要4连 · ')+seconds(data.disturbRemaining)+'秒','pink']);
+        if(reflect) badges.push([(compact?'反弹 ':'镜面反弹 ')+seconds(data.reflectRemaining)+'秒','blue']);
         if(cheer) badges.push(['鼓舞×2 '+seconds(data.cheerRemaining)+'秒','pink']);
         const gap=3,badgeW=Math.min(220,(w-12-(badges.length-1)*gap)/badges.length);
         const start=cx-(badges.length*badgeW+(badges.length-1)*gap)/2;
-        badges.forEach(([label,tone],index)=>moon.button(ctx,start+index*(badgeW+gap),y-14,badgeW,26,label,tone,badges.length>1?10:13));
+        badges.forEach(([label,tone],index)=>{
+            const bx=start+index*(badgeW+gap);
+            moon.button(ctx,bx,y-14,badgeW,26,'',tone);
+            ctx.fillStyle='#303C70';
+            typography.drawFit(ctx,label,bx+badgeW/2,y-1,badgeW-8,{size:compact?10:13,minSize:8,weight:'bold',align:'center'});
+        });
     }
     if(data.frozen||data.disturbNotice&&data.disturb) {
         const panelW=Math.min(w-24,260),panelH=78,py=y+(h-panelH)/2;

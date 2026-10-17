@@ -1,246 +1,193 @@
-/**
- * 微信广告适配层：激励视频 + 单人结算插屏。
- * 未开通流量主时保持 enabled=false 且广告位 ID 为空，所有入口自动隐藏。
- */
-
+/** 微信广告适配层。配置关闭时不创建实例；本地恢复不推断观看成功。 */
 const config = require('./config');
 const analytics = require('./analytics');
-
 const INTERSTITIAL_STORAGE_KEY = 'match3_interstitial_v1';
-
-let rewardedAd = null;
-let realRewardedUnavailable = false;
-let pendingReward = null;
-let interstitialAd = null;
-let pendingInterstitial = null;
+const REQUEST_TIMEOUT_MS = 15000;
+const CLOSE_TIMEOUT_MS = 180000;
+const RETURN_GRACE_MS = 2000;
+let pending = null;
+let abandoned = null;
+let hidden = false;
+let interstitialMemory = null;
+let interstitialStorageFailed = false;
 
 function getStore() {
-    if (typeof wx !== 'undefined') return wx;
-    if (typeof global !== 'undefined' && global.wx) return global.wx;
-    return null;
+    return typeof wx !== 'undefined' ? wx : (typeof global !== 'undefined' ? global.wx : null);
 }
-
 function track(event, placement, extra) {
-    const data = { placement: placement, format: placement === 'solo_result' ? 'interstitial' : 'rewarded' };
-    Object.keys(extra || {}).forEach(function (key) { data[key] = extra[key]; });
-    analytics.track(event, data);
+    analytics.track(event, Object.assign({ placement: placement,
+        format: placement === 'solo_result' ? 'interstitial' : 'rewarded' }, extra));
 }
-
-function hasRealRewarded() {
-    const store = getStore();
-    return !!(config.AD_CONFIG.enabled && config.AD_CONFIG.rewardedAdUnitId &&
-        store && typeof store.createRewardedVideoAd === 'function');
+function hasReal(format) {
+    const store = getStore(), cfg = config.AD_CONFIG;
+    return !!(cfg.enabled && store && (format === 'rewarded'
+        ? cfg.rewardedAdUnitId && typeof store.createRewardedVideoAd === 'function'
+        : cfg.interstitialAdUnitId && typeof store.createInterstitialAd === 'function'));
 }
-
-function isRewardedAvailable() {
-    return !!config.AD_CONFIG.debugMockAds || hasRealRewarded();
+function isRealRewardedAvailable() { return hasReal('rewarded') && !abandoned; }
+function isRewardedAvailable() { return !abandoned && (!!config.AD_CONFIG.debugMockAds || hasReal('rewarded')); }
+function isBusy() { return !!pending; }
+function call(instance, method) {
+    try { return Promise.resolve(instance[method]()); } catch (error) { return Promise.reject(error); }
 }
-
-function isRealRewardedAvailable() {
-    if (!hasRealRewarded() || realRewardedUnavailable) return false;
-    if (!rewardedAd) rewardedAd = createRewardedAd();
-    if (!rewardedAd) realRewardedUnavailable = true;
-    return !!rewardedAd;
-}
-
-function hasRealInterstitial() {
-    const store = getStore();
-    return !!(config.AD_CONFIG.enabled && config.AD_CONFIG.interstitialAdUnitId &&
-        store && typeof store.createInterstitialAd === 'function');
-}
-
-function callAdMethod(instance, method) {
-    try { return Promise.resolve(instance[method]()); }
-    catch (e) { return Promise.reject(e); }
-}
-
-function finishReward(completed, reason, instance) {
-    if (!pendingReward || pendingReward.ad !== instance) return;
-    const current = pendingReward;
-    pendingReward = null;
-    track(completed ? 'ad_complete' : (reason === 'cancel' ? 'ad_cancel' : 'ad_fail'), current.placement, {
-        reason: reason || (completed ? 'completed' : 'unknown')
-    });
-    current.resolve(!!completed);
-}
-
-function createRewardedAd() {
-    if (!hasRealRewarded()) return null;
-    try {
-        const ad = getStore().createRewardedVideoAd({ adUnitId: config.AD_CONFIG.rewardedAdUnitId });
-        ad.onClose(function (res) {
-            finishReward(!!(res && res.isEnded), res && res.isEnded ? 'completed' : 'cancel', ad);
-        });
-        ad.onError(function (err) {
-            if (rewardedAd === ad) {
-                rewardedAd = null;
-                realRewardedUnavailable = true;
-            }
-            finishReward(false, err && err.errCode ? String(err.errCode) : 'runtime_error', ad);
-        });
-        return ad;
-    } catch (e) {
-        return null;
+function detach(request) {
+    for (const pair of [['offClose', 'close'], ['offError', 'error']]) {
+        if (typeof request.ad[pair[0]] === 'function') {
+            try { request.ad[pair[0]](request[pair[1]]); } catch (error) { /* request identity still rejects stale listeners */ }
+        }
     }
 }
-
-/** 完整观看返回 true；取消、失败、未配置均返回 false。 */
+function clearTimer(request) { clearTimeout(request.timer); request.timer = null; }
+function finish(request, completed, reason, uncertain) {
+    if (pending !== request) return;
+    clearTimer(request);
+    pending = null;
+    if (uncertain) abandoned = request; else detach(request);
+    track(completed ? 'ad_complete' : reason === 'cancel' ? 'ad_cancel' : 'ad_fail', request.placement, {
+        reason: reason || 'completed'
+    });
+    request.resolve(!!completed);
+}
+function arm(request, delay) {
+    clearTimer(request);
+    request.timer = setTimeout(function () {
+        if (pending !== request) return;
+        // Background time cannot be used as evidence that the overlay has closed.
+        if (hidden) { request.expired = true; return; }
+        finish(request, false, 'callback_timeout', !!request.displayStarted);
+    }, delay);
+    if (request.timer && request.timer.unref) request.timer.unref();
+}
+function terminal(request, completed, reason) {
+    if (abandoned === request) {
+        abandoned = null;
+        detach(request);
+        return; // A late terminal event releases quarantine, never grants a reward.
+    }
+    finish(request, completed, reason, false);
+}
+function show(format, placement) {
+    if (pending || abandoned || hidden) {
+        track('ad_frequency_blocked', placement, { reason: pending ? 'pending' : abandoned ? 'awaiting_terminal' : 'backgrounded' });
+        return Promise.resolve(false);
+    }
+    const store = getStore();
+    let instance;
+    try {
+        instance = format === 'rewarded'
+            ? store.createRewardedVideoAd({ adUnitId: config.AD_CONFIG.rewardedAdUnitId, disableFallbackSharePage: true })
+            : store.createInterstitialAd({ adUnitId: config.AD_CONFIG.interstitialAdUnitId });
+    } catch (error) {
+        track('ad_fail', placement, { reason: 'create_failed' });
+        return Promise.resolve(false);
+    }
+    if (!instance) return Promise.resolve(false);
+    return new Promise(function (resolve) {
+        const request = pending = { ad: instance, placement: placement, resolve: resolve, shown: false };
+        request.close = function (res) {
+            if (!request.displayStarted) return;
+            terminal(request, format === 'interstitial' || !!(res && res.isEnded === true),
+                format === 'rewarded' && !(res && res.isEnded === true) ? 'cancel' : 'completed');
+        };
+        request.error = function (err) {
+            terminal(request, false, err && err.errCode ? String(err.errCode) : 'runtime_error');
+        };
+        try {
+            instance.onClose(request.close);
+            instance.onError(request.error);
+        } catch (error) { finish(request, false, 'listener_failed', false); return; }
+        arm(request, REQUEST_TIMEOUT_MS);
+        const display = function () {
+            if (pending !== request) return;
+            if (hidden || request.loadInterrupted) { finish(request, false, 'backgrounded_before_show', false); return; }
+            request.displayStarted = true;
+            return call(instance, 'show');
+        };
+        // Load before presenting. Never retry a failed native presentation automatically.
+        const attempt = format === 'rewarded' ? call(instance, 'load').then(display) : display();
+        Promise.resolve(attempt).then(function () {
+            if (pending !== request) return;
+            request.shown = true;
+            track('ad_show', placement);
+            arm(request, CLOSE_TIMEOUT_MS);
+        }).catch(function () { finish(request, false, request.displayStarted ? 'show_failed' : 'load_failed', false); });
+    });
+}
+/** 完整观看才返回true，其他终态均返回false。两种格式共享一个请求锁。 */
 function showRewarded(placement, options) {
     placement = placement || 'unknown';
-    const allowMock = !options || options.allowMock !== false;
     track('ad_request', placement);
-
-    if (config.AD_CONFIG.debugMockAds && allowMock) {
+    if (pending || abandoned) return Promise.resolve(false);
+    if (config.AD_CONFIG.debugMockAds && (!options || options.allowMock !== false)) {
         track('ad_show', placement, { source: 'debug_mock' });
         track('ad_complete', placement, { source: 'debug_mock' });
         return Promise.resolve(true);
     }
-    if (!hasRealRewarded()) {
+    if (!hasReal('rewarded')) {
         track('ad_frequency_blocked', placement, { reason: 'unavailable' });
         return Promise.resolve(false);
     }
-    if (pendingReward) {
-        track('ad_frequency_blocked', placement, { reason: 'pending' });
-        return Promise.resolve(false);
-    }
-    if (!rewardedAd) rewardedAd = createRewardedAd();
-    if (!rewardedAd) {
-        track('ad_fail', placement, { reason: 'create_failed' });
-        return Promise.resolve(false);
-    }
-
-    const instance = rewardedAd;
-    return new Promise(function (resolve) {
-        const request = pendingReward = { resolve: resolve, placement: placement, ad: instance };
-        callAdMethod(instance, 'show').catch(function () {
-            if (pendingReward !== request) return;
-            return callAdMethod(instance, 'load').then(function () {
-                if (pendingReward === request) return callAdMethod(instance, 'show');
-            });
-        }).then(function () {
-            if (pendingReward === request) track('ad_show', placement);
-        }).catch(function () {
-            if (pendingReward !== request) return;
-            if (rewardedAd === instance) rewardedAd = null;
-            finishReward(false, 'show_failed', instance);
-        });
-    });
+    return show('rewarded', placement);
 }
-
-function markRewardGranted(placement) {
-    track('ad_reward_granted', placement || 'unknown');
-}
-
+function markRewardGranted(placement) { track('ad_reward_granted', placement || 'unknown'); }
 function readInterstitialState() {
     const store = getStore();
-    if (!store || typeof store.getStorageSync !== 'function') return { completedGames: 0, lastShownAt: 0 };
     try {
-        const state = store.getStorageSync(INTERSTITIAL_STORAGE_KEY);
-        if (state && typeof state.completedGames === 'number' && typeof state.lastShownAt === 'number') return state;
-    } catch (e) {}
-    return { completedGames: 0, lastShownAt: 0 };
+        if (!store || !store.getStorageSync) return null;
+        const value = store.getStorageSync(INTERSTITIAL_STORAGE_KEY);
+        if (value == null || value === '') return interstitialMemory || { completedGames: 0, lastShownAt: 0 };
+        if (!Number.isSafeInteger(value.completedGames) || value.completedGames < 0 ||
+            !Number.isFinite(value.lastShownAt) || value.lastShownAt < 0) return null;
+        return Object.assign({}, value);
+    } catch (error) { return null; }
 }
-
 function saveInterstitialState(state) {
-    const store = getStore();
-    if (!store || typeof store.setStorageSync !== 'function') return;
-    try { store.setStorageSync(INTERSTITIAL_STORAGE_KEY, state); } catch (e) {}
-}
-
-function finishInterstitial(shown, reason, instance) {
-    if (!pendingInterstitial || pendingInterstitial.ad !== instance) return;
-    const current = pendingInterstitial;
-    pendingInterstitial = null;
-    if (shown) {
-        track('ad_complete', current.placement, { status: 'closed' });
-    } else {
-        track('ad_fail', current.placement, { reason: reason || 'runtime_error' });
-    }
-    current.resolve(!!shown);
-}
-
-function createInterstitialAd() {
-    if (!hasRealInterstitial()) return null;
+    interstitialMemory = Object.assign({}, state);
     try {
-        const ad = getStore().createInterstitialAd({ adUnitId: config.AD_CONFIG.interstitialAdUnitId });
-        ad.onClose(function () { finishInterstitial(true, 'closed', ad); });
-        ad.onError(function (err) {
-            if (interstitialAd === ad) interstitialAd = null;
-            finishInterstitial(false, err && err.errCode ? String(err.errCode) : 'runtime_error', ad);
-        });
-        return ad;
-    } catch (e) {
-        return null;
-    }
+        const store = getStore();
+        if (!store || !store.setStorageSync) return false;
+        store.setStorageSync(INTERSTITIAL_STORAGE_KEY, state);
+        return true;
+    } catch (error) { return false; }
 }
-
-function showInterstitial() {
-    const placement = 'solo_result';
-    track('ad_request', placement);
-    if (!hasRealInterstitial()) {
-        track('ad_frequency_blocked', placement, { reason: 'unavailable' });
-        return Promise.resolve(false);
-    }
-    if (pendingInterstitial) {
-        track('ad_frequency_blocked', placement, { reason: 'pending' });
-        return Promise.resolve(false);
-    }
-    if (!interstitialAd) interstitialAd = createInterstitialAd();
-    if (!interstitialAd) {
-        track('ad_fail', placement, { reason: 'create_failed' });
-        return Promise.resolve(false);
-    }
-    const instance = interstitialAd;
-    return new Promise(function (resolve) {
-        const request = pendingInterstitial = { resolve: resolve, placement: placement, ad: instance };
-        callAdMethod(instance, 'show').then(function () {
-            if (pendingInterstitial === request) track('ad_show', placement);
-        }).catch(function () {
-            if (pendingInterstitial !== request) return;
-            if (interstitialAd === instance) interstitialAd = null;
-            finishInterstitial(false, 'show_failed', instance);
-        });
-    });
-}
-
-/** 单人一局最终离开结算时调用；广告关闭或失败后 Promise 均会结束。 */
+/** 频控无法可靠保存时本次会话停用插屏，但不阻断导航。 */
 function onSoloResultExit() {
-    if (!hasRealInterstitial()) {
-        track('ad_frequency_blocked', 'solo_result', { reason: 'unavailable' });
-        return Promise.resolve(false);
-    }
-
-    const now = Date.now();
+    if (!hasReal('interstitial') || pending || abandoned || interstitialStorageFailed) return Promise.resolve(false);
     const state = readInterstitialState();
+    if (!state) return Promise.resolve(false);
+    // A previous process may have closed the overlay without persisting its close time.
+    // Start a conservative fresh cooldown on recovery; never reuse its start timestamp.
+    if (state.awaitingClose) {
+        if (!saveInterstitialState({ completedGames: 0, lastShownAt: Date.now() })) interstitialStorageFailed = true;
+        return Promise.resolve(false);
+    }
     state.completedGames += 1;
-    saveInterstitialState(state);
-
-    if (state.completedGames < config.AD_CONFIG.interstitialEveryGames) {
-        track('ad_frequency_blocked', 'solo_result', { reason: 'game_count', completedGames: state.completedGames });
-        return Promise.resolve(false);
-    }
-    if (state.lastShownAt && now - state.lastShownAt < config.AD_CONFIG.interstitialCooldownMs) {
-        track('ad_frequency_blocked', 'solo_result', {
-            reason: 'cooldown', cooldownMs: config.AD_CONFIG.interstitialCooldownMs
-        });
-        return Promise.resolve(false);
-    }
-
-    return showInterstitial().then(function (shown) {
-        if (shown) {
-            state.completedGames = 0;
-            state.lastShownAt = Date.now();
-            saveInterstitialState(state);
-        }
+    if (!saveInterstitialState(state)) { interstitialStorageFailed = true; return Promise.resolve(false); }
+    if (state.completedGames < config.AD_CONFIG.interstitialEveryGames ||
+        (state.lastShownAt && Date.now() - state.lastShownAt < config.AD_CONFIG.interstitialCooldownMs)) return Promise.resolve(false);
+    track('ad_request', 'solo_result');
+    // Reserve the cooldown before showing: a crash cannot forget an outstanding impression.
+    const reserved = { completedGames: state.completedGames, lastShownAt: Date.now(), awaitingClose: true };
+    if (!saveInterstitialState(reserved)) { interstitialStorageFailed = true; return Promise.resolve(false); }
+    return show('interstitial', 'solo_result').then(function (shown) {
+        const next = shown ? { completedGames: 0, lastShownAt: Date.now() } : (abandoned ? { completedGames: state.completedGames, lastShownAt: Date.now(), awaitingClose: true } : state);
+        if (!saveInterstitialState(next)) interstitialStorageFailed = true;
         return shown;
     });
 }
-
-module.exports = {
-    INTERSTITIAL_STORAGE_KEY: INTERSTITIAL_STORAGE_KEY,
-    isRewardedAvailable: isRewardedAvailable,
-    isRealRewardedAvailable: isRealRewardedAvailable,
-    showRewarded: showRewarded,
-    markRewardGranted: markRewardGranted,
-    onSoloResultExit: onSoloResultExit
-};
+function onHide() {
+    hidden = true;
+    if (pending) { pending.wasHidden = true; if (!pending.displayStarted) pending.loadInterrupted = true; }
+}
+function onShow() {
+    hidden = false;
+    if (pending && pending.wasHidden) {
+        pending.wasHidden = false;
+        arm(pending, RETURN_GRACE_MS);
+    }
+}
+module.exports = { INTERSTITIAL_STORAGE_KEY: INTERSTITIAL_STORAGE_KEY,
+    REQUEST_TIMEOUT_MS: REQUEST_TIMEOUT_MS, CLOSE_TIMEOUT_MS: CLOSE_TIMEOUT_MS, RETURN_GRACE_MS: RETURN_GRACE_MS,
+    isRewardedAvailable: isRewardedAvailable, isRealRewardedAvailable: isRealRewardedAvailable,
+    isBusy: isBusy, showRewarded: showRewarded, markRewardGranted: markRewardGranted,
+    onSoloResultExit: onSoloResultExit, onHide: onHide, onShow: onShow };

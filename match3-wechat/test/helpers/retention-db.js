@@ -37,7 +37,13 @@ function createRetentionDb(collectionNames) {
             },
             update: async function (options) {
                 if (!store[name][id]) throw new Error('DATABASE_DOCUMENT_NOT_EXIST');
-                Object.assign(store[name][id], copy(options.data)); return {};
+                // This fixture simulates explicit set only; SDK serialization has separate coverage.
+                const update = copy(options.data);
+                Object.keys(update).forEach(function (key) {
+                    const value = update[key];
+                    if (value && Object.prototype.hasOwnProperty.call(value, '__mockSet')) update[key] = value.__mockSet;
+                });
+                Object.assign(store[name][id], update); return {};
             }
         };
     }
@@ -75,7 +81,8 @@ function createRetentionDb(collectionNames) {
     }
 
     const db = {
-        command: { lt: function (value) { return { lt: value }; } },
+        command: { lt: function (value) { return { lt: value }; },
+            set: function (value) { return { __mockSet: copy(value) }; } },
         collection: function (name) { return collection(docs, name); },
         runTransaction: function (handler) {
             const pending = tail.then(async function () {

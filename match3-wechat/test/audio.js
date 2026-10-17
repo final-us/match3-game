@@ -5,6 +5,7 @@
 const assert = require('assert');
 const AUDIO_MODULE = require.resolve('../js/audio');
 const SFX_SPRITE = require('../js/sfx-acoustic-map');
+const SPECIAL_SFX = require('../js/sfx-new-specials-map');
 
 function makeTimers() {
     let nextId = 1;
@@ -48,17 +49,28 @@ function makeContext(options) {
         sourceStarts: [],
         sourceRates: [],
         gainValues: [],
+        sources: [],
+        oscillators: [],
         createOscillator: function () {
             this.oscillatorCount++;
-            return {
+            const oscillator = {
                 frequency: param(),
                 connect: function () {},
                 start: function () {
+                    this.startCount = (this.startCount || 0) + 1;
                     if (options.autoEndOscillators && this.onended) this.onended();
                 },
-                stop: function () {},
+                cancelCount: 0,
+                stop: function (when) {
+                    if (when == null) {
+                        this.cancelCount++;
+                        if (this.onended) this.onended();
+                    }
+                },
                 onended: null
             };
+            this.oscillators.push(oscillator);
+            return oscillator;
         },
         createGain: function () {
             return {
@@ -77,11 +89,15 @@ function makeContext(options) {
             const source = {
                 connect: function () {},
                 start: function (when, offset, duration) {
-                    owner.sourceStarts.push({ when: when, offset: offset, duration: duration });
+                    this.startCount = (this.startCount || 0) + 1;
+                    owner.sourceStarts.push({ when: when, offset: offset, duration: duration,
+                        file: this.buffer && this.buffer._decoded && this.buffer._decoded.filePath });
                     if (options.autoEnd && this.onended) this.onended();
                 },
                 onended: null,
-                buffer: null
+                buffer: null,
+                cancelCount: 0,
+                stop: function () { this.cancelCount++; if (this.onended) this.onended(); }
             };
             if (options.playbackRate !== 'missing') {
                 source.playbackRate = {
@@ -93,6 +109,7 @@ function makeContext(options) {
                     }
                 };
             }
+            this.sources.push(source);
             return source;
         },
         createBiquadFilter: function () {
@@ -105,7 +122,8 @@ function makeContext(options) {
         resume: function () { this.state = 'running'; },
         decodeAudioData: function (data, success, fail) {
             this.decodeCount++;
-            if (options.sprite === 'decode-fail') fail(new Error('decode failed'));
+            if (options.sprite === 'decode-fail' ||
+                (options.specialSprite === 'decode-fail' && data.filePath === SPECIAL_SFX.file)) fail(new Error('decode failed'));
             else success({ duration: Math.max.apply(null, Object.values(SFX_SPRITE.cues).map(function (cue) {
                 return cue.offset + cue.duration;
             })) + 0.005, _decoded: data });
@@ -148,7 +166,9 @@ function makeWx(storage, options) {
         _inner: inner,
         _handlers: handlers,
         _innerCreateCount: 0,
-        _spriteReadCount: 0
+        _spriteReadCount: 0,
+        _spriteReadPaths: [],
+        _pendingSpecialRead: null
     };
     if (options.innerAudio !== false) {
         wx.createInnerAudioContext = function () {
@@ -161,8 +181,18 @@ function makeWx(storage, options) {
             return {
                 readFile: function (request) {
                     wx._spriteReadCount++;
-                    if (options.sprite === 'read-fail') request.fail(new Error('read failed'));
-                    else request.success({ data: new ArrayBuffer(32) });
+                    wx._spriteReadPaths.push(request.filePath);
+                    if (request.filePath === SPECIAL_SFX.file && options.specialSprite === 'deferred') {
+                        wx._pendingSpecialRead = request;
+                        return;
+                    }
+                    if (options.sprite === 'read-fail' ||
+                        (options.specialSprite === 'read-fail' && request.filePath === SPECIAL_SFX.file)) request.fail(new Error('read failed'));
+                    else {
+                        const data = new ArrayBuffer(32);
+                        data.filePath = request.filePath;
+                        request.success({ data: data });
+                    }
                 }
             };
         };
@@ -262,6 +292,7 @@ test('单人与PvP成功交换和补棋静音，保留动画及无效交换提�
                 }
             }, { filename: mainFile });
             const app = Object.create(mainModule.exports.prototype);
+            app.screen = { reduceEffects: false };
             app.progress = { failures: {} };
             app.battle = { disturbUntil: 0 };
             app.showGuide = function () {};
@@ -427,7 +458,7 @@ test('完整匹配 payload 与道具/PvP 音效可调用且使用全局缩放', 
     });
 });
 
-test('CC0 音频精灵只读取解码一次并覆盖主要事件', function () {
+test('新旧音频精灵各读取解码一次并覆盖主要事件', function () {
     withAudio({ match3_music_enabled_v1: false }, { sprite: 'success', autoEnd: true }, function (audio, wx) {
         audio.init();
         audio.init();
@@ -448,8 +479,8 @@ test('CC0 音频精灵只读取解码一次并覆盖主要事件', function () {
         audio.reward();
         audio.win();
         audio.lose();
-        assert.strictEqual(wx._spriteReadCount, 1, '音频精灵不得重复读取');
-        assert.strictEqual(wx._context.decodeCount, 1, '音频精灵不得重复解码');
+        assert.deepStrictEqual(wx._spriteReadPaths, [SFX_SPRITE.file, SPECIAL_SFX.file], '每个音频精灵只读一次');
+        assert.strictEqual(wx._context.decodeCount, 2, '每个音频精灵只解码一次');
         assert(wx._context.sourceStarts.length >= 14, '主要事件未全部走音频精灵');
         assert(wx._context.sourceStarts.every(function (item) {
             return item.when >= 0 && item.offset >= 0 && item.duration > 0;
@@ -536,7 +567,8 @@ test('四连以奖励音替代消除，其他特殊生成保留原消除且不�
                 audio.match({ combo: combo, generated: [{ type: type }, { type: type }] });
                 if (type === 101 || type === 102) {
                     assert.deepStrictEqual(wx._context.sourceStarts, [{ when: 0,
-                        offset: SFX_SPRITE.cues.fourClear.offset, duration: SFX_SPRITE.cues.fourClear.duration }],
+                        offset: SFX_SPRITE.cues.fourClear.offset, duration: SFX_SPRITE.cues.fourClear.duration,
+                        file: SFX_SPRITE.file }],
                     '多条四连同轮只播放一次奖励音');
                 } else {
                     assert.deepStrictEqual(wx._context.sourceStarts, baseline,
@@ -633,14 +665,15 @@ test('特殊棋子组合同时播放对应单独音效，单特殊保持独立',
         assert.strictEqual(wx._context.oscillatorCount, 0, '素材可用时不得触发合成回退');
     });
 
-    [101, 103, 104].forEach(function (type, index) {
-        const cue = ['rocket', 'bomb', 'color'][index];
+    [101, 103, 104, 105, 106].forEach(function (type, index) {
+        const cue = ['rocket', 'bomb', 'color', 'paw', 'bell'][index];
+        const bank = SPECIAL_SFX.cues[cue] ? SPECIAL_SFX : SFX_SPRITE;
         withAudio({ match3_music_enabled_v1: false }, { sprite: 'success', autoEnd: true }, function (audio, wx) {
             audio.init();
             audio.unlock();
             audio.match({ combo: 1, triggeredSpecials: [{ type: type }] });
             assert(wx._context.sourceStarts.some(function (item) {
-                return item.offset === SFX_SPRITE.cues[cue].offset;
+                return item.file === bank.file && item.offset === bank.cues[cue].offset;
             }), '单独特殊棋子未使用 ' + cue + ' cue');
         });
     });
@@ -676,7 +709,7 @@ test('音频精灵读取或解码失败时回退现有合成音效', function ()
             audio.click();
             audio.invalid();
             assert(wx._context.oscillatorCount > 0, failure + ' 后没有合成音回退');
-            assert.strictEqual(wx._spriteReadCount, 1, failure + ' 不应反复读取');
+            assert.strictEqual(wx._spriteReadCount, 2, failure + ' 每个精灵不得反复读取');
         });
     });
 });
@@ -706,6 +739,145 @@ test('胜负音效短暂压低本地 BGM，奖励音效不压低', function () {
         assert.strictEqual(wx._inner.volume, 0.52, 'duck 结束后应恢复 BGM 音量');
         audio.lose();
         assert.strictEqual(timers.active.size, 1, '失败时也应创建恢复 timer');
+    });
+});
+
+test('新特殊精灵两条合法cue，合成不提前播放、触发不改变音高', function () {
+    assert.deepStrictEqual(Object.keys(SPECIAL_SFX.cues), ['paw', 'bell']);
+    Object.values(SPECIAL_SFX.cues).forEach(function (cue) {
+        assert(cue.offset >= 0 && cue.duration > 0 && cue.offset + cue.duration <= SPECIAL_SFX.decodedSeconds);
+    });
+    withAudio({ match3_music_enabled_v1: false }, { sprite: 'success', autoEnd: true }, function (audio, wx) {
+        audio.init();
+        audio.match({ combo: 6, generated: [{ type: 105 }, { type: 106 }] });
+        assert(wx._context.sourceStarts.every(function (source) { return source.file === SFX_SPRITE.file; }));
+        wx._context.sourceStarts.length = 0;
+        wx._context.sourceRates.length = 0;
+        audio.match({ combo: 6, triggeredSpecials: [{ type: 105 }, { type: 106 }] });
+        assert.deepStrictEqual(wx._context.sourceStarts.map(function (source) {
+            return [source.file, source.offset, source.duration];
+        }), [[SPECIAL_SFX.file, 0, 1], [SPECIAL_SFX.file, SPECIAL_SFX.cues.bell.offset, 0.8]]);
+        assert.strictEqual(wx._context.sourceRates.length, 0);
+    });
+});
+
+test('远端猫爪命中铃铛，正常与减弱音画共享同一时序', function () {
+    const BoardRenderer = require('../js/render/board-render');
+    for (const reduceEffects of [false, true]) {
+        withAudio({ match3_music_enabled_v1: false }, { sprite: 'success', autoEnd: true }, function (audio, wx) {
+            audio.init();
+            wx._context.currentTime = 7;
+            const data = { triggeredSpecials: [
+                { type: 105, row: 0, column: 0, target: { row: 4, column: 4 } },
+                { type: 106, row: 4, column: 4 }
+            ] };
+            const board = Object.create(BoardRenderer.prototype);
+            board.screen = { reduceEffects: reduceEffects };
+            board.specialEffects = [];
+            board.pieceCenter = function (row, column) { return { x: column, y: row }; };
+            const timing = board.spawnMatchEffects(data);
+            audio.match(data, reduceEffects);
+            assert.strictEqual(wx._context.sourceStarts[0].when, 7);
+            assert.strictEqual(wx._context.sourceStarts[1].when, 7 + timing.sources[1].delay / 1000);
+            assert.strictEqual(timing.sources[1].delay, (reduceEffects ? 200 : 560) * 0.64);
+            assert.strictEqual(board.specialEffects[1].life, -timing.sources[1].delay);
+        });
+    }
+});
+
+test('新精灵读取/解码失败或未完成时，仅回退旧彩球，不重复读取', function () {
+    for (const specialSprite of ['read-fail', 'decode-fail', 'deferred']) {
+        withAudio({ match3_music_enabled_v1: false }, { sprite: 'success', specialSprite: specialSprite, autoEnd: true }, function (audio, wx) {
+            audio.init();
+            audio.unlock();
+            audio.specialTriggered(105);
+            audio.specialTriggered(106);
+            assert.deepStrictEqual(wx._context.sourceStarts.map(function (source) { return source.file; }), [SFX_SPRITE.file, SFX_SPRITE.file]);
+            assert(wx._context.sourceStarts.every(function (source) { return source.offset === SFX_SPRITE.cues.color.offset; }));
+            assert.strictEqual(wx._context.oscillatorCount, 0);
+            assert.strictEqual(wx._spriteReadCount, 2);
+            if (specialSprite === 'deferred') {
+                const data = new ArrayBuffer(32);
+                data.filePath = SPECIAL_SFX.file;
+                wx._pendingSpecialRead.success({ data: data });
+                audio.specialTriggered(105);
+                assert.strictEqual(wx._context.sourceStarts[2].file, SPECIAL_SFX.file);
+            }
+        });
+    }
+});
+
+test('新旧精灵共享12声上限，关闭音效不读取或播放新精灵', function () {
+    withAudio({ match3_music_enabled_v1: false }, { sprite: 'success' }, function (audio, wx) {
+        audio.init();
+        for (let index = 0; index < 24; index++) audio.specialTriggered(index % 2 ? 105 : 101);
+        assert.strictEqual(wx._context.sourceStarts.length, 12);
+    });
+    withAudio({ match3_music_enabled_v1: false, match3_sfx_enabled_v1: false }, { sprite: 'success' }, function (audio, wx) {
+        audio.init();
+        audio.unlock();
+        audio.match({ triggeredSpecials: [{ type: 105 }, { type: 106 }] });
+        assert.strictEqual(wx._spriteReadCount, 0);
+        assert.strictEqual(wx._context.sourceStarts.length, 0);
+        audio.setSfxEnabled(true);
+        audio.specialTriggered(106);
+        assert.strictEqual(wx._spriteReadCount, 2);
+        assert.strictEqual(wx._context.sourceStarts[0].file, SPECIAL_SFX.file);
+    });
+});
+
+test('延迟新采样/彩球回退/合成回退在关闭、后台及中断时全部取消', function () {
+    for (const failure of ['success', 'special-fail', 'all-fail']) {
+        for (const action of ['mute', 'hide', 'interrupt']) {
+            withAudio({ match3_music_enabled_v1: false }, {
+                sprite: failure === 'all-fail' ? 'read-fail' : 'success',
+                specialSprite: failure === 'special-fail' ? 'read-fail' : undefined
+            }, function (audio, wx) {
+                audio.init();
+                wx._context.currentTime = 7;
+                const data = { triggeredSpecials: [
+                    { type: 105, row: 0, column: 0, target: { row: 4, column: 4 } },
+                    { type: 106, row: 4, column: 4 }
+                ] };
+                audio.match(data);
+                const voices = failure === 'all-fail' ? wx._context.oscillators : wx._context.sources;
+                const scheduled = voices.slice();
+                assert.strictEqual(scheduled.length, failure === 'all-fail' ? 8 : 2);
+                wx._context.currentTime = 7.1;
+                if (action === 'mute') audio.setSfxEnabled(false);
+                else if (action === 'hide') wx._handlers.hide[0]();
+                else wx._handlers.begin[0]();
+                assert(scheduled.every(function (voice) { return voice.cancelCount === 1; }));
+                audio.match(data);
+                assert.strictEqual(voices.length, scheduled.length, '关闭/后台/中断期间不得新建声部');
+                if (action === 'mute') audio.setSfxEnabled(true);
+                else if (action === 'hide') wx._handlers.show[0]();
+                else wx._handlers.end[0]();
+                scheduled.forEach(function (voice) { voice.onended(); voice.onended(); });
+                const baseline = voices.filter(function (voice) { return voice.startCount; }).length;
+                for (let index = 0; index < 24; index++) audio.specialTriggered(105);
+                assert.strictEqual(voices.filter(function (voice) { return voice.startCount; }).length - baseline, 12,
+                    '迟到结束事件不得重复释放声部');
+            });
+        }
+    }
+});
+
+test('广告占用跨前后台和中断保持静音，释放不改玩家偏好', function () {
+    withAudio({}, { sprite: 'ok' }, function (audio, wx) {
+        audio.init(); audio.unlock(); audio.setMusicEnabled(true); audio.setSfxEnabled(true);
+        audio.setAdActive(true);
+        const plays = wx._inner.playCount, voices = wx._context.sourceStarts.length;
+        wx._handlers.hide[0](); wx._handlers.show[0]();
+        wx._handlers.begin[0](); wx._handlers.end[0]();
+        audio.reward(); audio.setScene('calm');
+        assert.strictEqual(wx._inner.playCount, plays);
+        assert.strictEqual(wx._context.sourceStarts.length, voices);
+        assert(audio.isMusicEnabled() && audio.isSfxEnabled());
+        audio.setAdActive(false); assert.strictEqual(wx._inner.playCount, plays + 1);
+        audio.setMusicEnabled(false); audio.setAdActive(true); audio.setAdActive(false);
+        assert.strictEqual(audio.isMusicEnabled(), false);
+        assert.strictEqual(wx._inner.playCount, plays + 1);
     });
 });
 

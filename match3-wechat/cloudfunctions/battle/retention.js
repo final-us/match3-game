@@ -2,6 +2,7 @@
 
 const dailyEngine = require('./daily-engine/daily-challenge');
 const catalog = require('./catalog');
+const runTransaction = require('./transaction');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECEIPT_RETENTION_MS = 35 * DAY_MS;
@@ -244,7 +245,7 @@ function createService(db, crypto, clock) {
 
     async function info(openid, input) {
         const at = now(); const owner = ownerId(openid);
-        const profile = await db.runTransaction(async function (tx) {
+        const profile = await runTransaction(db, async function (tx) {
             const loaded = await loadProfile(tx, owner, at);
             // Upgrade is sticky: an older client must not auto-claim newer progress.
             if (input && input.taskClaimMode === 'manual-v1') loaded.profile.taskClaimMode = 'manual-v1';
@@ -260,7 +261,7 @@ function createService(db, crypto, clock) {
             return terminal('INVALID_DATE', '签到日期格式非法');
         }
         if (input.date > today) return terminal('INVALID_DATE', '签到日期非法');
-        const outcome = await db.runTransaction(async function (tx) {
+        const outcome = await runTransaction(db, async function (tx) {
             const loaded = await loadProfile(tx, owner, at); const profile = loaded.profile;
             if (input.date < today) {
                 const oldReceipt = await getData(tx.collection('retention_receipts').doc(receiptId(owner, 'signin', input.date)));
@@ -357,7 +358,7 @@ function createService(db, crypto, clock) {
         if (invalid) return invalid;
         const canonical = canonicalForEvent(event);
         if (typeof canonical !== 'string') return canonical;
-        const outcome = await db.runTransaction(async function (tx) {
+        const outcome = await runTransaction(db, async function (tx) {
             const canonicalRef = tx.collection('retention_events').doc(eventId(owner, canonical));
             const existing = await getData(canonicalRef);
             const loaded = await loadProfile(tx, owner, at); const profile = loaded.profile;
@@ -411,7 +412,7 @@ function createService(db, crypto, clock) {
             !Number.isSafeInteger(input.index) || input.index < 0 || input.index >= TASK_TARGETS.length) {
             return terminal('INVALID_TASK_CLAIM', '任务领取参数非法');
         }
-        const outcome = await db.runTransaction(async function (tx) {
+        const outcome = await runTransaction(db, async function (tx) {
             const loaded = await loadProfile(tx, owner, at); const profile = loaded.profile;
             const id = receiptId(owner, 'task', input.date + ':' + input.index);
             const existing = await getData(tx.collection('retention_receipts').doc(id));
@@ -446,7 +447,7 @@ function createService(db, crypto, clock) {
         }
         const current = weekFor(at);
         if (input.week > current.week) return terminal('INVALID_WEEK', '宝箱周标识非法');
-        const outcome = await db.runTransaction(async function (tx) {
+        const outcome = await runTransaction(db, async function (tx) {
             const loaded = await loadProfile(tx, owner, at); const profile = loaded.profile; let target;
             const priorReceipt = await getData(tx.collection('retention_receipts').doc(receiptId(owner, 'weekly', input.week + ':' + input.index)));
             if (priorReceipt && validReceipt(priorReceipt, owner)) {
@@ -483,7 +484,7 @@ function createService(db, crypto, clock) {
         if (!input || !Array.isArray(input.receiptIds) || input.receiptIds.length > 50 || input.receiptIds.some(function (id) {
             return typeof id !== 'string' || !/^r[0-9a-f]{30}$/.test(id);
         })) return terminal('INVALID_RECEIPT_IDS', '收据编号格式非法');
-        const profile = await db.runTransaction(async function (tx) {
+        const profile = await runTransaction(db, async function (tx) {
             for (let index = 0; index < input.receiptIds.length; index++) {
                 const ref = tx.collection('retention_receipts').doc(input.receiptIds[index]);
                 const value = await getData(ref);
@@ -504,7 +505,7 @@ function createService(db, crypto, clock) {
 
     async function catalogRequest(openid, kind, input) {
         const at=now(),owner=ownerId(openid);
-        return db.runTransaction(async function(tx){
+        return runTransaction(db, async function(tx){
             const loaded=await loadProfile(tx,owner,at);
             const result=kind==='info'?{ok:true}:catalog.change(loaded.profile.catalog,owner,kind,input);
             if(result.ok)await loaded.ref.set({data:loaded.profile});

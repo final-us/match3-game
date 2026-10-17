@@ -11,9 +11,28 @@ function configure(b, response) {
     b.items = version === 3 ? { ...INITIAL } : { freeze: 1, disturb: 2 };
 }
 function serverNow(b) { return Date.now() + (b.serverOffset || 0); }
+function cooldowns(b, response, query) {
+    const prefix = query ? 'my' : '';
+    const field = name => prefix ? prefix + name[0].toUpperCase() + name.slice(1) : name;
+    b.itemCooldownUntil = Number(response[field('itemCooldownUntil')]) || 0;
+    b.activeEffectUntil = Number(response[field('activeEffectUntil')]) || 0;
+    const deadlines = response[field('itemCooldowns')];
+    // Absence means an older cloud function still enforces shared cooldowns.
+    b.itemCooldowns = deadlines && typeof deadlines === 'object' ? {} : null;
+    if (b.itemCooldowns) for (const key of keys(b)) b.itemCooldowns[key] = Number(deadlines[key]) || 0;
+}
+function cooldownUntil(b, item) {
+    return b.itemCooldowns ? b.itemCooldowns[item] || 0 : Math.max(b.itemCooldownUntil || 0, b.activeEffectUntil || 0);
+}
+function cooldownRemaining(b, now) {
+    const remaining = {};
+    for (const key of keys(b)) remaining[key] = Math.max(0, cooldownUntil(b, key) - now);
+    return remaining;
+}
 function sample(b, score) {
     if (b.itemRulesVersion !== 3 || score <= b.lastSampleScore) return;
-    const at = Math.max(b.lastSampleAt || 0, serverNow(b));
+    // Midpoint clock correction can be half a millisecond; the wire timestamp is an integer.
+    const at = Math.max(b.lastSampleAt || 0, Math.floor(serverNow(b)));
     if (at < b.startTime || at >= b.endTime) return;
     b.scoreSamples.push({ seq: ++b.nextScoreSeq, score: score, at: at });
     b.lastSampleScore = score;
@@ -42,6 +61,8 @@ function status(b, response, sentAt) {
         const value = response['my' + key[0].toUpperCase() + key.slice(1) + 'Until'];
         if (Number.isFinite(value)) b[key + 'Until'] = value;
     }
+    if (Number.isSafeInteger(response.scoreCloseAt) && response.scoreCloseAt > 0) b.scoreCloseAt = response.scoreCloseAt;
+    if (response.myScoreFinalized === true) b.scoreFinalized = true;
     window(b, b.cheerUntil);
 }
 function window(b, until) {
@@ -57,4 +78,5 @@ function displayScore(b) {
     }
     return score;
 }
-module.exports = { KEYS, INITIAL, keys, configure, serverNow, sample, acknowledge, status, window, displayScore };
+module.exports = { KEYS, INITIAL, keys, configure, serverNow, cooldowns, cooldownUntil, cooldownRemaining,
+    sample, acknowledge, status, window, displayScore };

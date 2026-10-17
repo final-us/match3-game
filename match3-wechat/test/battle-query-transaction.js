@@ -92,6 +92,7 @@ Db.reqClass = Request;
 Date.now = function () { return at; };
 const sdkDb = new Db({ throwOnCode: true });
 const database = {
+    command: sdkDb.command,
     collection: function (name) {
         assert(['battle_rooms', 'daily_runs', 'daily_progress', 'retention_profiles',
             'retention_events', 'retention_receipts'].includes(name));

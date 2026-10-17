@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const logic = require('./logic');
 const daily = require('./daily');
 const retention = require('./retention');
+const runTransaction = require('./transaction');
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database({ throwOnNotFound: false });
@@ -49,6 +50,7 @@ function newPlayer(openid, nickname, at, protocolVersion, itemRulesVersion) {
         score: 0,
         ready: false,
         items: { ...(itemRulesVersion === 3 ? CONFIG.V3_ITEMS : CONFIG.INITIAL_ITEMS) },
+        itemCooldowns: logic.itemCooldowns({ itemRulesVersion: itemRulesVersion }, null, CONFIG),
         itemCooldownUntil: 0,
         activeEffectUntil: 0,
         online: true,
@@ -60,6 +62,7 @@ function newPlayer(openid, nickname, at, protocolVersion, itemRulesVersion) {
         player.left = false;
     }
     if (itemRulesVersion === 3) {
+        player.scoreFinalized = false;
         player.rawScore = 0;
         player.scoreSeq = 0;
         player.lastScoreAt = 0;
@@ -79,7 +82,7 @@ async function getRoom(ref) {
 
 async function runRoomTransaction(roomId, handler) {
     if (!logic.isValidRoomId(roomId)) return { ok: false, err: '房间号格式非法' };
-    return db.runTransaction(async function (transaction) {
+    return runTransaction(db, async function (transaction) {
         const ref = transaction.collection('battle_rooms').doc(roomId);
         const room = await getRoom(ref);
         return handler(room, ref, transaction);
@@ -144,6 +147,7 @@ function buildQueryResponse(room, openid, at) {
         myReady: me ? me.ready : false,
         myScore: me ? me.score : 0,
         myItems: me ? me.items : { freeze: 0, disturb: 0 },
+        myItemCooldowns: logic.itemCooldowns(room, me, CONFIG),
         myItemCooldownUntil: me ? Number(me.itemCooldownUntil) || 0 : 0,
         myActiveEffectUntil: me ? Number(me.activeEffectUntil) || 0 : 0,
         opp: opponent ? {
@@ -177,6 +181,8 @@ function buildQueryResponse(room, openid, at) {
     if (room.itemRulesVersion === 3) {
         response.itemRulesVersion = 3;
         response.serverTime = at;
+        response.scoreCloseAt = room.startTime ? room.startTime + CONFIG.BATTLE_DURATION_MS + CONFIG.SCORE_FINALIZATION_MS : 0;
+        response.myScoreFinalized = me.scoreFinalized === true;
         response.myRawScore = me.rawScore || 0;
         response.myScoreSeq = me.scoreSeq || 0;
         response.myFrozenUntil = me.frozenUntil || 0;
@@ -236,9 +242,11 @@ function updateV2Room(room, at, keepWins) {
         player.score = 0;
         player.ready = false;
         player.items = { ...(room.itemRulesVersion === 3 ? CONFIG.V3_ITEMS : CONFIG.INITIAL_ITEMS) };
+        player.itemCooldowns = logic.itemCooldowns(room, null, CONFIG);
         player.itemCooldownUntil = 0;
         player.activeEffectUntil = 0;
         if (room.itemRulesVersion === 3) {
+            player.scoreFinalized = false;
             player.rawScore = 0;
             player.scoreSeq = 0;
             player.lastScoreAt = 0;
@@ -332,7 +340,7 @@ async function join(openid, event) {
         }
         await ref.update({ data: isV2(room) ? {
             players: room.players, status: room.status, startTime: room.startTime, waitingAt: room.waitingAt,
-            finishedAt: room.finishedAt, finishReason: room.finishReason, result: room.result, effects: room.effects,
+            finishedAt: room.finishedAt, finishReason: room.finishReason, result: db.command.set(room.result), effects: room.effects,
             casts: room.casts, settledRoundId: room.settledRoundId, roundId: room.roundId, roundNumber: room.roundNumber,
             retentionEnabled: room.retentionEnabled === true
         } : { players: players } });
@@ -404,7 +412,7 @@ async function configureItems(openid, event) {
 
 async function syncScore(openid, event) {
     const at = now();
-    return runRoomTransaction(event.roomId, async function (room, ref) {
+    return runRoomTransaction(event.roomId, async function (room, ref, transaction) {
         if (!room) return { ok: false, err: '房间不存在' };
         const stale = staleRound(room, event);
         if (stale) return stale;
@@ -412,12 +420,28 @@ async function syncScore(openid, event) {
         if (!player) return { ok: false, err: '不在房间' };
 
         if (room.itemRulesVersion === 3) {
-            if (!Array.isArray(event.samples) || event.samples.length === 0) return { ok: false, err: '分数样本格式非法' };
+            if (event.final !== undefined && typeof event.final !== 'boolean') return { ok: false, err: '分数确认格式非法' };
+            const endTime = room.startTime + CONFIG.BATTLE_DURATION_MS;
+            if (event.final === true && (at < endTime || at >= endTime + CONFIG.SCORE_FINALIZATION_MS)) {
+                return { ok: false, err: '分数确认时间非法' };
+            }
+            if (!Array.isArray(event.samples) || (event.samples.length === 0 && event.final !== true)) {
+                return { ok: false, err: '分数样本格式非法' };
+            }
             const sampleResult = acceptScoreSamples(room, player, event.samples, at);
             if (!sampleResult.ok) return sampleResult;
+            if (event.final === true) player.scoreFinalized = true;
             player.online = true;
             player.lastSeen = at;
-            await ref.update({ data: { players: room.players } });
+            const finish = event.final === true ? logic.determineFinish(room, openid, at, CONFIG) : { finished: false };
+            const update = { players: room.players };
+            if (finish.finished && room.status !== 'finished') {
+                finishRoom(room, event.roomId, at, finish.reason, finish.loserOpenid);
+                await captureRetentionEvidence(transaction, room, event.roomId, finish.loserOpenid);
+                Object.assign(update, { status: room.status, finishedAt: room.finishedAt, finishReason: room.finishReason,
+                    result: db.command.set(room.result), settledRoundId: room.settledRoundId });
+            }
+            await ref.update({ data: update });
             return v3ScoreResponse(room, player, at);
         }
 
@@ -445,6 +469,8 @@ function acceptScoreSamples(room, player, samples, at) {
 
 function v3ScoreResponse(room, player, at) {
     return { ok: true, protocolVersion: 2, itemRulesVersion: 3, roundId: room.roundId,
+        scoreCloseAt: room.startTime ? room.startTime + CONFIG.BATTLE_DURATION_MS + CONFIG.SCORE_FINALIZATION_MS : 0,
+        myScoreFinalized: player.scoreFinalized === true,
         ackSeq: player.scoreSeq || 0, rawScore: player.rawScore || 0, myScore: player.score || 0,
         myFrozenUntil: player.frozenUntil || 0, myReflectUntil: player.reflectUntil || 0,
         myCheerUntil: player.cheerUntil || 0, serverTime: at };
@@ -529,6 +555,8 @@ function useV3Item(room, player, opponent, event, at) {
         }
     }
     player.items[item]--;
+    player.itemCooldowns = logic.itemCooldowns(room, player, CONFIG);
+    player.itemCooldowns[item] = at + CONFIG.ITEM_COOLDOWN_MS;
     player.itemCooldownUntil = at + CONFIG.ITEM_COOLDOWN_MS;
     player.activeEffectUntil = at + duration;
     player.online = true;
@@ -561,7 +589,8 @@ async function useItem(openid, event) {
                 if (prior.item !== item) return { ok: false, err: '道具请求冲突' };
                 const priorEffect = Array.isArray(room.effects) && room.effects.find(function (effect) { return effect.id === prior.id; });
                 return Object.assign(v3ScoreResponse(room, player, at), {
-                    items: player.items, itemCooldownUntil: player.itemCooldownUntil,
+                    items: player.items, itemCooldowns: logic.itemCooldowns(room, player, CONFIG),
+                    itemCooldownUntil: player.itemCooldownUntil,
                     activeEffectUntil: player.activeEffectUntil, effect: priorEffect ? publicEffect(priorEffect) : null,
                     cast: publicCast(prior), serverTime: at
                 });
@@ -577,7 +606,8 @@ async function useItem(openid, event) {
             if (!used.ok) return used;
             await ref.update({ data: { players: room.players, effects: room.effects, casts: room.casts } });
             return Object.assign(v3ScoreResponse(room, player, at), {
-                items: player.items, itemCooldownUntil: player.itemCooldownUntil,
+                items: player.items, itemCooldowns: logic.itemCooldowns(room, player, CONFIG),
+                itemCooldownUntil: player.itemCooldownUntil,
                 activeEffectUntil: player.activeEffectUntil, effect: publicEffect(used.effect), cast: publicCast(used.cast),
                 serverTime: at
             });
@@ -585,6 +615,8 @@ async function useItem(openid, event) {
 
         player.items[item]--;
         const duration = item === 'freeze' ? CONFIG.FREEZE_DURATION_MS : CONFIG.DISTURB_DURATION_MS;
+        player.itemCooldowns = logic.itemCooldowns(room, player, CONFIG);
+        player.itemCooldowns[item] = at + CONFIG.ITEM_COOLDOWN_MS;
         player.itemCooldownUntil = at + CONFIG.ITEM_COOLDOWN_MS;
         player.activeEffectUntil = at + duration;
         player.online = true;
@@ -607,6 +639,7 @@ async function useItem(openid, event) {
         const response = {
             ok: true,
             items: player.items,
+            itemCooldowns: logic.itemCooldowns(room, player, CONFIG),
             itemCooldownUntil: player.itemCooldownUntil,
             activeEffectUntil: player.activeEffectUntil,
             effect: { id: effect.id, item: effect.item, duration: effect.duration, at: effect.at, until: effect.until }
@@ -643,7 +676,7 @@ async function leave(openid, event) {
                 update.waitingAt = room.waitingAt;
                 update.finishedAt = room.finishedAt;
                 update.finishReason = room.finishReason;
-                update.result = room.result;
+                update.result = db.command.set(room.result);
                 update.effects = room.effects;
                 update.casts = room.casts;
                 update.settledRoundId = room.settledRoundId;
@@ -673,13 +706,14 @@ async function leave(openid, event) {
         if (isV2(room)) player.left = true;
         player.lastSeen = at;
         const update = { players: room.players };
-        if (room.status === 'playing' && room.players.length === 2) {
+        if (room.status === 'playing' && room.players.length === 2 &&
+            !(room.itemRulesVersion === 3 && at >= room.startTime + CONFIG.BATTLE_DURATION_MS)) {
             finishRoom(room, event.roomId, at, 'leave', openid);
             await captureRetentionEvidence(transaction, room, event.roomId, openid);
             update.status = room.status;
             update.finishedAt = room.finishedAt;
             update.finishReason = room.finishReason;
-            update.result = room.result;
+            update.result = db.command.set(room.result);
             if (isV2(room)) update.settledRoundId = room.settledRoundId;
         }
         await ref.update({ data: update });
@@ -731,7 +765,7 @@ async function query(openid, event) {
         const update = {
             players: room.players,
             status: room.status,
-            result: room.result || {}
+            result: db.command.set(room.result || {})
         };
         if (room.finishedAt) update.finishedAt = room.finishedAt;
         if (room.finishReason) update.finishReason = room.finishReason;
@@ -769,7 +803,7 @@ async function rematch(openid, event) {
         }
         await ref.update({ data: {
             players: room.players, status: room.status, startTime: room.startTime, waitingAt: room.waitingAt,
-            finishedAt: room.finishedAt, finishReason: room.finishReason, result: room.result, effects: room.effects,
+            finishedAt: room.finishedAt, finishReason: room.finishReason, result: db.command.set(room.result), effects: room.effects,
             casts: room.casts, settledRoundId: room.settledRoundId, roundId: room.roundId, roundNumber: room.roundNumber
         } });
         return buildQueryResponse(room, openid, at);

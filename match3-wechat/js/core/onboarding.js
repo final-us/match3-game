@@ -6,11 +6,17 @@ const GUIDE_KEYS = Object.freeze({
     SOLO: 'solo_intro',
     SPECIAL: 'special_piece',
     OBSTACLE: 'obstacle',
+    JELLY: 'jelly_clear',
+    ICE: 'ice_clear',
     YARN: 'yarn_spread',
     SOLO_ITEM: 'solo_item',
     PVP_WAIT: 'pvp_wait',
     COLLECT: 'collect_cats',
-    SPECIAL_COMBO: 'special_combo'
+    SPECIAL_COMBO: 'special_combo',
+    TRACKING_PAW: 'tracking_paw',
+    COLOR_BELL: 'color_bell',
+    MOONBUD: 'moonbud',
+    PARCEL: 'parcel'
 });
 const KNOWN_KEYS = Object.keys(GUIDE_KEYS).map(function (name) { return GUIDE_KEYS[name]; });
 
@@ -45,7 +51,10 @@ function isKnown(key) {
 }
 
 function hasSeen(key) {
-    return isKnown(key) && readState()[key] === true;
+    if (!isKnown(key)) return false;
+    const state = readState();
+    if ((key === GUIDE_KEYS.JELLY || key === GUIDE_KEYS.ICE) && state[GUIDE_KEYS.OBSTACLE] === true) return true;
+    return state[key] === true;
 }
 
 function shouldShow(key) {

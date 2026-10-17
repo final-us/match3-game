@@ -421,13 +421,11 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
         economy && economy.battlePress);
     buttons.battle = { x: btnX, y: battleY, w: btnW, h: btnH };
 
-    ctx.fillStyle=THEME.textDark;
-    if(!(compactHome&&chosen))typography.drawFit(ctx,'60秒欢乐对决',cx,battleY+btnH+12,btnW,{size:11,minSize:10,align:'center',numbers:true});
     const soloW=btnW*(compactHome?.85:.80);
-    drawMoonHomeButton(ctx,cx-soloW/2,soloY,soloW,soloH,heart.canPlay?'单人闯关':'体力不足',false,heart.canPlay);
+    drawMoonHomeButton(ctx,cx-soloW/2,soloY,soloW,soloH,heart.storageReady===false?'体力待恢复':heart.canPlay?'单人闯关':'体力不足',false,heart.canPlay);
     buttons.start={x:cx-soloW/2,y:soloY,w:soloW,h:soloH};
     ctx.fillStyle=THEME.textDark;
-    const status=heart.count>=5?'已解锁第 '+unlockedLevel+' 关 · 体力已满':heart.timeLeftText+' 后恢复体力';
+    const status=heart.storageReady===false?'体力记录暂不可用，请稍后重试':heart.count>=5?'已解锁第 '+unlockedLevel+' 关 · 体力已满':heart.timeLeftText+' 后恢复体力';
     if(!(compactHome&&chosen))typography.drawFit(ctx,status,cx,soloY+soloH+15,screen.width-32,{size:11,minSize:9,align:'center',numbers:true});
 
     // User-selected combination: original main capsules, compact utility row below.
@@ -449,7 +447,7 @@ UI.drawMenu = function (ctx, screen, unlockedLevel, heart, economy) {
     });
     const reward=require('../core/daily-challenge').DAILY_RULES.reward;
     if(economy){
-        if(economy.coinsReady&&buttons.retention)CompanionUI.dot(ctx,buttons.retention,'可领');
+        if(economy.coinsReady&&buttons.retention)CompanionUI.dot(ctx,buttons.retention);
         if(economy.storyNew&&buttons.catalog)CompanionUI.dot(ctx,buttons.catalog,'新');
         if(economy.companionNew&&buttons.companionStory)CompanionUI.dot(ctx,buttons.companionStory);
     }
@@ -573,10 +571,10 @@ UI.drawShop = function (ctx, screen, coins, items, rewardOptions) {
             ? { name: '体力', price: coin.STAMINA_PRICE, desc: '恢复 1 点体力' }
             : defs[type];
         const rowY = listTop + listPad + i * rowH;
-        const owned = type === 'heart' ? (Number(rewardOptions.heartCount) || 0) : (items ? items[type] || 0 : '—');
+        const owned = type === 'heart' ? (rewardOptions.heartReady === false ? '—' : (Number(rewardOptions.heartCount) || 0)) : (items ? items[type] || 0 : '—');
         const heartMax = Number(rewardOptions.heartMax) || 5;
         const heartFull = type === 'heart' && owned >= heartMax;
-        const storageReady=coins!==null&&!!items;
+        const storageReady=coins!==null&&!!items&&(type !== 'heart' || rewardOptions.heartReady !== false);
         const affordable = storageReady && coins >= def.price && !heartFull;
         const atLimit = Number(rewardOptions.count) >= (Number(rewardOptions.limit) || 10);
 
@@ -624,8 +622,8 @@ UI.drawShop = function (ctx, screen, coins, items, rewardOptions) {
         if (canRewardItem) {
             const rewardX = actionX + buyW + actionGap;
             const rewardPending = type === 'heart' ? rewardOptions.heartPending : rewardOptions.pending;
-            const rewardLimit = type === 'heart' ? heartFull : atLimit;
-            const rewardText = rewardPending ? '领取中' : (rewardLimit ? (heartFull ? '已满' : '今日已满') : '+1');
+            const rewardLimit = type === 'heart' ? heartFull || rewardOptions.heartReady === false : atLimit;
+            const rewardText = type === 'heart' && rewardOptions.heartReady === false ? '待恢复' : rewardPending ? '领取中' : (rewardLimit ? (heartFull ? '已满' : '今日已满') : '+1');
             moon.button(ctx, rewardX, actionY, buyW, 44, '', rewardLimit || rewardPending ? 'muted' : 'blue');
             if (!rewardLimit && !rewardPending) moon.glyph(ctx, 'video', rewardX + 7, actionY + 13, 18);
             ctx.fillStyle = THEME.textDark;
@@ -668,7 +666,7 @@ UI.drawStaminaEmpty = function (ctx, screen, options) {
         size: 20, minSize: 15, weight: 'bold', align: 'center'
     });
     ctx.fillStyle = THEME.textSceneMuted;
-    typography.drawFit(ctx, '下一点体力将在 ' + (options.timeLeftText || '--:--') + ' 后恢复', cx, cardY + 108, cardW - 38, {
+    typography.drawFit(ctx, options.storageReady === false ? '体力记录暂不可用，请稍后重试' : '下一点体力将在 ' + (options.timeLeftText || '--:--') + ' 后恢复', cx, cardY + 108, cardW - 38, {
         size: 12, minSize: 9, align: 'center', numbers: true
     });
 
@@ -810,7 +808,8 @@ UI.drawResult = function (ctx, screen, result) {
 
     // 复活按钮（失败且激励视频可用；同一局可重复观看）
     if (hasRevive) {
-        const reviveText = '看广告复活 +' + config.AD_CONFIG.reviveSteps + ' 步' + (result.timed ? ' · +30秒' : '');
+        const reviveText = result.revivePending ? '重试复活 · 无需再看广告' :
+            '看广告复活 +' + config.AD_CONFIG.reviveSteps + ' 步' + (result.timed ? ' · +30秒' : '');
         const reviveY = nextBtnY - 60;
         moon.button(ctx, btnX, reviveY, cardW-36, 48, reviveText, 'pink', result.timed ? 14 : 16);
         buttons.revive = { x: btnX, y: reviveY, w: cardW-36, h: 48 };

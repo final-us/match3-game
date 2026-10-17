@@ -5,7 +5,8 @@ const path = require('path');
 const http = require('http');
 const root = path.resolve(__dirname, '../match3-wechat');
 const { createBattleLocal } = require('../match3-wechat/test/helpers/battle-local');
-const local = createBattleLocal();
+let previewClockOffset = 0;
+const local = createBattleLocal(() => Date.now() + previewClockOffset);
 const sources = {};
 function collect(file) {
     const id = path.relative(root, file).replaceAll('\\', '/');
@@ -21,9 +22,10 @@ const html = `<!doctype html><meta charset="utf-8"><title>四道具对战 · 本
 <nav><a href="/?width=320&height=568">320</a> · <a href="/?width=390&height=844">390</a> · <a href="/?width=430&height=932">430</a>
 <label>网络 <select id="network"><option value="ok">正常</option><option value="stall">不回调</option><option value="fail">立即失败</option></select></label>
 <button id="late">释放迟到回包</button><label><input id="joined" type="checkbox">模拟好友加入</label>
-<button id="play">本地对局</button><button id="freeze">受冰冻</button><button id="disturb">受干扰</button><button id="cast">释放提示</button><button id="reflect">反弹护盾</button><button id="cheer">鼓舞效果</button><button id="wait">等待房间</button></nav><output id="status"></output><output id="toast"></output><canvas></canvas><script src="/fixture.js"></script>`;
+<button id="play">本地对局</button><button id="confirm">跳到成绩确认</button><button id="freeze">受冰冻</button><button id="disturb">受干扰</button><button id="cast">释放提示</button><button id="reflect">反弹护盾</button><button id="cheer">鼓舞效果</button><button id="wait">等待房间</button></nav><output id="status"></output><output id="toast"></output><canvas></canvas><script src="/fixture.js"></script>`;
 const script = `
 const sources=${JSON.stringify(sources)},cache={},params=new URLSearchParams(location.search);
+const actualDateNow=Date.now.bind(Date);let clientClockJump=0;Date.now=()=>actualDateNow()+clientClockJump;
 const width=+(params.get('width')||390),height=+(params.get('height')||844);
 const canvas=document.querySelector('canvas'),status=document.querySelector('#status'),toast=document.querySelector('#toast');
 const memory={match3_music_enabled_v1:false,match3_sfx_enabled_v1:false},events={},pending=[];
@@ -73,6 +75,7 @@ window.battleFixture={app,async play(){
 }};
 for(const key of ['freeze','disturb','reflect','cheer'])document.querySelector('#'+key).onclick=()=>battleFixture.hit(key);
 document.querySelector('#play').onclick=()=>battleFixture.play();
+document.querySelector('#confirm').onclick=async()=>{await fetch('/advance',{method:'POST'});clientClockJump+=60000;};
 document.querySelector('#wait').onclick=()=>{app.stopPolling();app.battle=null;app.state='menu';app.guide=null;app.startBattle();};
 document.querySelector('#cast').onclick=()=>{if(app.battle)app.battle.castNotice={item:'freeze',until:app.battleNow()+1500};};
 document.querySelector('#late').onclick=()=>pending.splice(0).forEach(fn=>fn());
@@ -85,7 +88,11 @@ const server = http.createServer(async (req, res) => {
         const body = []; for await (const chunk of req) body.push(chunk);
         const input = JSON.parse(Buffer.concat(body).toString() || '{}');
         let response;
-        if (req.url === '/play') {
+        if (req.url === '/advance') {
+            // Move only the isolated handler clock; the next query calibrates the client.
+            previewClockOffset += 60000;
+            response = { ok: true };
+        } else if (req.url === '/play') {
             // Per-preview identities prevent rate limiting when switching screen sizes.
             const host = 'preview-host-' + (++previewRound), guest = host + '-guest';
             const created = await local.call(host, { action: 'create', protocolVersion: 2, itemRulesVersion: 3 });

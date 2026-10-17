@@ -4,6 +4,7 @@
 
 - battle新增catalogInfo、catalogAdopt、catalogFeed；只使用微信云函数上下文OPENID。采用现有retention_profiles中的catalog，不新增客户端可访问数据库。public state含owner哈希、revision、days、fish、owned、affection、date、roundsToday、serverNow。哈希仍属用户关联数据。
 - 领养/喂食输入catId、requestId、expectedRevision、expectedOwner。身份来自服务端，expectedOwner仅防切号重放，不替代身份。每次操作先本地持久化待确认请求再发出；丢回包/保存失败/重启重用原请求。数据库事务内同一lastRequest重试返回成功；更早修订返回STATE_CHANGED且不重执行。并发只能有一个期望修订成功。revision永不回退，活动发鱼也递增；不自动用新修订重放喂食。
+- 2026-10-17本地候选：图鉴查询/领养/喂食与每日任务档案事务接入同一个精确冲突规范化，复用SDK有界重试并读取新快照，详见[事务冲突恢复](retention-v1.md#事务冲突恢复2026-10-17本地候选)。不自动替换expectedRevision或expectedOwner；新快照若已有相同请求则返回原结果，若修订或身份已变化则沿用原拒绝规则，不多扣小鱼干或重复领养。
 - catalog从0天0鱼无领养开始。旧retention档案惰性新增，不重置签到/金币任务。首次新版有效结算当日计1活跃日；第1和第3个不同有效结算各1鱼。第3局后且原金币任务已满不再增加事件；所有资格/发鱼/事件去重同事务。跨日仅重置当日计数，库存/成长永久保留；既有事件不追溯发鱼/补天数。
 - 复用retentionRecord的普通单人有限可信结算（完成且有效操作，非完整重演）、每日挑战重放、PvP本人非主动退出的服务端结算凭据。无奖励排行榜或战力加成；改写客户端仍可能伪造普通单人对局，不作完全抗作弊承诺。
 - 喂食每次云库存-1/选中猫亲密+1，42封顶，未领养或满级不扣；不直接信任客户端fish/days/affection。新状态校验失败显式报错，不以空档覆盖。切号待确认操作明确失败，不应用给另一个账号。

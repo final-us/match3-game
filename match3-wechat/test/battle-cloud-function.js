@@ -54,7 +54,9 @@ const rooms = {
 
 const database = {
     command: {
-        lt: function (value) { return { lt: value }; }
+        lt: function (value) { return { lt: value }; },
+        // Existing shallow update fixture already replaces values; this is not SDK evidence.
+        set: function (value) { return value; }
     },
     collection: function (name) {
         if (name === 'battle_rooms') return rooms;

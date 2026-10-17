@@ -20,8 +20,11 @@ function goalDesc(level) {
         const g = level.goals[i];
         if (g.type === 'score') parts.push('分' + g.target);
         else if (g.type === 'jelly') parts.push('果冻' + g.target);
+        else if (g.type === 'ice') parts.push('冰块' + g.target);
         else if (g.type === 'collect') parts.push('收集' + g.pieceType + '×' + g.target);
         else if (g.type === 'yarn') parts.push('毛线源头' + g.target + '击');
+        else if (g.type === 'moonbud') parts.push('收花' + g.target);
+        else if (g.type === 'parcel') parts.push('送包裹' + g.target);
         else parts.push('未知目标');
     }
     if ((level.underlays || {}) && parts.length === 0) {

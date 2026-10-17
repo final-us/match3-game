@@ -18,9 +18,8 @@ function getStore() {
 
 function save(state) {
     const store = getStore();
-    if (store && store.setStorageSync) {
-        store.setStorageSync(STORAGE_KEY, state);
-    }
+    if (!store || !store.setStorageSync) throw new Error('storage_unavailable');
+    store.setStorageSync(STORAGE_KEY, state);
 }
 
 /** 读取并结算（含离线恢复）的体力状态 */
@@ -28,6 +27,7 @@ function getHeartState() {
     const store = getStore();
     const now = Date.now();
     let state = null;
+    if (!store || !store.getStorageSync) throw new Error('storage_unavailable');
     if (store && store.getStorageSync) {
         const saved = store.getStorageSync(STORAGE_KEY);
         state = saved && typeof saved === 'object' ? Object.assign({}, saved) : saved;
@@ -91,6 +91,28 @@ function addHeart(n) {
     return state.count;
 }
 
+/** Receipt and resulting heart state are committed in the same atomic storage item. */
+function claimRewardedHeart(receiptId) {
+    if (typeof receiptId !== 'string' || !receiptId || receiptId.length > 160) {
+        return { ok: false, granted: false, reason: 'invalid_receipt' };
+    }
+    try {
+        const state = getHeartState();
+        const receipts = state.rewardedReceipts || [];
+        if (!Array.isArray(receipts) || receipts.some(id => typeof id !== 'string')) {
+            return { ok: false, granted: false, reason: 'heart_receipts_invalid' };
+        }
+        if (receipts.indexOf(receiptId) !== -1) return { ok: true, granted: false, count: state.count };
+        state.count = Math.min(HEART_CONFIG.maxHeart, state.count + 1);
+        if (state.count >= HEART_CONFIG.maxHeart) state.lastLossTime = 0;
+        state.rewardedReceipts = receipts.concat(receiptId);
+        save(state);
+        return { ok: true, granted: true, count: state.count };
+    } catch (error) {
+        return { ok: false, granted: false, reason: 'storage_failed' };
+    }
+}
+
 /** 距离下一颗体力恢复的剩余毫秒（满心返回 0） */
 function getRecoverTimeLeft() {
     const state = getHeartState();
@@ -111,6 +133,7 @@ function formatTimeLeft() {
 
 module.exports = {
     HEART_CONFIG: HEART_CONFIG,
+    claimRewardedHeart: claimRewardedHeart,
     getHeartState: getHeartState,
     consumeHeart: consumeHeart,
     refundConsumedHeart: refundConsumedHeart,

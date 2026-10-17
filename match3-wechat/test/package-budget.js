@@ -18,10 +18,12 @@ const maxActiveBytes = 3.5 * 1024 * 1024;
 const maxBgmBytes = 360 * 1024;
 // Full accepted rocket/win tails add ~15KB; overall 4MiB package cap is unchanged.
 const maxSfxBytes = 64 * 1024;
+const maxNewSpecialSfxBytes = 84 * 1024;
 const maxEstimatedMainPackageBytes = 4 * 1024 * 1024;
 const maxEstimatedTotalPackageBytes = 30 * 1024 * 1024;
 const bgmPaths = ['res/audio/calm.mp3', 'res/audio/battle.mp3'];
 const sfxPath = 'res/audio/sfx-acoustic.mp3';
+const newSpecialSfxPath = 'res/audio/sfx-new-specials.wav';
 const developerMetadata = new Set([
     'README.md',
     'project.config.json',
@@ -127,6 +129,12 @@ assert(!isIgnored(sfxPath), '音效精灵被打包规则忽略: ' + sfxPath);
 assetPaths.add(sfxPath);
 const sfxBytes = fs.statSync(sfxFile).size;
 assert(sfxBytes <= maxSfxBytes, '音效精灵超过预算: ' + sfxBytes + ' > ' + maxSfxBytes);
+const newSpecialSfxFile = path.join(projectRoot, newSpecialSfxPath);
+assert(fs.existsSync(newSpecialSfxFile) && fs.statSync(newSpecialSfxFile).isFile(), '新特殊音效不存在');
+assert(!isIgnored(newSpecialSfxPath), '新特殊音效被打包规则忽略');
+assetPaths.add(newSpecialSfxPath);
+const newSpecialSfxBytes = fs.statSync(newSpecialSfxFile).size;
+assert(newSpecialSfxBytes <= maxNewSpecialSfxBytes, '新特殊音效超过独立预算');
 
 for (let i = 1; i <= 5; i++) {
     const relative = assets['piece' + i];
@@ -192,6 +200,7 @@ console.log('包体预算: 通过');
 console.log('活跃素材: ' + activeBytes + ' bytes / ' + maxActiveBytes + ' bytes');
 console.log('双 BGM: ' + bgmBytes + ' bytes / ' + maxBgmBytes + ' bytes');
 console.log('音效精灵: ' + sfxBytes + ' bytes / ' + maxSfxBytes + ' bytes');
+console.log('新特殊音效: ' + newSpecialSfxBytes + ' bytes / ' + maxNewSpecialSfxBytes + ' bytes');
 console.log('静态主包估算: ' + estimatedMainBytes + ' bytes / ' + maxEstimatedMainPackageBytes + ' bytes (' + estimatedMainFiles.length + ' files)');
 console.log('静态总包估算: ' + estimatedTotalBytes + ' bytes / ' + maxEstimatedTotalPackageBytes + ' bytes (' + estimatedPackageFiles.length + ' files)');
 console.log('未引用 res 文件: ' + unreferenced.length + ' 个，均由精确 file 规则覆盖');

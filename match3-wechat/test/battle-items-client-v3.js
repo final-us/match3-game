@@ -72,6 +72,19 @@ const realNow = Date.now;
     assert.strictEqual(b.pendingItem, null, 'query reconciles lost item ack');
     assert.strictEqual(b.items.cheer, 1);
     assert.strictEqual(b.scoreSamples.length, 0);
+    const cheerDeadline = b.itemCooldowns.cheer;
+    assert.strictEqual(cheerDeadline, f.clock.now + 10000);
+    assert.strictEqual(b.itemCooldowns.freeze, 0);
+    // Another item can cast immediately, even while cheer is active.
+    app.battleUseItem('disturb');
+    const independent = await deliver();
+    assert.strictEqual(independent.response.ok, true);
+    assert.strictEqual(b.items.disturb, 0);
+    assert.strictEqual(b.itemCooldowns.cheer, cheerDeadline);
+    assert.strictEqual(b.itemCooldowns.disturb, f.clock.now + 10000);
+    const coolingRequests = f.requests.length;
+    app.battleUseItem('cheer');
+    assert.strictEqual(f.requests.length, coolingRequests, 'same item remains locked during its own cooldown');
     f.clock.now += 100;
     items.sample(b, 200);
     assert.strictEqual(items.displayScore(b), 300);
@@ -135,7 +148,13 @@ const realNow = Date.now;
     assert.strictEqual(finalScore.req.action, 'syncScore', 'final 800ms bypasses throttle');
     assert.strictEqual(b.confirmedScore, 600);
     f.clock.now = b.endTime + 1;
-    app.pollRoom(); await deliver();
+    app.updateBattle(f.clock.now);
+    const final = await deliver();
+    assert.strictEqual(final.req.data.final, true);
+    assert.strictEqual(final.req.data.samples.length, 0);
+    assert.strictEqual(b.scoreFinalized, true);
+    assert.strictEqual((await peer('syncScore', { samples: [], final: true })).ok, true);
+    await deliver(); // Successful final automatically requests query.
     assert.strictEqual(app.state, 'battle_result');
     await peer('rematch', { accept: true });
     app.battleAgain(); await deliver();
@@ -144,6 +163,7 @@ const realNow = Date.now;
     assert.strictEqual(app.battle.confirmedScore, 0);
     assert.strictEqual(app.battle.items.cheer, 1);
     assert.strictEqual(app.battle.reflectUntil, 0);
+    assert.deepStrictEqual(app.battle.itemCooldowns, { freeze: 0, disturb: 0, reflect: 0, cheer: 0 });
     assert.strictEqual(app.battle.itemRulesVersion, 3);
     // A delayed reply cannot rewind an already calibrated clock into a cheer window.
     const clockState = app.newBattleState(true);
@@ -153,5 +173,13 @@ const realNow = Date.now;
     items.status(clockState, { serverTime: sent + 500, myCheerUntil: sent + 3500 }, sent);
     assert.strictEqual(clockState.serverOffset, 500);
     assert(items.serverNow(clockState) > clockState.cheerUntil);
+    // An older cloud response keeps shared restrictions; a map response releases unrelated items.
+    items.cooldowns(clockState, { myItemCooldownUntil: f.clock.now + 5000, myActiveEffectUntil: f.clock.now + 7000 }, true);
+    assert.strictEqual(items.cooldownUntil(clockState, 'freeze'), f.clock.now + 7000);
+    items.cooldowns(clockState, { itemCooldownUntil: f.clock.now + 5000, activeEffectUntil: f.clock.now + 7000,
+        itemCooldowns: { freeze: f.clock.now + 10000, disturb: 0, reflect: 0, cheer: 0 } }, false);
+    assert.strictEqual(items.cooldownUntil(clockState, 'disturb'), 0);
+    assert.strictEqual(items.cooldownRemaining(clockState, f.clock.now + 9999).freeze, 1);
+    assert.strictEqual(items.cooldownRemaining(clockState, f.clock.now + 10000).freeze, 0);
     console.log('battle items client/server v3 integration passed');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => { Date.now = realNow; });

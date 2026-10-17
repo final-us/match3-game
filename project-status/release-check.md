@@ -1,5 +1,41 @@
 # 发布检查 · 2026-09-15
 
+<a id="git-delivery-20261017"></a>
+
+## GitHub交付检查 · 2026-10-17（限定Git通过，微信验收待完成）
+
+- 授权：用户要求检查近期项目更新，无阻断问题后提交本地Git并推送既有origin/main（final-us/match3-game）；不包含微信上传/云部署/提审/发布，也不授权清存档、修改广告后台或新付费创作。
+- 基线：HEAD dea08fb，当前main；现有工作树包含普通玩法/难度与视觉、PvP、广告/奖励、单人续局及相关测试/文档增量。按实际变更与已接受证据确定交付范围，保留无关本地工具/推广目录和受限制素材，不整仓盲目暂存。
+- 结论：限定Git交付检查无P1/P2阻断；按本次授权保存当前项目候选并推送既有origin/main。此结论不是微信上传/云部署或正式发布放行。已fetch远端，提交前HEAD与origin/main均为dea08fb、无分叉；不force、不改远端或Git身份。
+- 范围：普通关卡v8/障碍与特殊组合、C绘本棋子和HUD、广告奖励/单人续局、PvP独立冷却/事务修复及对应测试/工具/文档，共131个项目文件（含本检查记录）。不纳入`.impeccable/`、`promo-duel/`、`node_modules/`、`assets/_incoming/`及含Mixkit的本地`res/audio/sfx-acoustic.mp3`；该MP3仍须由授权本地发布副本提供，Git克隆不包含完整发布音效。新增原创`sfx-new-specials.wav`有既有供应商/用户采用记录，不扩大许可或创作授权。
+- 本轮检查：95个新增/修改JS/CJS语法exit0；`git diff --check`、`test/package-budget.js`、`test/open-source-and-assets.js`、`test/release-gates.js`、`tools/sync-daily-engine.cjs --check`均exit0（每日4文件一致）。公开文件定向凭证标记检查未命中，未修改依赖/预算或放宽断言；不宣称全仓安全审计或法律保证。
+- 证据复用：当前客户端与10/17普通微信预览快照`/private/tmp/match3-ad-gesture-20261017-j49znplt`比较113个非私有输入（排除inputs索引/本机private配置），changed=[]、missing=[]。沿用相同输入的Main广告/恢复/音频、组合/障碍、UI与隐私现有回归及独立QA，不再为交付重跑整库/难度模拟。快照含受限本地音效仅作本机比较，不提交或再次上传。
+- 独立复核：非实现者Franklin（01a14a98-e54f-7491-8d48-bd92f0e97b9c）只读核对广告严格isEnded、单次show/后台取消、奖励WAL/恢复、SDK JSON解码及原局身份；另逐字节确认57客户端JS与最近快照相同，复用141项七入口QA、桥接及奖励故障矩阵，无P1/P2。非实现者Hegel（01a14a98-e5c8-7801-8e15-91119a784638）只读核对可信身份/回合、精确事务冲突分类及SDK有界重试、独立10秒冷却/冻结、尾分/新局重置、retention并行档案与奖励原子回滚，复用10/17真实SDK隔离传输和既有独立probe，无P1/P2。均未改文件、操作云端或真实广告；工具固定worker Sol/medium路线，不声称核验上游实际模型。
+- 包体：当前静态主包4,192,148/4,194,304字节（90文件，余2,156），总包5,987,513/31,457,280（112文件）；不可放宽预算或据此再加主包内容。该输入已有微信普通开发预览主包3774.6KB/总包5528KB证据，复用但不冒充正式上传产物。
+- 微信仍待：商店iOS额外转场的新候选反馈；C圆环/双目标对齐/手绘棋子最终用户运行视觉及设备确认；双账号独立冷却、弱网/后台、事务部署效果和完整广告设备矩阵。此次包含battle云函数源码及新增transaction.js，用户更新微信时需同时按既有完整依赖部署约定更新battle；本轮不执行。旧生产问题不能仅凭离线通过宣布恢复。
+- 共享记忆：approved项目hit，原文核读vfx-event-footprint/audio-feedback及独立复核引用的room-poll-write-gating r1，仅用于审查当前真实事件/音画时序和SDK事务证据的适用边界；不恢复旧组合音效、不外推生产归因。无规范模块身份。小批原Markdown审计unreviewed=0、needs-evidence=1，未改历史批准；本次候选none，两位复核者候选none，不将例行Git交付状态复制成长期记忆。
+- Git交付：131个已审项目文件已精确暂存，index差异检查通过，相对require均可由Git内容解析，无受限/无关文件；本记录随同提交保存，所在提交即本次交付快照。最终提交SHA、推送结果及远端身份以实际Git记录和交付回复为准，不预报网络成功。工作树内容归属用户，本轮仅审查与交付，未修产品逻辑、删除存档或采用新素材。记忆格式与本task/turn交接自检均valid:true、issues:[]，不是技术验收替代。
+
+```memory-task
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/release-check.md#git-delivery-20261017","session_id":"01a01f4a-9054-7200-a8c7-4d093c5c4127","turn_id":"01a14a96-82b0-7461-8c29-be12d298b8ed","state":"active"}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-vfx-event-footprint","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/release-check.md#git-delivery-20261017","date":"2026-10-18","stage":"applied","purpose":"review","action":"核对当前specialCombo/命中字段与HUD延迟证据，复用匹配输入的组合及圆环独立QA，不用源码或静帧代替最终设备和视觉接受。"}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-audio-feedback","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/release-check.md#git-delivery-20261017","date":"2026-10-18","stage":"applied","purpose":"review","action":"按当前音频合同核对新旧精灵、参与类别及共享延迟证据；保留已接受音色与后台取消边界，不将Git/技术通过当真机听审或许可保证。"}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-room-poll-write-gating","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/release-check.md#git-delivery-20261017","date":"2026-10-18","stage":"applied","purpose":"review","action":"核读云端复核引用的批准原文，接受真实SDK隔离冲突/新快照及幂等证据的有限结论，保留query写入门控、身份回合校验与生产恢复待验边界。"}
+```
+
+```memory-handoff
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/release-check.md#git-delivery-20261017","turn_id":"01a14a96-82b0-7461-8c29-be12d298b8ed","recall":{"project":"hit","module":"not-applicable"},"memories":[{"memory_id":"match3-game-vfx-event-footprint","revision":1,"stage":"applied","purpose":"review"},{"memory_id":"match3-game-audio-feedback","revision":1,"stage":"applied","purpose":"review"},{"memory_id":"match3-game-room-poll-write-gating","revision":1,"stage":"applied","purpose":"review"}],"no_usage_reason":null}
+```
+
 ## 当前任务：失败换位碰壁反馈
 
 - Owner：当前项目任务；状态：`verified_for_git_delivery_device_acceptance_pending`。基线 `b7e4c76587564b914a42c67795e539940020927f`（安全修复已推送），本次仅无消除/冰块/果冻换位失败动效及既有音效接线确认。用户在本地验证后明确授权“推送”：仅本次代码、测试、预览工具与文档提交到origin/main，不部署微信，无外部创作费用或素材上传。Git身份与实际推送结果以本记录所在提交及交付回复为准；推送授权不代表已通过真机验收。

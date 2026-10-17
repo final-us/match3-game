@@ -10,10 +10,14 @@
 const config = require('../core/config');
 const coin = require('../core/coin');
 const AudioFX = require('../audio');
+const specialTriggerDelays = require('../special-trigger-timing');
 const assets = require('./assets');
 const THEME = require('./theme');
 const typography = require('./typography');
+const newObstacles = require('./new-obstacles-render');
+const PARCEL_TYPE = (config.OBJECT_TYPES && config.OBJECT_TYPES.PARCEL) || 201;
 const moon = require('./moon-controls');
+const gameLayout = require('./game-layout');
 
 function drawImageCover(ctx, img, w, h) {
     if (!img || !img.width || !img.height) return false;
@@ -34,10 +38,136 @@ function drawImageContain(ctx, img, x, y, w, h) {
 }
 
 function specialBaseType(type) {
+    if (type === config.SPECIAL_TYPES.TRACKING_PAW) return 1;
+    if (type === config.SPECIAL_TYPES.COLOR_BELL) return 5;
     if (type === config.SPECIAL_TYPES.H_ROCKET) return 2;
     if (type === config.SPECIAL_TYPES.V_ROCKET) return 3;
     if (type === config.SPECIAL_TYPES.COLOR_BALL) return 5;
     return 4;
+}
+
+function drawTrackingPaw(ctx, x, y, size) {
+    ctx.save();
+    ctx.translate(x, y);
+    const beam = assets.get('uiSpecialRowBeam');
+    if (beam && beam.width > 0) {
+        ctx.drawImage(beam, beam.width * 0.34, 0, beam.width * 0.32, beam.height,
+            -size / 2, -size / 2, size, size);
+    } else {
+        ctx.scale(size, size);
+        ctx.fillStyle = '#FFD4F0';
+        ctx.beginPath();
+        ctx.ellipse(0, 0.15, 0.22, 0.17, 0, 0, Math.PI * 2);
+        ctx.fill();
+        [-0.27, -0.09, 0.09, 0.27].forEach(function (offset) {
+            ctx.beginPath();
+            ctx.ellipse(offset, Math.abs(offset) > 0.2 ? -0.08 : -0.22, 0.07, 0.09, 0, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+    ctx.restore();
+}
+
+function drawColorBell(ctx, x, y, size, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(size, size);
+    const pearl = ctx.createLinearGradient(-0.3, -0.32, 0.32, 0.3);
+    pearl.addColorStop(0, '#FFFFFF');
+    pearl.addColorStop(0.28, '#FFE4F6');
+    pearl.addColorStop(0.66, '#D8A8F2');
+    pearl.addColorStop(1, '#7C5CE7');
+    const gold = ctx.createLinearGradient(-0.34, 0.17, 0.34, 0.32);
+    gold.addColorStop(0, '#B57B33');
+    gold.addColorStop(0.32, '#FFF0B9');
+    gold.addColorStop(0.64, '#E9BF6D');
+    gold.addColorStop(1, '#A0692F');
+    ctx.fillStyle = 'rgba(63,39,82,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(0.02, 0.4, 0.32, 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#A97635';
+    ctx.lineWidth = 0.032;
+    ctx.fillStyle = '#FFEDAE';
+    ctx.beginPath();
+    ctx.arc(0, -0.34, 0.09, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = pearl;
+    ctx.beginPath();
+    ctx.moveTo(-0.32, 0.23);
+    ctx.bezierCurveTo(-0.2, 0.11, -0.26, -0.25, 0, -0.25);
+    ctx.bezierCurveTo(0.26, -0.25, 0.2, 0.11, 0.32, 0.23);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#8A5A2E';
+    ctx.lineWidth = 0.022;
+    ctx.fillStyle = gold;
+    ctx.beginPath();
+    ctx.ellipse(0, 0.24, 0.34, 0.065, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#FFFDF2';
+    ctx.beginPath();
+    ctx.arc(0, -0.02, 0.145, 0, Math.PI * 2);
+    ctx.fill();
+    const gem = ctx.createRadialGradient(-0.05, -0.065, 0.01, 0, -0.02, 0.15);
+    gem.addColorStop(0, '#FFFFFF');
+    gem.addColorStop(0.35, color);
+    gem.addColorStop(1, '#6D6686');
+    ctx.fillStyle = gem;
+    ctx.beginPath();
+    ctx.arc(0, -0.025, 0.13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#D5B783';
+    ctx.lineWidth = 0.015;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.lineWidth = 0.035;
+    ctx.beginPath();
+    ctx.moveTo(-0.16, 0.1);
+    ctx.bezierCurveTo(-0.18, 0.025, -0.17, -0.13, -0.09, -0.17);
+    ctx.stroke();
+    ctx.fillStyle = gold;
+    ctx.beginPath();
+    ctx.arc(0, 0.34, 0.065, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawSparkle(ctx, x, y, size, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y - size);
+    ctx.quadraticCurveTo(x + size * 0.2, y - size * 0.2, x + size, y);
+    ctx.quadraticCurveTo(x + size * 0.2, y + size * 0.2, x, y + size);
+    ctx.quadraticCurveTo(x - size * 0.2, y + size * 0.2, x - size, y);
+    ctx.quadraticCurveTo(x - size * 0.2, y - size * 0.2, x, y - size);
+    ctx.fill();
+}
+
+function bellColor(type) {
+    const image = assets.get('piece' + type);
+    const definition = config.getPieceTypeDef(type);
+    const colors = ['#FFE29A', '#FF8FAB', '#8ED1F4', '#C9B6F0', '#A8E6A3'];
+    return image && image.width > 0 ? (colors[type - 1] || '#FFE29A') :
+        (definition ? definition.color : '#FFE29A');
+}
+
+function jellyPath(ctx, centerX, centerY, radius) {
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY - radius * 0.98);
+    ctx.bezierCurveTo(centerX + radius * 0.27, centerY - radius * 1.11, centerX + radius * 0.48, centerY - radius * 0.95, centerX + radius * 0.68, centerY - radius * 0.83);
+    ctx.bezierCurveTo(centerX + radius * 0.94, centerY - radius * 0.71, centerX + radius * 1.08, centerY - radius * 0.43, centerX + radius * 1.01, centerY - radius * 0.18);
+    ctx.bezierCurveTo(centerX + radius * 1.14, centerY + radius * 0.08, centerX + radius * 1.03, centerY + radius * 0.34, centerX + radius * 0.85, centerY + radius * 0.5);
+    ctx.bezierCurveTo(centerX + radius * 0.84, centerY + radius * 0.78, centerX + radius * 0.58, centerY + radius * 0.97, centerX + radius * 0.29, centerY + radius * 0.92);
+    ctx.bezierCurveTo(centerX + radius * 0.07, centerY + radius * 1.09, centerX - radius * 0.2, centerY + radius * 1.03, centerX - radius * 0.39, centerY + radius * 0.9);
+    ctx.bezierCurveTo(centerX - radius * 0.7, centerY + radius * 0.96, centerX - radius * 0.96, centerY + radius * 0.75, centerX - radius * 0.92, centerY + radius * 0.45);
+    ctx.bezierCurveTo(centerX - radius * 1.13, centerY + radius * 0.23, centerX - radius * 1.09, centerY - radius * 0.1, centerX - radius * 0.97, centerY - radius * 0.34);
+    ctx.bezierCurveTo(centerX - radius * 1.02, centerY - radius * 0.66, centerX - radius * 0.78, centerY - radius * 0.88, centerX - radius * 0.48, centerY - radius * 0.87);
+    ctx.bezierCurveTo(centerX - radius * 0.3, centerY - radius * 1.05, centerX - radius * 0.13, centerY - radius * 1.03, centerX, centerY - radius * 0.98);
+    ctx.closePath();
 }
 
 class BoardRenderer {
@@ -58,6 +188,8 @@ class BoardRenderer {
         // 粒子系统（碎屑效果）
         this.particles = [];
         this.specialEffects = [];
+        this.moonbudEffects = [];
+        this.moonbudFeedback = null;
         this.invalidSwapFeedback = null;
         this.pressFeedback = null;
         this.reshuffleFeedback = null;
@@ -73,7 +205,12 @@ class BoardRenderer {
         this.toolsCount = { hammer: 0, bomb: 0, color: 0 };
         this.selectedTool = null;
         this.onToolUsed = null; // 由 Main 绑定（道具使用回调）
+        this.onToolAd = null;
+        this.toolAdAvailable = false;
+        this.toolAdPending = false;
+        this.toolAdTouch = null;
         this.battleMode = false; // 双人对战模式：不画单机顶部栏/道具栏
+        this.pvpLayout = false; // 每日挑战与双人对战分别排布
     }
 
     /** 设置道具数量并计算道具栏位置 */
@@ -90,11 +227,13 @@ class BoardRenderer {
         const r = 35;
         const gap = Math.min(108, (this.screen.width - 92) / 2);
         const startX = (this.screen.width - (types.length - 1) * gap) / 2;
-        const lowest = this.screen.height - (Number(this.screen.safeBottom) || 0) - r - 12;
-        const y = Math.min(lowest, this.boardY + this.boardH + 76);
+        const lowest = this.screen.height - (Number(this.screen.safeBottom) || 0) - 62;
+        const y = Math.min(lowest, this.boardY + this.boardH + 64);
         this.tools = [];
         for (let i = 0; i < types.length; i++) {
-            this.tools.push({ type: types[i], x: startX + i * gap, y: y, r: r });
+            const x = startX + i * gap;
+            this.tools.push({ type: types[i], x: x, y: y, r: r,
+                adRect: { x: x + r * 0.62 - 22, y: y - r * 0.62 - 22, w: 44, h: 44 } });
         }
     }
 
@@ -106,7 +245,7 @@ class BoardRenderer {
             const left = this.tools[0].x - 48;
             const right = this.tools[this.tools.length - 1].x + 48;
             ctx.fillStyle = THEME.glassBgSoft;
-            this.roundRect(left, this.tools[0].y - 44, right - left, 88, 30);
+            this.roundRect(left, this.tools[0].y - 44, right - left, 104, 30);
             ctx.fill();
             ctx.strokeStyle = THEME.glassBorder;
             ctx.lineWidth = 1.5;
@@ -140,13 +279,30 @@ class BoardRenderer {
                 });
             }
 
-            // 数量角标
-            if (count > 0) {
-                ctx.fillStyle = THEME.primary;
+            ctx.fillStyle = THEME.textDark;
+            typography.drawFit(ctx, def.name, t.x, t.y + 49, 88, {
+                size: 13, minSize: 11, weight: 'bold', align: 'center'
+            });
+            // 沿用原数量角标；仅零库存且广告可用时替换为同风格加号。
+            const canAdd = count === 0 && this.toolAdAvailable && this.onToolAd && !this.battleMode;
+            ctx.fillStyle = THEME.primary;
+            ctx.beginPath();
+            ctx.arc(t.x + t.r * 0.62, t.y - t.r * 0.62, 11, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            if (canAdd) {
+                // 对称笔画直接以圆心定位，不受字体的加号基线偏移影响。
+                const cx = t.x + t.r * 0.62, cy = t.y - t.r * 0.62;
+                ctx.save();
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
                 ctx.beginPath();
-                ctx.arc(t.x + t.r * 0.62, t.y - t.r * 0.62, 11, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#FFFFFF';
+                ctx.moveTo(cx - 3.5, cy); ctx.lineTo(cx + 3.5, cy);
+                ctx.moveTo(cx, cy - 3.5); ctx.lineTo(cx, cy + 3.5);
+                ctx.stroke();
+                ctx.restore();
+            } else {
                 typography.drawFit(ctx, String(count), t.x + t.r * 0.62, t.y - t.r * 0.62 + 1, 18, {
                     size: 11, minSize: 8, weight: 'bold', numbers: true, align: 'center'
                 });
@@ -160,6 +316,13 @@ class BoardRenderer {
         this.pressFeedback = null;
         this.reshuffleFeedback = null;
         this.core = core;
+        this.visualMoonbuds = Object.assign({}, core.moonbudCells || {});
+        this.visualMoonbudOpen = core.moonbudOpen !== false;
+        this.visualParcelDelivered = core.parcelDelivered || 0;
+        this.specialEffects = [];
+        this.moonbudEffects = [];
+        this.moonbudFeedback = null;
+        this.particles = [];
         this.computeLayout();
         this.syncPiecesFromGrid();
     }
@@ -174,6 +337,13 @@ class BoardRenderer {
         const margin = this.battleMode ? 6 : 2;
         const widthTileSize = Math.floor((safeWidth - margin * 2) / cols);
         if (this.battleMode) {
+            if (this.pvpLayout) {
+                const layout = gameLayout.pvp(this.screen, cols, rows);
+                this.tileSize = layout.tileSize;
+                this.boardW = layout.boardW; this.boardH = layout.boardH;
+                this.boardX = layout.boardX; this.boardY = layout.boardY;
+                return;
+            }
             const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 96;
             const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 104;
             const availableHeight = Math.max(rows, bottom - top);
@@ -185,14 +355,14 @@ class BoardRenderer {
             return;
         }
 
-        const top = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 118;
-        // Reserve the full tool surface plus a gap; width alone overflows short phones.
-        const bottom = this.screen.height - (Number(this.screen.safeBottom) || 0) - 108;
-        this.tileSize = Math.max(1, Math.min(widthTileSize, Math.floor((bottom - top) / rows)));
-        this.boardW = this.tileSize * cols;
-        this.boardH = this.tileSize * rows;
-        this.boardX = Math.floor(safeLeft + (safeWidth - this.boardW) / 2);
-        this.boardY = Math.floor(top);
+        const layout = gameLayout.solo(this.screen, cols, rows, {
+            moonbuds: this.core.level.moonbuds && this.core.level.moonbuds.length,
+            timed: this.core.timeLimitMs > 0,
+            goalCount: (this.core.level.goals || []).length
+        });
+        this.tileSize = layout.tileSize;
+        this.boardW = layout.boardW; this.boardH = layout.boardH;
+        this.boardX = layout.boardX; this.boardY = layout.boardY;
     }
 
     /** 从逻辑 grid 一次性建立视觉棋子（初始状态，无动画） */
@@ -299,7 +469,15 @@ class BoardRenderer {
     }
 
     /** 无效换位：小幅顶碰、回弹、轻抖归位；只动显示层，不改格子位置。 */
+    parcelHint(pos) {
+        if (this.core && this.core.isParcel && this.core.isParcel(pos) && typeof wx !== 'undefined' && wx.showToast) {
+            wx.showToast({ title: '清理下方，送到出口', icon: 'none', duration: 1400 });
+        }
+    }
+
     animateInvalidSwap(from, to) {
+        this.parcelHint(from);
+        if (!(this.core.isParcel && this.core.isParcel(from))) this.parcelHint(to);
         if (this.invalidSwapFeedback) return this.invalidSwapFeedback.promise;
         const a = this.findPiece(from.row, from.column);
         const b = this.findPiece(to.row, to.column);
@@ -360,8 +538,8 @@ class BoardRenderer {
         }
     }
 
-    spawnSpecialEffect(type, x, y) {
-        this.specialEffects.push({ type: type, x: x, y: y, life: 0, maxLife: this.screen.reduceEffects ? 180 : 420 });
+    spawnSpecialEffect(type, x, y, delay) {
+        this.specialEffects.push({ type: type, x: x, y: y, life: delay ? -delay : 0, maxLife: this.screen.reduceEffects ? 180 : 420 });
     }
 
     /**
@@ -371,8 +549,21 @@ class BoardRenderer {
      */
     spawnMatchEffects(data) {
         const triggered = data.triggeredSpecials || [];
+        const delays = specialTriggerDelays(data, this.screen.reduceEffects);
+        const pawArrival = (this.screen.reduceEffects ? 200 : 560) * 0.64;
+        const timing = { impact: 0, dye: 0, sources: [] };
         const footprint = (data.removed || []).concat(data.jellyHits || [], data.iceHits || []);
-        const combo = data.specialCombo || null;
+        const enhanced = data.specialCombo && data.specialCombo.kind;
+        const combo = data.specialCombo && [data.specialCombo.first.type, data.specialCombo.second.type].every(function (type) {
+            return type !== config.SPECIAL_TYPES.TRACKING_PAW && type !== config.SPECIAL_TYPES.COLOR_BELL;
+        }) ? data.specialCombo : null;
+
+        if (enhanced) {
+            const center = this.pieceCenter(data.specialCombo.center.row, data.specialCombo.center.column);
+            this.specialEffects.push({ kind: 'color', x: center.x, y: center.y,
+                targets: [data.specialCombo.first, data.specialCombo.second], life: 0,
+                maxLife: this.screen.reduceEffects ? 180 : 420 });
+        }
 
         if (combo) {
             const a = combo.first.type;
@@ -395,46 +586,205 @@ class BoardRenderer {
         // Draw ordinary or chained triggers only at their own real origin.
         for (let i = 0; i < triggered.length; i++) {
             const item = triggered[i];
+            const delay = delays[i];
+            timing.sources.push({ source: item, delay: delay });
             if (combo && ((item.row === combo.first.row && item.column === combo.first.column && item.type === combo.first.type) ||
                 (item.row === combo.second.row && item.column === combo.second.column && item.type === combo.second.type))) continue;
             if (!config.isSpecialType(item.type)) continue;
-            const center = this.pieceCenter(item.row, item.column);
-            this.spawnSpecialEffect(item.type, center.x, center.y);
+            const origin = item.effectOrigin || item;
+            const center = this.pieceCenter(origin.row, origin.column);
+            if (item.after) timing.impact = Math.max(timing.impact, delay);
+            if (item.type === config.SPECIAL_TYPES.TRACKING_PAW && item.target) {
+                timing.impact = Math.max(timing.impact, delay + pawArrival);
+                (item.pawTargets || [item]).forEach(impact => {
+                    this.specialEffects.push({ type: item.type, x: center.x, y: center.y,
+                        ...impact, destination: this.pieceCenter(impact.target.row, impact.target.column),
+                        carriedType: item.carriedType, skipObstacleHold: !!enhanced,
+                        life: delay ? -delay : 0, maxLife: this.screen.reduceEffects ? 200 : 560 });
+                });
+            } else if (item.type === config.SPECIAL_TYPES.COLOR_BELL) {
+                timing.dye = Math.max(timing.dye, delay);
+                this.specialEffects.push({ type: item.type, x: center.x, y: center.y, color: item.color,
+                    changes: item.replicas || item.colorChanges || [], life: delay ? -delay : 0,
+                    maxLife: this.screen.reduceEffects ? 180 : 440 });
+            } else this.spawnSpecialEffect(item.type, center.x, center.y, delay);
         }
+        if (enhanced) {
+            const removed = data.removed || [];
+            (data.specialCombo.obstacleSnapshots || []).forEach(snapshot => {
+                const position = snapshot.target;
+                const hitDelay = cell => {
+                    const times = timing.sources.map(({ source, delay }) =>
+                        specialTriggerDelays.hitTime(source, cell, delay, this.screen.reduceEffects));
+                    const earliest = Math.min(...times);
+                    return !Number.isFinite(earliest) && removed.some(item => item.row === cell.row && item.column === cell.column) ? 0 : earliest;
+                };
+                let delay = hitDelay(position);
+                if (snapshot.targetIce || snapshot.targetYarnHealth) {
+                    removed.filter(cell => Math.abs(cell.row - position.row) + Math.abs(cell.column - position.column) === 1)
+                        .forEach(cell => { delay = Math.min(delay, hitDelay(cell)); });
+                }
+                if (delay > 0 && Number.isFinite(delay)) {
+                    this.specialEffects.push({ kind: 'hitHold', ...snapshot, life: -delay, maxLife: 1 });
+                }
+            });
+        }
+        return timing;
     }
 
     /** 消除动画：棋子缩小消失 + 碎屑粒子 + 障碍反馈 + 特殊棋子生成（含连消触发的消除） */
-    animateMatch(data) {
+    async animateMatch(data) {
         const removed = data.removed;
         const jellyHits = data.jellyHits || [];
         const iceHits = data.iceHits || [];
         const generated = data.generated || [];
         const targets = [];
-        this.spawnMatchEffects(data);
-        for (let i = 0; i < removed.length; i++) {
-            const p = this.findPiece(removed[i].row, removed[i].column);
-            if (p) {
-                const logicalType = this.core.grid[removed[i].row][removed[i].column];
-                if (config.isSpecialType(logicalType) && p.type !== logicalType) {
-                    p.type = logicalType;
-                    p.baseType = this.core.getSpecialBaseType(removed[i]) || specialBaseType(logicalType);
+        const effectTiming = this.spawnMatchEffects(data);
+        const boundCore = this.core;
+        const closedHits = data.moonbudClosedHits || [];
+        const moonbudTargets = (data.moonbudHits || []).map(pos => ({ pos, kind: 'collect' }))
+            .concat(closedHits.map(pos => ({ pos, kind: 'closedHit' })));
+        const moonbudPhases = moonbudTargets.map(async ({ pos, kind }) => {
+            // Use the first real special footprint that reaches this cell, including
+            // rockets/bombs relayed by a remote paw. Keep the existing cat timing.
+            const hitTimes = effectTiming.sources.flatMap(({ source, delay }) => {
+                const time = specialTriggerDelays.hitTime(source, pos, delay, this.screen.reduceEffects);
+                return Number.isFinite(time) ? [time] : [];
+            });
+            const delay = hitTimes.length ? Math.min(...hitTimes) : effectTiming.impact;
+            if (delay) await this.wait(Math.ceil(delay));
+            if (this.core !== boundCore) return;
+            const key = pos.row + ':' + pos.column;
+            if (!this.visualMoonbuds[key]) return;
+            this.addMoonbudEffect(key, kind, kind === 'collect', kind === 'collect');
+            if (kind === 'closedHit') {
+                this.moonbudFeedback = { kind: 'closedHit', elapsed: 0, duration: 1800 };
+            } else {
+                delete this.visualMoonbuds[key];
+                const center = this.pieceCenter(pos.row, pos.column);
+                this.spawnBurst(center.x, center.y, ['#EFC9F0', '#EAF2FF'], 6);
+            }
+        });
+        const dyeGroups = new Map();
+        const dyeStates = new Map();
+        let dyeOrder = 0;
+        const groupDyes = (delay, changes) => {
+            changes.forEach((change) => {
+                const piece = this.findPiece(change.row, change.column);
+                const key = change.row + ':' + change.column;
+                if (!piece) return;
+                if (!dyeStates.has(key)) {
+                    dyeStates.set(key, { piece: piece, appliedOrder: -1 });
+                    piece.type = change.previousType;
                 }
-                p.targetScale = 0;
-                p.dying = true;
-                targets.push(p);
+                if (!dyeGroups.has(delay)) dyeGroups.set(delay, new Map());
+                dyeGroups.get(delay).set(key, { state: dyeStates.get(key), type: change.type, order: dyeOrder++ });
+            });
+        };
+        effectTiming.sources.forEach(({ source, delay }) => {
+            if (source.type === config.SPECIAL_TYPES.COLOR_BELL) groupDyes(delay, source.colorChanges || []);
+        });
+        if (!dyeGroups.size) groupDyes(0, data.colorChanges || []);
+        const phases = moonbudPhases.concat(effectTiming.sources.filter(({ source }) => {
+            return source.type === config.SPECIAL_TYPES.TRACKING_PAW && source.target;
+        }).map(async ({ source, delay }) => {
+            if (delay) await this.wait(Math.ceil(delay));
+            removed.forEach((position) => {
+                if (Math.abs(position.row - source.row) + Math.abs(position.column - source.column) > 1) return;
+                const piece = this.findPiece(position.row, position.column);
+                if (!piece) return;
+                piece.targetScale = 0;
+                piece.dying = true;
+                const center = this.pieceCenter(position.row, position.column);
+                this.spawnBurst(center.x, center.y, ['#FFD3E5', '#FFF5CB'], 6);
+            });
+        }));
+        effectTiming.sources.forEach(({ source, delay }) => {
+            if (!source.replicas || !source.replicas.length) return;
+            const replicas = source.replicas.map(change => ({ change, piece: this.findPiece(change.row, change.column) }));
+            replicas.forEach(({ change, piece }) => { if (piece) piece.type = change.previousType; });
+            phases.push((async () => {
+                if (delay) await this.wait(Math.ceil(delay));
+                await this.wait(this.screen.reduceEffects ? 40 : 100);
+                if (this.core !== boundCore) return;
+                replicas.forEach(({ change, piece }) => {
+                    if (!piece || piece.dying) return;
+                    piece.type = change.type;
+                    piece.baseType = change.previousType;
+                    piece.targetScale = this.screen.reduceEffects ? 1 : 1.18;
+                });
+                await this.wait(this.screen.reduceEffects ? 20 : 60);
+                replicas.forEach(({ piece }) => { if (piece && !piece.dying) piece.targetScale = 1; });
+            })());
+        });
+        dyeGroups.forEach((changes, delay) => {
+            phases.push((async () => {
+                if (delay) await this.wait(Math.ceil(delay));
+                const changed = [];
+                changes.forEach((change) => {
+                    const piece = change.state.piece;
+                    if (piece.dying || change.state.appliedOrder > change.order) return;
+                    change.previousType = piece.type;
+                    changed.push(change);
+                    piece.targetScale = this.screen.reduceEffects ? 1 : 0.9;
+                });
+                await this.wait(this.screen.reduceEffects ? 40 : 100);
+                changed.forEach((change) => {
+                    const piece = change.state.piece;
+                    if (piece.dying || change.state.appliedOrder > change.order) return;
+                    piece.type = change.type;
+                    change.state.appliedOrder = change.order;
+                    if (!this.screen.reduceEffects) {
+                        piece.dyeFromType = change.previousType;
+                        piece.dyeElapsed = 0;
+                        piece.dyeDuration = 150;
+                    }
+                    piece.targetScale = this.screen.reduceEffects ? 1 : 1.08;
+                });
+                await this.wait(this.screen.reduceEffects ? 40 : 150);
+                changed.forEach((change) => {
+                    const piece = change.state.piece;
+                    if (!piece.dying && change.state.appliedOrder === change.order) piece.targetScale = 1;
+                });
+            })());
+        });
+        const removePiece = (position) => {
+            const piece = this.findPiece(position.row, position.column);
+            if (piece) {
+                const logicalType = this.core.grid[position.row][position.column];
+                if (config.isSpecialType(logicalType) && piece.type !== logicalType) {
+                    piece.type = logicalType;
+                    piece.baseType = this.core.getSpecialBaseType(position) || specialBaseType(logicalType);
+                }
+                piece.targetScale = 0;
+                piece.dying = true;
+                targets.push(piece);
 
                 // 每个被消除的棋子爆发碎屑粒子（颜色与棋子一致）
-                const center = this.pieceCenter(p.row, p.col);
-                const special = config.getSpecialDef(p.type);
+                const center = this.pieceCenter(piece.row, piece.col);
+                const special = config.getSpecialDef(piece.type);
                 if (special) {
                     // 特殊棋子被触发：爆大粒子（特效感）
                     this.spawnBurst(center.x, center.y, [special.color, '#FFFFFF'], 22);
                 } else {
-                    const def = config.getPieceTypeDef(p.type);
+                    const def = config.getPieceTypeDef(piece.type);
                     this.spawnBurst(center.x, center.y, def ? [def.color] : ['#888888'], 10);
                 }
             }
-        }
+        };
+        const comboRemoval = data.specialCombo && data.specialCombo.kind;
+        if (comboRemoval) removed.forEach(position => {
+            phases.push((async () => {
+                const hits = effectTiming.sources.map(({ source, delay }) =>
+                    specialTriggerDelays.hitTime(source, position, delay, this.screen.reduceEffects)).filter(Number.isFinite);
+                const delay = hits.length ? Math.min(...hits) : 0;
+                if (delay) await this.wait(Math.ceil(delay));
+                if (this.core === boundCore) removePiece(position);
+            })());
+        });
+        if (effectTiming.impact) phases.push(this.wait(Math.ceil(effectTiming.impact)));
+        if (phases.length) await Promise.all(phases);
+        if (!comboRemoval) removed.forEach(removePiece);
 
         // 生成特殊棋子：位置棋子变特殊类型 + 弹出动画
         for (let i = 0; i < generated.length; i++) {
@@ -456,7 +806,10 @@ class BoardRenderer {
             const pos = jellyHits[i];
             const cleared = this.core.jellyGrid[pos.row][pos.column] === 0;
             const center = this.pieceCenter(pos.row, pos.column);
-            this.spawnBurst(center.x, center.y, ['#7ED6A5', '#FFFFFF'], cleared ? 10 : 5);
+            this.spawnBurst(center.x, center.y, ['#F9B4DF', '#FFF5CA', '#FFFFFF'], cleared ? 10 : 5);
+            this.specialEffects.push({ kind: 'jellyHit', x: center.x, y: center.y,
+                remaining: this.core.jellyGrid[pos.row][pos.column], life: 0,
+                maxLife: this.screen.reduceEffects ? 180 : 380 });
         }
 
         // 冰块反馈：融化爆冰蓝碎屑
@@ -483,6 +836,34 @@ class BoardRenderer {
             // 移除已消失的棋子
             self.pieces = self.pieces.filter(function (p) { return !p.dying; });
         })();
+    }
+
+    addMoonbudEffect(key, kind, fromOpen, toOpen) {
+        this.moonbudEffects = this.moonbudEffects.filter(effect => effect.key !== key);
+        this.moonbudEffects.push({ key, kind, fromOpen, toOpen, elapsed: 0, reduced: !!this.screen.reduceEffects,
+            duration: this.screen.reduceEffects ? 160 : (kind === 'phase' ? 500 : 360) });
+    }
+
+    animateMoonbudPhase(data) {
+        Object.keys(this.visualMoonbuds || {}).forEach(key => {
+            this.addMoonbudEffect(key, 'phase', this.visualMoonbudOpen, data.open);
+        });
+        this.visualMoonbudOpen = data.open;
+        return this.wait(this.screen.reduceEffects ? 0 : 120);
+    }
+
+    async animateParcelDelivered(data) {
+        const boundCore = this.core;
+        const delivered = data.parcels || [];
+        // Gravity has arrived at the exit. Remove the visual object before refill.
+        delivered.forEach((pos) => {
+            this.pieces = this.pieces.filter(piece => !(piece.type === PARCEL_TYPE &&
+                piece.row === pos.row && piece.col === pos.column));
+            const center = this.pieceCenter(pos.row, pos.column);
+            this.spawnBurst(center.x, center.y, ['#F6DCA0', '#EAF2FF'], 6);
+        });
+        if (this.core === boundCore) this.visualParcelDelivered = data.delivered;
+        return this.wait(this.screen.reduceEffects ? 0 : 160);
     }
 
     animateYarnSpread(pos) {
@@ -552,7 +933,28 @@ class BoardRenderer {
             p.x += (p.targetX - p.x) * k;
             p.y += (p.targetY - p.y) * k;
             p.scale += (p.targetScale - p.scale) * k;
+            if (p.dyeDuration) {
+                p.dyeElapsed += Math.max(0, dt);
+                if (p.dyeElapsed >= p.dyeDuration) {
+                    p.dyeFromType = 0;
+                    p.dyeDuration = 0;
+                }
+            }
         }
+
+        if (this.moonbudFeedback) {
+            this.moonbudFeedback.elapsed += Math.max(0, dt);
+            if (this.moonbudFeedback.elapsed >= this.moonbudFeedback.duration) this.moonbudFeedback = null;
+        }
+        this.moonbudEffects.forEach(effect => {
+            if (this.screen.reduceEffects && !effect.reduced) {
+                effect.elapsed = effect.elapsed / effect.duration * 160;
+                effect.duration = 160;
+                effect.reduced = true;
+            }
+            effect.elapsed += Math.max(0, dt);
+        });
+        this.moonbudEffects = this.moonbudEffects.filter(effect => effect.elapsed < effect.duration);
 
         // 粒子更新（带简单重力）
         const dtSec = dt / 1000;
@@ -600,116 +1002,141 @@ class BoardRenderer {
     drawTopBar() {
         const ctx = this.ctx;
         const w = this.screen.width;
-        const y = Math.max(72, Number(this.screen.contentTop) || Number(this.screen.safeTop) || 0) + 6;
-        const self = this;
-
-        function pill(x, py, pw, ph, image, label, value, warning) {
-            moon.button(ctx,x,py,pw,ph,'',warning?'pink':'blue');
-            let textX = x + pw / 2;
-            let textW = pw - 10;
-            if (image) {
-                const iconBox = Math.min(ph + 4, pw * 0.34);
-                drawImageContain(ctx, image, x - 1, py - 2, iconBox, ph + 4);
-                textX = x + iconBox + (pw - iconBox) / 2;
-                textW = pw - iconBox - 8;
-            }
-            ctx.fillStyle = warning ? '#A92D52' : THEME.textDark;
-            ctx.shadowColor = 'rgba(255,255,255,0.72)';
-            ctx.shadowBlur = 2;
-            typography.drawFit(ctx, String(value), textX, py + ph * 0.58, textW, {
-                size: Math.max(15, Math.floor(ph * 0.42)), minSize: 8,
-                weight: 'bold', numbers: true, align: 'center'
-            });
-            ctx.shadowColor = 'transparent';
-            if (label) {
-                ctx.fillStyle = THEME.textMid;
-                typography.drawFit(ctx, label, textX, py + 9, textW, {
-                    size: 9, minSize: 7, align: 'center'
-                });
-            }
+        const layout = gameLayout.solo(this.screen, this.core.level.columns, this.core.level.rows, {
+            moonbuds: this.core.level.moonbuds && this.core.level.moonbuds.length,
+            timed: this.core.timeLimitMs > 0,
+            goalCount: (this.core.level.goals || []).length
+        });
+        const y = layout.hudY;
+        moon.scorePanel(ctx,this.screen,10,y,w-20,layout.hudH);
+        ctx.save();
+        ctx.fillStyle = '#FFF5E8';
+        ctx.shadowColor = '#30375D'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+        if (layout.headlineY) typography.drawFit(ctx, '单人闯关', 14, layout.headlineY, Math.min(200, w - 140), {
+            size: 16, minSize: 14, weight: 'bold'
+        });
+        ctx.restore();
+        const sideW = (w - 96) / 2, roomy = layout.headerH > 60;
+        const centers = [10+sideW/2,w/2,w-10-sideW/2];
+        for (const [cx,width,label,value,color,size] of [
+            [centers[0],sideW-12,'当前得分',this.core.score,'#914E73',roomy?32:28],
+            [centers[1],68,'当前关卡',this.core.level.id,'#353D69',24],
+            [centers[2],sideW-12,'剩余步数',this.core.movesLeft,this.core.movesLeft<=5?'#A92D52':'#426494',roomy?32:28]
+        ]) {
+            ctx.fillStyle = color;
+            typography.drawFit(ctx,label,cx,y+14,width,{size:14,minSize:13,weight:'600',align:'center'});
+            typography.drawFit(ctx,String(value),cx,y+layout.headerH*.65,width,{size,minSize:12,weight:'bold',numbers:true,align:'center'});
         }
-
-        const inner=w-16, levelW=inner*.22, scoreW=inner*.46-12, movesW=inner*.32;
-        pill(8, y, levelW, 44, null, '关卡', this.core.level.id, false);
-        pill(14+levelW, y, scoreW, 44, null, '当前得分', this.core.score, false);
-        pill(w-8-movesW, y, movesW, 44, assets.get('uiMoves'), '剩余步数', this.core.movesLeft, this.core.movesLeft<=5);
+        ctx.strokeStyle = '#DCD7E8'; ctx.lineWidth = 1;
+        ctx.beginPath();ctx.moveTo(24, y + layout.headerH - 2);ctx.lineTo(w - 24, y + layout.headerH - 2);ctx.stroke();
 
         const goals = this.core.level.goals || [];
-        const goalText = [];
-        const collectGoal = goals.find(function (goal) { return goal.type === 'collect'; });
-        for (let i = 0; i < goals.length; i++) {
-            if (goals[i].type === 'jelly') goalText.push('果冻剩余 ' + this.core.getJellyLeft());
-            if (goals[i].type === 'yarn') goalText.push(this.core.getYarnHealth() ? '毛线源头 ' + this.core.getYarnHealth() + '/' + goals[i].target : '毛线已清除');
-            if (goals[i].type === 'score') goalText.push('目标分 ' + goals[i].target);
-        }
-        const timed = Number(this.core.timeLimitMs) > 0;
-        const goalX = 8;
-        const goalY = y + 52;
-        const goalW = w - 16;
-        const goalH = 50;
-        moon.panel(ctx,this.screen,goalX,goalY,goalW,goalH);
-
-        function drawGoals(x, width) {
-            if (goals.length > 2) {
-                for (let index = 0; index < goals.length; index++) {
-                    const goal = goals[index];
-                    const lineY = goalY + 9 + index * 16;
-                    let label = '';
-                    let icon = null;
-                    if (goal.type === 'collect') {
-                        const counts = self.core.collectedCounts || {};
-                        const remaining = Math.max(0, goal.target - (counts[goal.pieceType] || 0));
-                        label = remaining ? '还需 ' + remaining + ' 只' : '收集完成';
-                        icon = assets.get('piece' + goal.pieceType);
-                    } else if (goal.type === 'jelly') label = '果冻剩余 ' + self.core.getJellyLeft();
-                    else if (goal.type === 'yarn') label = self.core.getYarnHealth() ?
-                        '毛线源头 ' + self.core.getYarnHealth() + '/' + goal.target : '毛线已清除';
-                    else if (goal.type === 'score') label = '目标分 ' + goal.target;
-                    if (icon) drawImageContain(ctx, icon, x + 2, lineY - 10, 20, 20);
-                    typography.drawFit(ctx, label, x + (icon ? 25 : 2), lineY,
-                        width - (icon ? 27 : 4), {
-                            size: 12, minSize: 9, weight: 'bold', numbers: true
-                        });
-                }
-                return;
-            }
-            if (!collectGoal) {
-                typography.drawFit(ctx, goalText.join(' · ') || '完成挑战', x + width / 2, goalY + goalH / 2, width, {
-                    size: 15, minSize: 9, weight: 'bold', align: 'center', numbers: true
-                });
-                return;
-            }
-            const counts = self.core.collectedCounts || {};
-            const remaining = Math.max(0, collectGoal.target - (counts[collectGoal.pieceType] || 0));
-            const firstY = goalY + (goalText.length ? 14 : goalH / 2);
-            drawImageContain(ctx, assets.get('piece' + collectGoal.pieceType), x + 2, firstY - 13, 26, 26);
-            typography.drawFit(ctx, remaining ? '还需 ' + remaining + ' 只' : '收集完成', x + 34, firstY, width - 36, {
-                size: 14, minSize: 11, weight: 'bold', numbers: true
-            });
-            if (goalText.length) {
-                typography.drawFit(ctx, goalText.join(' · '), x + 2, goalY + 36, width - 4, {
-                    size: 12, minSize: 10, numbers: true
+        const timed = this.core.timeLimitMs > 0;
+        const aligned = goals.length === 2 && timed;
+        const width = aligned ? (centers[1]-centers[0])*3 : w-36;
+        const x = (w-width)/2, top = layout.goalsY;
+        const rowH = layout.goalsH;
+        const timerW = aligned ? width/3 : timed ? Math.min(82, width * .25) : 0;
+        const areaW = width - timerW;
+        const rows = goals.length > 3 ? 2 : 1;
+        const cols = Math.max(1, Math.ceil(goals.length / rows));
+        const cellW = areaW / cols, cellH = rowH / rows;
+        const labels = {collect:'收集',jelly:'果冻层',ice:'冰块',yarn:'毛线源头',moonbud:'花苞',parcel:'配送',score:'目标分'};
+        goals.forEach((goal,index) => {
+            let left;
+            if (goal.type === 'collect') left = Math.max(0,goal.target-((this.core.collectedCounts||{})[goal.pieceType]||0));
+            else if (goal.type === 'jelly') left = this.visualJellyLeft();
+            else if (goal.type === 'ice') left = this.visualIceLeft();
+            else if (goal.type === 'yarn') left = this.core.getYarnHealth();
+            else if (goal.type === 'moonbud') left = Object.keys(this.visualMoonbuds||{}).length;
+            else if (goal.type === 'parcel') left = Math.max(0,(this.core.parcelTotal||goal.target)-this.visualParcelDelivered);
+            else if (goal.type === 'score') left = Math.max(0,goal.target-this.core.score);
+            const done = left === 0;
+            const total = goal.type === 'jelly' ? this.core.jellyTotal || goal.target : goal.target;
+            const progress = total > 0 ? Math.max(0,Math.min(1,(total-left)/total)) : done ? 1 : 0;
+            const value = goal.type === 'score' ? goal.target :
+                goal.type === 'yarn' ? left+'/'+goal.target : left;
+            const gx = x+(index%cols)*cellW, gy = top+Math.floor(index/cols)*cellH;
+            const dense = rows > 1;
+            ctx.fillStyle = done ? '#8B637C' : '#626780';
+            typography.drawFit(ctx,labels[goal.type]||'目标',dense?gx+24:gx+cellW/2,gy+(dense?cellH/2:cellH<45?7:9),
+                dense?cellW-64:cellW-8,{size:dense?11:12,minSize:dense?9:10,weight:'600',align:dense?'left':'center'});
+            const ringSize = dense ? 17 : cellH < 45 || aligned && cellW < 100 ? 22 : 30;
+            const cy = gy+(dense?cellH/2:cellH-(cellH<45?12:17));
+            const valueWidth = dense ? 34 : cellW-ringSize*(aligned?2:1)-14;
+            const fullValue = goal.type === 'yarn' ? total+'/'+total : total;
+            const valueSize = typography.fitFontSize(ctx,String(fullValue),valueWidth,dense?15:cellH<45?21:23,8,'bold',true);
+            typography.set(ctx,valueSize,'bold',true);
+            const textW = typography.measure(ctx,String(fullValue));
+            const groupX = gx+(cellW-ringSize-6-textW)/2;
+            const numberX = aligned ? gx+cellW/2 : groupX+ringSize+6+textW/2;
+            this.drawGoalRing(goal,dense?gx+11:aligned?numberX-textW/2-6-ringSize/2:groupX+ringSize/2,cy,ringSize,progress);
+            if (!done) {
+                ctx.fillStyle = '#353D69';
+                typography.drawFit(ctx,String(value),dense?gx+cellW-6:numberX,cy,valueWidth,{
+                    size:valueSize,minSize:8,weight:'bold',numbers:true,align:dense?'right':'center'
                 });
             }
-        }
-
+            if (index%cols) {
+                ctx.strokeStyle='#DCD7E8';ctx.lineWidth=1;ctx.beginPath();
+                ctx.moveTo(gx,gy+7);ctx.lineTo(gx,gy+cellH-5);ctx.stroke();
+            }
+        });
         if (timed) {
-            const warning = Number(this.core.timeLeftMs) <= 10000;
-            const timerW = Math.min(124, Math.max(112, goalW * 0.34));
-            const timerX = goalX + goalW - timerW;
-            ctx.fillStyle = THEME.textScene;
-            drawGoals(goalX + 10, goalW - timerW - 18);
-            ctx.fillStyle = warning ? '#A92D52' : THEME.textScene;
-            typography.drawFit(ctx, '时间', timerX + timerW / 2, goalY + 15, timerW - 8, {
-                size: 12, minSize: 8, weight: 'bold', align: 'center'
+            const tx = x+areaW+timerW/2;
+            ctx.strokeStyle='#C9D6EA';ctx.lineWidth=1;ctx.beginPath();
+            ctx.moveTo(x+areaW,top+5);ctx.lineTo(x+areaW,top+rowH-4);ctx.stroke();
+            ctx.fillStyle=this.core.timeLeftMs<=10000?'#A92D52':'#426494';
+            typography.drawFit(ctx,'时间',tx,top+9,timerW-6,{size:12,minSize:11,align:'center'});
+            typography.drawFit(ctx,formatTimer(this.core.timeLeftMs),tx,top+(aligned?rowH-(rowH<45?12:17):rowH*(rowH<45?.72:.65)),timerW-6,{
+                size:rowH<45?20:22,minSize:15,weight:'bold',numbers:true,align:'center'
             });
-            typography.drawFit(ctx, formatTimer(this.core.timeLeftMs), timerX + timerW / 2, goalY + 36, timerW - 8, {
-                size: 23, minSize: 12, weight: 'bold', numbers: true, align: 'center'
-            });
-        } else {
-            ctx.fillStyle = THEME.textScene;
-            drawGoals(goalX + 8, goalW - 16);
         }
+    }
+
+    drawGoalRing(goal,x,y,size,progress) {
+        const ctx=this.ctx, done=progress===1, r=size/2-1;
+        ctx.save();
+        ctx.lineWidth=size<20?1.4:1.8;ctx.lineCap='round';
+        ctx.strokeStyle=done?'#C99B92':'#DCDCE6';
+        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.stroke();
+        if (progress>0 && !done) {
+            ctx.strokeStyle='#7FB9D8';ctx.beginPath();
+            ctx.arc(x,y,r,-Math.PI/2,-Math.PI/2+Math.PI*2*progress);ctx.stroke();
+        }
+        this.drawGoalIcon(goal,x,y,size*.7,done);
+        if (done) {
+            const sx=x+r*.72,sy=y+r*.6,b=size*.17;
+            ctx.fillStyle='#D77F97';ctx.strokeStyle='#FFF7FA';ctx.lineWidth=1;
+            ctx.beginPath();ctx.arc(sx,sy,b,0,Math.PI*2);ctx.fill();ctx.stroke();
+            ctx.strokeStyle='#FFFFFF';ctx.lineWidth=Math.max(1,size*.05);ctx.lineJoin='round';
+            ctx.beginPath();ctx.moveTo(sx-b*.5,sy);ctx.lineTo(sx-b*.12,sy+b*.35);ctx.lineTo(sx+b*.5,sy-b*.4);ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    drawGoalIcon(goal,x,y,size,completed) {
+        const ctx=this.ctx;
+        ctx.save();
+        ctx.translate(x,y);ctx.scale(size/24,size/24);x=y=0;size=24;
+        if (goal.type==='collect') drawImageContain(ctx,assets.get('piece'+goal.pieceType),x-size/2,y-size/2,size,size);
+        else if (goal.type==='score') moon.battleIcon(ctx,'cheer',x-size/2,y-size/2,size);
+        else if (goal.type==='moonbud') newObstacles.moonbud(ctx,x,y,size,completed||this.visualMoonbudOpen,undefined,false);
+        else if (goal.type==='parcel') newObstacles.parcel(ctx,x,y,size);
+        else if (goal.type==='jelly') {
+            jellyPath(ctx,x,y,size*.42);ctx.fillStyle='#F3BDD7';ctx.fill();
+            ctx.strokeStyle='#A36591';ctx.lineWidth=2;ctx.stroke();
+        } else if (goal.type==='ice') {
+            ctx.fillStyle='#87BDE5';this.roundRect(x-size*.44,y-size*.44,size*.88,size*.88,5);ctx.fill();
+            ctx.strokeStyle='#FFFFFF';ctx.lineWidth=1.5;ctx.stroke();ctx.fillStyle='#FFFFFF';
+            typography.drawFit(ctx,'❄',x,y,size*.75,{size:16,minSize:12,align:'center'});
+        } else if (goal.type==='yarn') {
+            ctx.strokeStyle='#6F4A87';ctx.lineWidth=3;
+            this.roundRect(x-size*.4,y-size*.4,size*.8,size*.8,5);ctx.stroke();
+            ctx.strokeStyle='#D4AD62';ctx.lineWidth=1;
+            this.roundRect(x-size*.28,y-size*.28,size*.56,size*.56,3);ctx.stroke();
+        }
+        ctx.restore();
     }
 
     /** 画棋盘底板 + 棋子 + 果冻罩 + 冰块罩 + 粒子 */
@@ -743,6 +1170,8 @@ class BoardRenderer {
             }
         }
 
+        this.drawJellies();
+
         // 棋子（按视觉位置绘制，支持动画）
         const reshuffle = this.reshuffleFeedback;
         if (reshuffle) {
@@ -756,13 +1185,27 @@ class BoardRenderer {
             this.drawPiece(this.pieces[i], newAlpha);
         }
 
-        // 果冻罩（绿色半透明圆罩，盖在棋子上）
-        this.drawJellies();
+        this.drawJellyBadges();
 
         // 冰块罩（冰蓝方块罩，盖在棋子上）
         this.drawIces();
 
         this.drawYarn();
+
+        Object.keys(this.visualMoonbuds || {}).forEach(key => {
+            const cell = key.split(':').map(Number), center = this.pieceCenter(cell[0], cell[1]);
+            const effect = this.moonbudEffects.find(item => item.key === key);
+            if (!effect) newObstacles.moonbud(ctx, center.x, center.y, this.tileSize, this.visualMoonbudOpen);
+        });
+        (this.core.level.parcelExits || []).forEach(column => {
+            const center = this.pieceCenter(grid.length - 1, column);
+            newObstacles.exit(ctx, center.x, this.boardY + this.boardH - this.tileSize * 0.035, this.tileSize);
+        });
+
+        this.moonbudEffects.forEach(effect => {
+            const cell = effect.key.split(':').map(Number), center = this.pieceCenter(cell[0], cell[1]);
+            newObstacles.moonbudEffect(ctx, center.x, center.y, this.tileSize, effect, this.screen.reduceEffects);
+        });
 
         // 粒子（碎屑效果，绘制在最上层）
         this.drawParticles();
@@ -797,6 +1240,8 @@ class BoardRenderer {
         const beam = assets.get('uiSpecialRowBeam');
         for (let i = 0; i < this.specialEffects.length; i++) {
             const effect = this.specialEffects[i];
+            if (effect.kind === 'hitHold') continue;
+            if (effect.life < 0) continue;
             const progress = Math.min(1, effect.life / effect.maxLife);
             const alpha = Math.sin(progress * Math.PI) * 0.92;
             ctx.save();
@@ -806,7 +1251,14 @@ class BoardRenderer {
             ctx.globalAlpha = alpha;
             if (!this.screen.reduceEffects) ctx.globalCompositeOperation = 'lighter';
 
-            if (effect.kind) {
+            if (effect.type === config.SPECIAL_TYPES.TRACKING_PAW && effect.destination) {
+                this.drawTrackingEffect(effect, progress);
+            } else if (effect.type === config.SPECIAL_TYPES.COLOR_BELL) {
+                this.drawBellEffect(effect, progress);
+            } else if (effect.kind === 'jellyHit') {
+                ctx.globalCompositeOperation = 'source-over';
+                this.drawJellyHit(effect, progress);
+            } else if (effect.kind) {
                 this.drawMoonComboEffect(effect, progress);
             } else if (effect.type === config.SPECIAL_TYPES.H_ROCKET || effect.type === config.SPECIAL_TYPES.V_ROCKET) {
                 ctx.translate(effect.x, effect.y);
@@ -824,20 +1276,157 @@ class BoardRenderer {
                     ctx.fillRect(-width / 2, -height / 5, width, height * 0.4);
                 }
             } else {
-                const radius = this.tileSize * (0.45 + progress * 2.15);
-                ctx.strokeStyle = '#FFD4F0';
-                ctx.lineWidth = Math.max(2, this.tileSize * (0.13 - progress * 0.08));
-                ctx.beginPath();
-                ctx.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.strokeStyle = '#FFE6A8';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(effect.x, effect.y, radius * 0.62, 0, Math.PI * 2);
-                ctx.stroke();
+                this.drawSpecialPulse(effect.x, effect.y, progress, 1);
             }
             ctx.restore();
         }
+    }
+
+    drawJellyHit(effect, progress) {
+        const ctx = this.ctx;
+        ctx.globalAlpha = 1 - progress;
+        ctx.strokeStyle = effect.remaining ? '#f9b4df' : '#fff5ca';
+        ctx.lineWidth = this.screen.reduceEffects ? 2 : this.tileSize * 0.1 * (1 - progress) + 1;
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, this.tileSize * (this.screen.reduceEffects ? 0.43 : 0.24 + progress * 0.43), 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawSpecialPulse(centerX, centerY, progress, scale) {
+        const ctx = this.ctx;
+        const radius = this.tileSize * (0.45 + progress * 2.15) * scale;
+        ctx.strokeStyle = '#FFD4F0';
+        ctx.lineWidth = Math.max(2, this.tileSize * (0.13 - progress * 0.08) * scale);
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = '#FFE6A8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius * 0.62, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+
+    drawBellEffect(effect, progress) {
+        const ctx = this.ctx;
+        const beam = assets.get('uiSpecialRowBeam');
+        this.drawMoonComboEffect({ kind: 'color', x: effect.x, y: effect.y, targets: effect.changes || [] }, progress);
+        (effect.changes || []).forEach((change) => {
+            const destination = this.pieceCenter(change.row, change.column);
+            if (!this.screen.reduceEffects && beam && beam.width > 0) {
+                const distance = Math.hypot(destination.x - effect.x, destination.y - effect.y);
+                const reveal = Math.min(1, progress / 0.24);
+                ctx.save();
+                ctx.translate(effect.x, effect.y);
+                ctx.rotate(Math.atan2(destination.y - effect.y, destination.x - effect.x));
+                ctx.drawImage(beam, beam.width * 0.66, 0, beam.width * 0.34, beam.height,
+                    0, -this.tileSize * 0.13, distance * reveal, this.tileSize * 0.26);
+                ctx.restore();
+            }
+            if (progress > 0.22) this.drawSpecialPulse(destination.x, destination.y,
+                this.screen.reduceEffects ? 0.45 : (progress - 0.22) / 0.78, 0.18);
+        });
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        drawColorBell(ctx, effect.x, effect.y, this.tileSize * 0.66 * (1 + Math.sin(progress * Math.PI) * 0.07),
+            bellColor(effect.color));
+        ctx.restore();
+    }
+
+    drawTrackingEffect(effect, progress) {
+        const ctx = this.ctx;
+        const destination = effect.destination;
+        const alpha = ctx.globalAlpha;
+        ctx.strokeStyle = '#FFE09B';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(destination.x, destination.y, this.tileSize * 0.44, 0, Math.PI * 2);
+        ctx.stroke();
+        const travelTime = Math.max(0, Math.min(1, (progress - 0.14) / 0.5));
+        const travel = 1 - Math.pow(1 - travelTime, 2);
+        const controlX = (effect.x + destination.x) / 2;
+        const controlY = Math.max(this.boardY + this.tileSize * 0.15,
+            Math.min(effect.y, destination.y) - this.tileSize * 0.8);
+        const pointAt = (amount) => ({
+            x: (1 - amount) * (1 - amount) * effect.x + 2 * (1 - amount) * amount * controlX + amount * amount * destination.x,
+            y: (1 - amount) * (1 - amount) * effect.y + 2 * (1 - amount) * amount * controlY + amount * amount * destination.y
+        });
+        if (!this.screen.reduceEffects && travel > 0 && travel < 1) {
+            ctx.strokeStyle = '#D49AFF';
+            ctx.lineWidth = this.tileSize * 0.065;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            for (let step = 0; step <= 10; step++) {
+                const point = pointAt(Math.max(0, travel - 0.22) + Math.min(travel, 0.22) * step / 10);
+                if (step === 0) ctx.moveTo(point.x, point.y);
+                else ctx.lineTo(point.x, point.y);
+            }
+            ctx.stroke();
+            const head = pointAt(travel);
+            const previous = pointAt(Math.max(0, travel - 0.05));
+            const beam = assets.get('uiSpecialRowBeam');
+            if (beam && beam.width > 0) {
+                ctx.save();
+                ctx.translate(head.x, head.y);
+                ctx.rotate(Math.atan2(head.y - previous.y, head.x - previous.x));
+                ctx.drawImage(beam, 0, 0, beam.width * 0.34, beam.height,
+                    -this.tileSize * 1.2, -this.tileSize * 0.15, this.tileSize * 1.2, this.tileSize * 0.3);
+                ctx.restore();
+            }
+            drawSparkle(ctx, head.x, head.y, this.tileSize * 0.06, '#F1F7FF');
+        }
+        const point = this.screen.reduceEffects ? destination : pointAt(travel);
+        const impact = travelTime === 1 ? Math.max(0, (progress - 0.64) / 0.36) : 0;
+        const size = this.tileSize * 0.68;
+        ctx.save();
+        ctx.translate(point.x, point.y);
+        ctx.globalCompositeOperation = 'source-over';
+        drawTrackingPaw(ctx, 0, 0, size);
+        if (effect.carriedType) {
+            const badgeSize = this.tileSize * 0.36;
+            if (effect.carriedType === config.SPECIAL_TYPES.BOMB) {
+                drawImageContain(ctx, assets.get('uiToolBomb'), size * 0.1, size * 0.02, badgeSize, badgeSize);
+            } else {
+                const beam = assets.get('uiSpecialRowBeam');
+                ctx.translate(size * 0.3, size * 0.18);
+                if (effect.carriedType === config.SPECIAL_TYPES.V_ROCKET) ctx.rotate(Math.PI / 2);
+                drawImageContain(ctx, beam, -badgeSize / 2, -badgeSize / 2, badgeSize, badgeSize);
+            }
+        }
+        ctx.restore();
+        if (travelTime === 1 || this.screen.reduceEffects) {
+            ctx.globalAlpha = alpha * (1 - impact);
+            this.drawSpecialPulse(destination.x, destination.y, this.screen.reduceEffects ? 0.4 : impact, 0.35);
+        }
+    }
+
+    trackingObstacle(row, column, kind, current) {
+        const effect = this.specialEffects.find(function (item) {
+            return item.target && item.target.row === row && item.target.column === column &&
+                ((item.kind === 'hitHold' && item.life < 0) ||
+                (item.type === config.SPECIAL_TYPES.TRACKING_PAW && !item.skipObstacleHold && item.life / item.maxLife < 0.64));
+        });
+        return effect ? effect[kind] : current;
+    }
+
+    visualJellyLeft() {
+        let total = 0;
+        this.core.jellyGrid.forEach((row, rowIndex) => {
+            row.forEach((layers, column) => {
+                total += this.trackingObstacle(rowIndex, column, 'targetJelly', layers);
+            });
+        });
+        return total;
+    }
+
+    visualIceLeft() {
+        let total = 0;
+        this.core.iceGrid.forEach((row, rowIndex) => {
+            row.forEach((occupied, column) => {
+                if (this.trackingObstacle(rowIndex, column, 'targetIce', occupied)) total++;
+            });
+        });
+        return total;
     }
 
     /** B direction: bounded moon-glass ribbons, rings, and deterministic stars. */
@@ -929,51 +1518,112 @@ class BoardRenderer {
         }
     }
 
-    /**
-     * 画果冻罩：绿色半透明圆形罩（盖住棋子，Q 弹果冻感），带高光+气泡
-     * 与冰块（蓝色方块+雪花）形状/颜色/图标三重区分
-     */
     drawJellies() {
         const ctx = this.ctx;
         const jelly = this.core.jellyGrid;
-        for (let r = 0; r < jelly.length; r++) {
-            for (let c = 0; c < jelly[r].length; c++) {
-                const layers = jelly[r][c];
+        for (let row = 0; row < jelly.length; row++) {
+            for (let column = 0; column < jelly[row].length; column++) {
+                const layers = this.trackingObstacle(row, column, 'targetJelly', jelly[row][column]);
                 if (!layers) continue;
-                const offset = this.invalidSwapOffset(r, c);
-                const cx = this.boardX + c * this.tileSize + this.tileSize / 2 + (offset ? offset.x : 0);
-                const cy = this.boardY + r * this.tileSize + this.tileSize / 2 + (offset ? offset.y : 0);
-                const s = this.tileSize * 0.46;
-
-                // 果冻罩主体（半透明，棋子透过可见）
-                ctx.globalAlpha = 0.5;
-                ctx.fillStyle = '#5ECB71';
+                const offset = this.invalidSwapOffset(row, column);
+                const left = this.boardX + column * this.tileSize + (offset ? offset.x : 0);
+                const top = this.boardY + row * this.tileSize + (offset ? offset.y : 0);
+                const centerX = left + this.tileSize / 2;
+                const centerY = top + this.tileSize / 2;
+                const doubleLayer = layers > 1;
+                const radius = this.tileSize * (doubleLayer ? 0.44 : 0.39);
+                ctx.save();
                 ctx.beginPath();
-                ctx.arc(cx, cy, s, 0, Math.PI * 2);
+                ctx.rect(left + 1, top + 1, this.tileSize - 2, this.tileSize - 2);
+                ctx.clip();
+                ctx.shadowColor = 'rgba(71,30,91,0.6)';
+                ctx.shadowBlur = this.tileSize * 0.09;
+                ctx.shadowOffsetY = this.tileSize * 0.025;
+                jellyPath(ctx, centerX, centerY, radius);
+                ctx.fillStyle = doubleLayer ? '#7b397f' : '#efa5c6';
                 ctx.fill();
-                ctx.globalAlpha = 1;
-
-                // 果冻边缘（深绿轮廓，圆润感）
-                ctx.strokeStyle = '#2F8F4C';
-                ctx.lineWidth = 2;
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetY = 0;
+                ctx.strokeStyle = doubleLayer ? '#4c245f' : '#975177';
+                ctx.lineWidth = this.tileSize * (doubleLayer ? 0.11 : 0.055);
                 ctx.stroke();
-
-                // 顶部高光
-                ctx.fillStyle = 'rgba(255,255,255,0.55)';
-                ctx.beginPath();
-                ctx.arc(cx - s * 0.32, cy - s * 0.38, s * 0.22, 0, Math.PI * 2);
-                ctx.fill();
-
-                // 气泡（果冻 Q 弹质感）
-                ctx.fillStyle = 'rgba(255,255,255,0.4)';
-                ctx.beginPath();
-                ctx.arc(cx + s * 0.3, cy + s * 0.1, s * 0.12, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(cx + s * 0.05, cy + s * 0.42, s * 0.08, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.strokeStyle = doubleLayer ? '#f7c7f0' : '#fff0f5';
+                ctx.lineWidth = this.tileSize * (doubleLayer ? 0.035 : 0.022);
+                ctx.stroke();
+                if (doubleLayer) {
+                    jellyPath(ctx, centerX, centerY, radius * 0.77);
+                    ctx.strokeStyle = '#d88ac9';
+                    ctx.lineWidth = this.tileSize * 0.075;
+                    ctx.stroke();
+                }
+                ctx.restore();
             }
         }
+    }
+
+    drawJellyBadges() {
+        const ctx = this.ctx;
+        this.core.jellyGrid.forEach((row, rowIndex) => {
+            row.forEach((layers, column) => {
+                const visibleLayers = this.trackingObstacle(rowIndex, column, 'targetJelly', layers);
+                if (!visibleLayers) return;
+                const offset = this.invalidSwapOffset(rowIndex, column);
+                const left = this.boardX + column * this.tileSize + (offset ? offset.x : 0);
+                const top = this.boardY + rowIndex * this.tileSize + (offset ? offset.y : 0);
+                const centerX = left + this.tileSize / 2;
+                const centerY = top + this.tileSize / 2;
+                const doubleLayer = visibleLayers > 1;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(left + 1, top + 1, this.tileSize - 2, this.tileSize - 2);
+                ctx.clip();
+                // A faint surface film preserves the cat colours; its edge is more visible than its centre.
+                const tint = doubleLayer ? '160,110,185' : '236,135,181';
+                const film = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, this.tileSize * 0.48);
+                film.addColorStop(0, 'rgba(' + tint + ',0.03)');
+                film.addColorStop(0.60, 'rgba(' + tint + ',0.05)');
+                film.addColorStop(1, 'rgba(' + tint + ',0.11)');
+                jellyPath(ctx, centerX, centerY, this.tileSize * 0.42);
+                ctx.fillStyle = film;
+                ctx.fill();
+                // Foreground candy rim stays visible over opaque cat art.
+                jellyPath(ctx, centerX, centerY, this.tileSize * 0.42);
+                ctx.strokeStyle = doubleLayer ? '#4c245f' : '#975177';
+                ctx.lineWidth = this.tileSize * 0.14;
+                ctx.stroke();
+                ctx.strokeStyle = doubleLayer ? '#7b397f' : '#efa5c6';
+                ctx.lineWidth = this.tileSize * 0.085;
+                ctx.stroke();
+                ctx.strokeStyle = doubleLayer ? '#f7c7f0' : '#fff0f5';
+                ctx.lineWidth = this.tileSize * 0.025;
+                ctx.stroke();
+                if (doubleLayer) {
+                    jellyPath(ctx, centerX, centerY, this.tileSize * 0.33);
+                    ctx.strokeStyle = '#d88ac9';
+                    ctx.lineWidth = this.tileSize * 0.045;
+                    ctx.stroke();
+                }
+                if (!doubleLayer) { ctx.restore(); return; }
+                const badgeX = this.boardX + column * this.tileSize + this.tileSize * 0.145 + (offset ? offset.x : 0);
+                const badgeY = this.boardY + rowIndex * this.tileSize + this.tileSize * 0.145 + (offset ? offset.y : 0);
+                const badgeRadius = this.tileSize * 0.128;
+                ctx.shadowColor = 'rgba(40,20,64,0.65)';
+                ctx.shadowBlur = this.tileSize * 0.045;
+                ctx.fillStyle = '#63326f';
+                ctx.beginPath();
+                ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#ffe5f6';
+                ctx.lineWidth = this.tileSize * 0.025;
+                ctx.stroke();
+                ctx.fillStyle = '#fffafc';
+                typography.drawFit(ctx, '2', badgeX, badgeY + this.tileSize * 0.01, badgeRadius * 1.6, {
+                    size: Math.round(this.tileSize * 0.19), minSize: 8, weight: 'bold', numbers: true, align: 'center'
+                });
+                ctx.restore();
+            });
+        });
     }
 
     /**
@@ -984,7 +1634,7 @@ class BoardRenderer {
         const ice = this.core.iceGrid;
         for (let r = 0; r < ice.length; r++) {
             for (let c = 0; c < ice[r].length; c++) {
-                if (!ice[r][c]) continue;
+                if (!this.trackingObstacle(r, c, 'targetIce', ice[r][c])) continue;
                 const offset = this.invalidSwapOffset(r, c);
                 const x = this.boardX + c * this.tileSize + (offset ? offset.x : 0);
                 const y = this.boardY + r * this.tileSize + (offset ? offset.y : 0);
@@ -1020,10 +1670,18 @@ class BoardRenderer {
 
     drawYarn() {
         const source = this.core.yarnSource;
-        if (!source || source.health <= 0) return;
+        if (!source) return;
+        const health = this.trackingObstacle(source.row, source.column, 'targetYarnHealth', source.health);
+        if (health <= 0) return;
         const ctx = this.ctx;
         const cells = [{ row: source.row, column: source.column, root: true }];
-        Object.keys(this.core.yarnVines).forEach(function (key) {
+        const visibleVines = Object.assign({}, this.core.yarnVines);
+        this.specialEffects.forEach(effect => {
+            if (effect.targetYarnVine && effect.target && effect.life / effect.maxLife < 0.64) {
+                visibleVines[effect.target.row + ':' + effect.target.column] = true;
+            }
+        });
+        Object.keys(visibleVines).forEach(function (key) {
             const parts = key.split(':').map(Number);
             cells.push({ row: parts[0], column: parts[1], root: false });
         });
@@ -1050,7 +1708,7 @@ class BoardRenderer {
                 ctx.arc(badgeX, badgeY, 9, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = '#FFF4CE';
-                typography.drawFit(ctx, String(source.health), badgeX, badgeY, 15, {
+                typography.drawFit(ctx, String(health), badgeX, badgeY, 15, {
                     size: 12, minSize: 10, weight: 'bold', numbers: true, align: 'center'
                 });
             }
@@ -1068,6 +1726,14 @@ class BoardRenderer {
         const offset = this.invalidSwapOffset(piece.row, piece.col);
         const drawX = piece.x + (offset ? offset.x : 0);
         const drawY = piece.y + (offset ? offset.y : 0);
+
+        if (piece.type === PARCEL_TYPE) {
+            ctx.save();
+            ctx.globalAlpha = piece.alpha * (opacity === undefined ? 1 : opacity);
+            newObstacles.parcel(ctx, drawX, drawY, this.tileSize * piece.scale);
+            ctx.restore();
+            return;
+        }
 
         // 特殊棋子：保留猫咪底图，叠加会呼吸的猫爪光束/魔法炸弹。
         const special = config.getSpecialDef(piece.type);
@@ -1088,13 +1754,17 @@ class BoardRenderer {
             ctx.beginPath();
             ctx.arc(0, 0, half, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = piece.type === config.SPECIAL_TYPES.BOMB ? '#FF9ED2' : '#FFE09B';
+            ctx.strokeStyle = piece.type === config.SPECIAL_TYPES.BOMB || piece.type === config.SPECIAL_TYPES.TRACKING_PAW ? '#FF9ED2' : '#FFE09B';
             ctx.lineWidth = 2.5;
             ctx.beginPath();
             ctx.arc(0, 0, (half - 1) * pulse, 0, Math.PI * 2);
             ctx.stroke();
 
-            if (piece.type === config.SPECIAL_TYPES.BOMB) {
+            if (piece.type === config.SPECIAL_TYPES.TRACKING_PAW) {
+                drawTrackingPaw(ctx, 0, 0, this.tileSize * 0.74 * pulse);
+            } else if (piece.type === config.SPECIAL_TYPES.COLOR_BELL) {
+                drawColorBell(ctx, 0, 0, this.tileSize * 0.66 * pulse, bellColor(piece.baseType));
+            } else if (piece.type === config.SPECIAL_TYPES.BOMB) {
                 const bomb = assets.get('uiToolBomb');
                 const bombSize = this.tileSize * 0.66 * pulse;
                 drawImageContain(ctx, bomb, -bombSize / 2, -bombSize / 2, bombSize, bombSize);
@@ -1151,7 +1821,15 @@ class BoardRenderer {
         const pieceImg = assets.get('piece' + piece.type);
         const s = Math.min(this.tileSize - 2, this.tileSize * 0.94);
         if (pieceImg && pieceImg.width > 0) {
-            ctx.drawImage(pieceImg, -s / 2, -s / 2, s, s);
+            const previous = piece.dyeFromType && assets.get('piece' + piece.dyeFromType);
+            if (previous && previous.width > 0 && piece.dyeDuration) {
+                const blend = Math.min(1, piece.dyeElapsed / piece.dyeDuration);
+                const alpha = ctx.globalAlpha;
+                ctx.globalAlpha = alpha * (1 - blend);
+                ctx.drawImage(previous, -s / 2, -s / 2, s, s);
+                ctx.globalAlpha = alpha * blend;
+                ctx.drawImage(pieceImg, -s / 2, -s / 2, s, s);
+            } else ctx.drawImage(pieceImg, -s / 2, -s / 2, s, s);
         } else {
             // 回退：渐变圆角 + emoji
             const half = this.tileSize / 2 - 3;
@@ -1171,7 +1849,21 @@ class BoardRenderer {
 
     // ===== 触摸 =====
 
-    onTouchStart(x, y) {
+    onTouchStart(x, y, identifier) {
+        this.toolAdTouch = null;
+        // 加号与使用道具分开命中；零库存也能进入激励领取。
+        if (this.toolAdAvailable && this.onToolAd && !this.battleMode) {
+            for (const tool of this.tools) {
+                if (this.toolsCount[tool.type] !== 0) continue;
+                const r = tool.adRect;
+                if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+                    this.selectedTool = null;
+                    this.touchStartPos = this.touchStartGrid = this.pressGrid = null;
+                    if (!this.toolAdPending && this.core && this.core.isPlaying()) this.toolAdTouch = { tool, x, y, identifier, core: this.core };
+                    return;
+                }
+            }
+        }
         // 道具栏点击：选中/取消道具
         for (let i = 0; i < this.tools.length; i++) {
             const t = this.tools[i];
@@ -1200,6 +1892,7 @@ class BoardRenderer {
                     if (success) {
                         if (this.onToolUsed) this.onToolUsed(tool);
                     } else {
+                        this.parcelHint(grid);
                         AudioFX.invalid();
                     }
                 }).catch(function () {
@@ -1223,7 +1916,12 @@ class BoardRenderer {
         this.touchMoved = false;
     }
 
-    onTouchMove(x, y) {
+    onTouchMove(x, y, identifier) {
+        if (this.toolAdTouch) {
+            const t = this.toolAdTouch;
+            if (t.identifier !== identifier || Math.abs(x - t.x) > 8 || Math.abs(y - t.y) > 8) this.toolAdTouch = null;
+            return;
+        }
         if (!this.core || !this.core.isPlaying()) return;
         if (!this.touchStartPos || !this.touchStartGrid) return;
 
@@ -1251,11 +1949,24 @@ class BoardRenderer {
         }
     }
 
-    onTouchEnd() {
+    onTouchEnd(x, y, identifier) {
+        const touch = this.toolAdTouch;
+        this.toolAdTouch = null;
         this.touchStartPos = null;
         this.touchStartGrid = null;
         this.pressGrid = null;
         this.touchMoved = false;
+        if (touch && touch.identifier === identifier && this.core === touch.core && this.core.isPlaying() &&
+            !this.toolAdPending && this.toolAdAvailable && !this.battleMode && this.toolsCount[touch.tool.type] === 0 &&
+            Math.abs(x - touch.x) <= 8 && Math.abs(y - touch.y) <= 8) {
+            const r = touch.tool.adRect;
+            if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) this.onToolAd(touch.tool.type);
+        }
+    }
+
+    onTouchCancel() {
+        this.toolAdTouch = null;
+        this.onTouchEnd();
     }
 
     /** 屏幕坐标 → 格子坐标 */

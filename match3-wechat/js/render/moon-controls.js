@@ -27,6 +27,16 @@ function panel(ctx, screen, x, y, w, h) {
     ctx.restore();
 }
 
+function scorePanel(ctx, screen, x, y, w, h) {
+    ctx.save();
+    if (!screen.reduceEffects) {ctx.shadowColor='rgba(39,48,89,.20)';ctx.shadowBlur=10;ctx.shadowOffsetY=3;}
+    const surface=ctx.createLinearGradient(x,y,x+w,y);
+    for(const [stop,color] of [[0,'#FBEAF3'],[.45,'#FCF9FD'],[.55,'#FCF9FD'],[1,'#E7F1FC']]) surface.addColorStop(stop,color);
+    ctx.fillStyle=surface;path(ctx,x,y,w,h,18);ctx.fill();ctx.shadowColor='transparent';
+    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=1;path(ctx,x+.5,y+.5,w-1,h-1,18);ctx.stroke();
+    ctx.restore();
+}
+
 function button(ctx, x, y, w, h, text, tone, fontSize) {
     const pink=tone==='pink', muted=tone==='muted';
     ctx.save();
@@ -143,4 +153,4 @@ function battleIcon(ctx, kind, x, y, size) {
     ctx.restore();
 }
 
-module.exports={panel,button,glyph,toggle,levelNode,battleIcon};
+module.exports={panel,scorePanel,button,glyph,toggle,levelNode,battleIcon};

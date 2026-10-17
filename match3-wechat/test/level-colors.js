@@ -5,6 +5,7 @@ const GameCore = require('../js/core/game-core');
 const config = require('../js/core/config');
 const grid = require('../js/core/grid');
 const daily = require('../js/core/daily-v1/config');
+const levels = require('../js/core/level');
 function core(colorCount) {
     return new GameCore({rows:8,columns:8,colorCount,moveCount:30,
         goals:[{type:'score',target:999999}]}, {});
@@ -13,6 +14,21 @@ function check(board, count) {
     assert(board.grid.flat().every(type => type >= 1 && type <= count || config.isSpecialType(type)));
 }
 (async () => {
+    for (let id = 1; id <= 10; id++) {
+        const level = levels.getLevel(id);
+        assert.strictEqual(level.colorCount, id <= 4 ? 4 : 5);
+        const board = new GameCore(level, {});
+        assert.strictEqual(board.commonTypes.length, id <= 4 ? 4 : 5);
+        for (const special of level.initialSpecials || []) {
+            assert.strictEqual(board.grid[special.row][special.column], special.type);
+        }
+    }
+    assert.deepStrictEqual(levels.getLevel(1).goals, [{ type: 'score', target: 1000 }]);
+    assert.deepStrictEqual(levels.getLevel(2).goals, [{ type: 'collect', pieceType: 1, target: 12 }]);
+    assert.deepStrictEqual(levels.getLevel(3).goals, [{ type: 'collect', pieceType: 2, target: 6 }, { type: 'collect', pieceType: 3, target: 6 }]);
+    assert.deepStrictEqual(levels.getLevel(4).goals, [{ type: 'collect', pieceType: 4, target: 8 }, { type: 'score', target: 1500 }]);
+    assert.deepStrictEqual(levels.getLevel(5).goals, [{ type: 'collect', pieceType: 5, target: 12 }]);
+    for (let id = 6; id <= 10; id++) assert.strictEqual(levels.getLevel(id).goals.length, 1);
     const five = core(5), four = core(4), battle = core(undefined);
     assert.deepStrictEqual(config.getCommonTypes(), [1,2,3,4]);
     assert.deepStrictEqual(daily.getCommonTypes(), [1,2,3,4,5]);

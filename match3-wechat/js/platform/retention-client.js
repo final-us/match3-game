@@ -35,7 +35,7 @@ function validReceipt(r) {
     return r.kind === 'weekly' && [300,500,1000].includes(r.coins) && r.items.hammer === 0;
 }
 
-function create(api, call, wallet, notify, clock) {
+function create(api, call, wallet, notify, clock, resumeSoloId) {
     const now = clock || Date.now;
     const model = { real:true, tab:'signin',offset:0,rules:false,status:'loading',message:'',
         signDay:1,signed:false,taskProgress:[0,0,0],activity:0,claimed:[false,false,false] };
@@ -237,7 +237,7 @@ function create(api, call, wallet, notify, clock) {
     }
     function record(event) {const r=enqueue('retentionRecord',{event});if(r.ok)sync();return r;}
     // Only a new controller instance may recover a completed result draft.
-    try {const s=read();if(s.solo&&s.solo.completed){s.solo.recoverable=true;write(s);}show(s);}catch(e){failure(e);}
+    try {const s=read();if(s.solo&&s.solo.completed){s.solo.recoverable=s.solo.id!==resumeSoloId;write(s);}show(s);}catch(e){failure(e);}
     return {model,date,sync,activate,startSolo,saveSolo,finishSolo,record,hasClaimable:()=>hasClaimable(model,now()+serverOffset)};
 }
 module.exports={KEY,create,validState,validReceipt,beijingDate,hasClaimable,hasTaskClaimable};

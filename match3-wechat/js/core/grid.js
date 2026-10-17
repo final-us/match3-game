@@ -7,6 +7,8 @@
  * 纯逻辑、无平台依赖：棋盘生成 / 匹配检测 / 重力下落 / 空格填充
  */
 
+const config = require('./config');
+
 /**
  * 创建初始棋盘（避免出现预置消除）
  * @param {number} rows 行数
@@ -14,18 +16,18 @@
  * @param {number[]} types 可用棋子类型列表
  * @returns {number[][]} 二维网格
  */
-function createGrid(rows, columns, types) {
+function createGrid(rows, columns, types, random) {
     const grid = [];
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < columns; c++) {
-            let type = getRandomType(types);
+            let type = getRandomType(types, undefined, random);
             const excludeList = [];
 
             // 初始创建的 grid 不能出现 3 个相同棋子相连的情况
             // 遍历顺序是从上到下、从左往右，因此只检查上方和左方
             while (matchPreviousTypes(grid, { row: r, column: c }, type)) {
                 excludeList.push(type);
-                type = getRandomType(types, excludeList);
+                type = getRandomType(types, excludeList, random);
             }
 
             if (!grid[r]) grid[r] = [];
@@ -40,12 +42,12 @@ function createGrid(rows, columns, types) {
  * @param {number[]} types 可用类型
  * @param {number[]} [exclude] 需要排除的类型
  */
-function getRandomType(types, exclude) {
+function getRandomType(types, exclude, random) {
     let list = types;
     if (exclude && exclude.length) {
         list = types.filter(function (t) { return exclude.indexOf(t) === -1; });
     }
-    const index = Math.floor(Math.random() * list.length);
+    const index = Math.floor((random || Math.random)() * list.length);
     return list[index];
 }
 
@@ -109,7 +111,8 @@ function getMatchesByOrientation(grid, matchSize, orientation) {
         for (let s = 0; s < secondary; s++) {
             const row = orientation === 'horizontal' ? p : s;
             const column = orientation === 'horizontal' ? s : p;
-            const type = grid[row][column];
+            const rawType = grid[row][column];
+            const type = rawType === config.OBJECT_TYPES.PARCEL ? 0 : rawType;
 
             if (type && type === lastType) {
                 currentMatch.push({ row: row, column: column });
@@ -117,7 +120,7 @@ function getMatchesByOrientation(grid, matchSize, orientation) {
                 if (currentMatch.length >= matchSize) {
                     matches.push(currentMatch);
                 }
-                currentMatch = [{ row: row, column: column }];
+                currentMatch = type ? [{ row: row, column: column }] : [];
                 lastType = type;
             }
         }
@@ -215,8 +218,8 @@ function isValidPosition(grid, position) {
  * 用随机棋子填充所有空位
  * @returns {Array<{row:number,column:number}>} 被填充的位置列表
  */
-function fillUp(grid, types) {
-    const tempGrid = createGrid(grid.length, grid[0].length, types);
+function fillUp(grid, types, random) {
+    const tempGrid = createGrid(grid.length, grid[0].length, types, random);
     const rows = grid.length;
     const columns = grid[0].length;
     const emptyPositions = [];

@@ -1,8 +1,73 @@
 # 留存内容 · 增量开发顺序
 
-## 每日任务手动领取与红点 · 2026-09-30（云调用与原生页面已恢复，待独立复核/真机）
+<a id="pvp-cooldowns-20261017"></a>
+## PvP 数据异常排查与独立道具冷却 · 2026-10-17
 
-- Git交付：用户已授权提交本次每日金币手动领取、红点、排版/文案与故障提示相关代码、测试和记录，并推送现有origin/main（final-us/match3-game）。排除其他任务的AGENTS.md、流程采用段、.impeccable/与promo-duel/；不上传微信客户端或申请审核。复用当前相关源未变的自动测试与原生页面证据，文档状态已对齐实际云部署。Git交付不豁免下列独立复核和真机门槛，精确提交身份以Git日志及本次交付回执为准。
+- 当前负责人：本会话综合实现；冷却增量及已证实的房间事务冲突缺陷本地完成，独立复核通过。用户现追加授权图鉴/每日任务的3条同类错误一起本地修复，由用户自行上传；追加增量实现、回归及独立复核均通过。用户要求每种道具10秒独立冷却和各自倒计时，并报告北京时间今日20点左右消除得分时出现完整“数据异常”但游戏继续；用户随后指定扩大至18:00–21:00。线上错误实际为“服务异常”，精确客户端版本/文案对应仍未闭合。未部署、上传、提交、推送或改生产玩家数据；保留既有未提交工作。仅为下载线上源码，用户明确授权本轮临时开启微信CLI端口，下载后已关闭并从安全页确认所有四个开关恢复为0。
+- 实现：battle玩家保存允许键的itemCooldowns，query返回myItemCooldowns，施法/幂等回复返回itemCooldowns，保留旧标量字段。每种10秒独立，己方效果生效不锁其他道具，冻结仍锁全部。旧玩家无map时保留原共享/效果锁，成功施法才迁移；query只投影不写房间。新局/换对手/续局归零。客户端按服务器时间和对应键判定、排队时复查；旧云无map时仍遵守共享限制。图标内倒数取整秒，到期恢复；耗尽保留“用尽”，文字/库存不随图标变暗。契约见docs/contracts/pvp-items-v3.md。
+- 本次文件：cloudfunctions/battle/{index,logic,transaction,retention}.js，js/net/battle-items.js，js/main.js对战路径，js/render/battle-ui.js道具栏，test/{battle-items-v3,battle-rematch,battle-items-client-v3,ui-smoke,battle-wx-transaction-conflict}.js，tools/preview-battle-hud.cjs及本条/契约/验收入口。追加图鉴/每日修复仅新增共用transaction.js、index房间调用等价提取、retention7处事务接入及扩展真实SDK回归/相关文档，不改客户端或依赖。基线HEAD dea08fb；相关文件另有此前已验证增量，不能将整份Git差异均归本次。
+- 异常排查：当前客户端及本轮下载的cloud1/battle均无“数据异常”文案；客户端消除回调仅采样/音效/动画，V3比分提交拒绝不直接弹原始错误，排队道具时会提示“成绩未确认，道具未释放，请重试”。施法拒绝才弹服务端err。服务端有格式/时间/单次增量/增长速度等校验；本次未放宽校验或隐藏错误。线上函数列表最后更新时间2026-10-02 23:27:25；下载源码在/private/tmp/match3-battle-inspect-20261017，logic与本地仅本次冷却差异，index同样只有冷却字段/赋值差异，旧尾分确认/整图重置修复已在该下载源中。源码不证明实际客户端版本或当时请求。
+- 线上日志证据：用户将云控制台置前后，实际读取19:45–20:30仅6条陪伴/每日状态成功回包，无对战请求；云控制台仅一个环境，与客户端CLOUD_ENV一致。按用户指定18:00–21:00、全部函数、ret_msg包含err检索，逐条展开34条业务错误（19:24:47–19:32:07），均{ok:false,err:"服务异常"}且链路出现文档事务包装错误的errCode -501001与精确[ResourceUnavailable.TransactionConflict]；action为syncScore26、ready1、rematch2、query1、useItem1、retentionInfo1、catalogInfo2。200只说明函数执行完成，不能证明业务成功。记录仅保留时间/类别/统计，不复制原始标识或日志。该证据证明当时存在房间/进度档案读写事务冲突，但没有请求samples入参或用户客户端身份，不能把全部得分、分数校验、最终结算及字面“数据异常”都归为同一因果链；继续游戏不证明失败请求的比分已被接受。追加修复仅本地，未继续读云、重新开启端口或调用生产业务探针。
+- 故障机制与修复：安装的真实wx-server-sdk4.0.2包装文档读写错误时去掉底层code，CloudBase事务只识别code=DATABASE_TRANSACTION_CONFLICT，因此包装后的冲突未自动重试。共用transaction.js在callback捕获异步错误，仅errCode===-501001且errMsg含精确事务冲突标记时在原错误补code再抛出，复用SDK原有3次重试/最多4次尝试及新快照；其他错误保持失败，耗尽保留原诊断并返回“服务异常”。房间事务及retention的info/sign/record/claimTask/claim/ack/catalogRequest共7个档案入口均接入；catalogInfo两条、retentionInfo一条的同类缺陷已纳入本地补丁。无外层重试、业务校验放宽、吞错或依赖修改；不迁移或更正历史比分/胜场/奖励，未改daily挑战或建房create的直接事务。
+- 验证（Node v24.19.0，本地隔离）：服务端执行者通过battle-items-v3、battle-logic、battle-cloud-function、battle-rematch、battle-query-transaction、battle-score-finalization、battle-score-item-regression、battle-sdk-round-reset；综合主任务通过battle-items-client-v3、battle-client、battle-clock-samples、battle-score-item-regression、ui-smoke。覆盖交错施放、9999/10000ms边界、稳定重试ID、不延长/重复扣费、旧状态投影与迁移、冻结、续局；比分整数/尾分证据仅是回归，不是生产归因。语法与局部diff空白检查通过。图标之后恢复文字alpha后仅重跑受影响ui-smoke/包体，未重复其他通过套件。
+- 事务补丁验证：新增battle-wx-transaction-conflict使用真实wx-server-sdk4.0.2与安装的底层Db，仅替换本机Request传输。旧实现先红（modifyDocument包装冲突未重试），补丁后通过：读/更新冲突新快照保留对手写入、失败尝试不重扣道具、竞争相同ID已提交时重试无第二次更新、迟到相同ID不续冷却、非冲突-501001不重试、持续冲突恰4次后失败且保留原errCode/errMsg。受影响battle-query-transaction、battle-items-v3、battle-score-finalization、battle-cloud-function及语法/局部diff通过；新增输入触发这些重跑，客户端/视觉输入未变，复用原证据。模拟传输不证明云端恢复。
+- 图鉴/每日追加验证：扩展同一真实SDK fixture，原代码的retentionInfo/catalogInfo各自读取和set写入冲突四路径均先红，接入helper后通过；新快照保留并行catalog鱼干/revision及任务进度，claimTask回滚/相同领取已提交竞争均仅一张40金币收据和20活跃，喂食冲突/相同ID已提交竞争仅扣一鱼、增加一次亲密度。异主、旧修订和过期未确认任务仍拒绝/过期；签到、记录、ACK、周领取各经冲突，Info非冲突-501001各1次失败、持续冲突各4次失败并保留原诊断。新状态下battle-wx-transaction-conflict、retention-cloud、retention-manual、catalog-cloud、battle-query-transaction、battle-items-v3、retention-integration七项及4文件语法/局部diff均exit0（Node v24.19.0）；新增共享helper/档案事务是这些重跑的触发，未重复无关视觉/客户端/包体检查。
+- 独立复核：按role-collaboration有界委派server_item_cooldowns实现服务端，主任务实现客户端/画面并排查；非实现者cooldown_review审查冷却全链路、房间及图鉴/每日追加事务补丁，无P1/P2。其独立真实Main probe通过迟到query不回滚冷却/库存、排队道具可在其他道具效果/冷却中释放、自身deadline变化取消请求；房间补丁另用本地真实SDK探针验证提交阶段原生冲突重试保留对手新分数、读取冲突后房间轮次变化会拒绝旧轮道具且库存/施法记录不变。图鉴/每日追加复核接受共享helper与全部7入口；未重复已通过套件，独立真实wx SDK/Db本地传输oracle验证claimTask先暂写receipt后profile持续冲突，恰4次失败时profile全不变且零receipt；另在首尝试已暂写receipt时触发profile冲突并模拟并发撤销资格，新快照重试返回NOT_ELIGIBLE，最终零receipt、claimed=false、activity=0。确认精确分类、新快照、有界重试、多文档原子回滚和重试后业务拒绝有效。非实现者未调用真实云或独立读线上日志，保留文案/上线效果限界。请求配置均Sol/medium，未核实上游实际模型。两位候选均none。
+- 运行实看：现有本机Canvas组件预览以真实BattleUI/Board/Game模块、合成状态运行，无账号/存储/云业务调用。320×568、390×844、430×932混合9s/4s与两项可用已实看；430实时10秒到期后恢复。assets/_incoming/pvp-cooldowns-20261017/五张截图由非实现者独立查看，名称/库存/数字无裁切重叠，冷却与可用可区分。初始10s和到期图均保存。此组件预览与独立截图审阅不替代微信双账号/弱网/真机证据。
+- 包体：初次静态主包4,195,849超4MiB；同工作区catalog-album.png被并行任务更新为34,129字节后，本任务尝试重压缩的断言在写入前停止，未修改该素材，不认领其来源。最后检查主包4,192,148/4,194,304，余2,156；总包5,987,513/31,457,280，90/112文件，package-budget通过。是当前工作树静态估算，不能替代最终微信包身份与打包数值；本任务没有生成/上传预览包。
+- Memory recall: hit；追加图鉴/每日范围时刷新approved项目检索，仍命中match3-game-room-poll-write-gating r1，复用同任务已读原文；用于保留房间query门控、选用真实SDK包装/隔离传输证据及限制生产归因，未将房间轮询参数扩为档案业务规则。无独立模块身份，无关低维护偏好未采用。新故障机制/边界已进入项目契约，不重复捕获相同项目事实，候选none。当前turn的check-record与handoff均valid:true、issues:[]。
+- 下一步：图鉴/每日追加修复本地交付完成；用户自行更新battle云函数（含新增transaction.js）和包含前述冷却的客户端后验证。图鉴/每日本轮没有客户端修改。生产恢复及真机验收未完成，字面提示与实际客户端身份仍待有证据时核对；本任务不执行部署/上传。
+
+```memory-task
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/development-steps.md#pvp-cooldowns-20261017","session_id":"01a0e89b-5d29-76a3-8dd2-44a29c763cc4","turn_id":"01a14a65-ac98-77e2-9646-c5e53bf55060","state":"active"}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-room-poll-write-gating","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/development-steps.md#pvp-cooldowns-20261017","date":"2026-10-17","stage":"applied","purpose":"execution","delivery_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/development-steps.md#pvp-cooldowns-20261017","action":"保留query冷却投影和轮询写入门控；采用真实微信SDK包装、隔离传输和新快照故障注入检查共享事务提取与档案重试，区分本地恢复证据与线上效果。"}
+```
+
+```memory-handoff
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/development-steps.md#pvp-cooldowns-20261017","turn_id":"01a14a65-ac98-77e2-9646-c5e53bf55060","recall":{"project":"hit","module":"not-applicable"},"memories":[{"memory_id":"match3-game-room-poll-write-gating","revision":1,"stage":"applied","purpose":"execution"}],"no_usage_reason":null}
+```
+
+## 首页小字精简 · 2026-10-03
+
+- 按用户要求删除好友对战下方“60秒欢乐对决”和每日金币待领奖红点旁“可领”；仅修改 `js/render/ui.js` 两处文字绘制，红点颜色/大小/条件、按钮布局与点击范围不变，未修改奖励或云端逻辑。
+- 受影响验证：`test/ui-smoke.js`、`test/retention-preview.js` 通过；新增320/390/430宽度有/无待领奖状态的实际绘制断言，检查两处文案不再绘制、原正红圆点仍有条件显示、三个入口矩形不变。UI语法、局部diff及原生Canvas辅助detector通过。
+- 运行检查：现有 `tools/preview-retention.cjs --functional` 隔离内存服务和临时钱包，390×844真实Main首页已目视确认两处文字消失、每日金币仅留正红圆点；点击入口正常进入每日金币，钱包2460未变。未连接真实微信云或写用户存档；微信真机未验，未提交、推送或上传。不新增素材/布局或开启发布门禁；召回只有无关的新棋子偏好，未采用；持久候选none。
+
+## 新障碍代表样板 · 2026-10-02
+
+- 用户选择月相花苞与小鱼干包裹；宝匣/封印不再推进。当前综合实现归属保持；范围、接口、核心/渲染/独立QA证据和用户视觉门槛统一在[内容更新当前样板](../docs/content-update-1235.md)。
+- 执行顺序：两类核心与必要显示 → 单人隔离可玩样板及独立QA → 用户实际视觉/策略验收 → 正式教学关与局部标定。用户2026-10-02接受整格花座/HUD/闭合反馈与新动画，随后澄清“把本地改好就行了，不必上传开发版”。第21/22关教学及每十关两个新目标槽已本地完成；局部工程测量、独立QA、真实指针重放、三宽12场运行与包体通过，入口及未验边界统一见[当前记录](../docs/content-update-1235.md)。保持每日/PvP、前20关及其他八个槽；未上传微信、改云、提审或公开发布。候选none；[本阶段复盘](retrospectives/new-obstacles-20261002.md)。
+- 当前新增交付：紧凑曲线已本地完成curated-v8前10教学、11关起infinite-v8混编、清冰目标/双色提示与HUD、240真实空间配方、100关达最高档及6–30步moves-v1预算。布局/自然开局/独立QA、索引/进度保留通过。不同种子每关200、3秒/6秒真实动画持出覆盖八个代表章；6秒recipe章均从11–20的61.0%降到91–100的34.45%，100后已测代表章32.2–38.9%。独立QA发现194边缘配送接近零卡点，经两个Sol候选失败后按规则Astra/xhigh有界修复，仅最高档PJ边缘开口改1条原长路径、保留原果冻量/步数/180秒及策略；800定点补测和独立范围/实际终态复核通过，194六秒4.5%→27%，P1关闭。当前38,600条件样本含未变配置复用与四单元替换，不冒称重新测完八章；诊断/失效基线单列。五类障碍实际状态图及320/390/430实际Main显示已实看。训练残差与正式结果分开，不承诺逐关命中或真人胜率，微信真机仍未验。最终证据/限界统一见[当前记录](../docs/content-update-1235.md)，未上传/部署/提交/推送，candidate none。
+- 本条仅维护增量依赖，不复制实现证据或接管下方留存任务；没有新增/改绑负责人或对话。
+
+<a id="retention-manual-v1"></a>
+## 每日任务手动领取与红点 · 2026-09-30
+
+### 当前复核与验收 · 2026-10-04
+
+- 用户已确认本次客户端与battle均已上传；具体客户端版本号、预览/体验/正式渠道及云端候选身份待确认。这是用户报告的上传事实，不是代理部署、发布或领奖验收证据。Git基线仍为dea08fb0ad3fb756d234660580a491ee77e56dcf；本地另有新障碍、难度与PvP等工作树改动，不能据Git基线推定上传包身份。本轮仅只读复核及更新本条记录，未修改产品/测试代码、调用真实云、操作玩家数据、提交/推送Git或启用CI。
+- 非实现者Sartre（有界worker配置GPT-6.1 Sol／medium，任务01a1079b-84c6-76a1-8ba9-8f4a8baeba71）独立核对manual-v1迁移、事务、可信身份与客户端/钱包恢复，主任务审阅后接受其限定本地结论：未发现P1/P2必修问题。旧档完成项迁为已领、模式不回退；手动档完成任务不产生奖励/活跃度，日期与任务索引构成稳定收据；领取事务写领取位/活跃度/收据，已有收据优先于跨日过期判断；客户端持久化钱包入账后才ACK。此结论不覆盖其他未审增量或整包发布。
+- 有效证据复用：10/4当前工作树的retention-manual/integration/cloud/qa-recovery/qa-routes及package-budget均exit0（Node v24.19.0）；相关retention客户端/服务/coin与manual/integration测试相对dea08fb未变，Main/入口与内存数据库helper的当前改动已纳入当日受影响测试。复用已有独立钱包故障矩阵；没有为此次交接重复运行通过套件。主包静态估算4,104,962 / 4,194,304字节，余89,342字节（约87.2KiB），不是微信实际打包值。
+- 独立补验命令为一次离线`node <<'NODE'`内存probe（未保存新测试文件），真实retention client/service/coin配合模拟wx同步存储与串行事务fixture，7场景最终exit0。北京时间2026-10-04 23:59:59.999（UTC15:59:59.999）→10/5 00:00:00.000（UTC16:00:00.000），仅差1ms，日期转换断言通过。初始金币700：未确认请求跨日过期仍700；已提交领取丢回复、ACK丢回复、金币入账后收据历史写失败、钱包成功后客户端转存ACK失败四项均恢复为740，持久pending/receipts/acks清空、钱包该收据仅一条、服务端已ACK，再sync不增币，道具不变。停留旧任务页跨日首次点击未发领取请求，刷新后进度/领取位重置且金币700；手机初始快36小时仍采用服务器日期，随后时钟跳变48小时首次点击只校时，第二次有效点击到账40。后两项未直接断言全部队列清空。首次probe将明确断网误期望为error，校正测试预期offline后完成，不是产品修复。
+- 证据边界：上述重建为保留同一模拟存储/数据库、同一Node进程和coin模块后重新client.create()，不是进程冷启动或微信重启；事务fixture串行执行，不证明真实CloudBase并发冲突/自动重试。未验证实际部署包、真实弱网、完整手机领奖链路或自然跨日。独立接受意见只关闭本地manual-v1复核缺口，不将9/23旧自动领奖复核或9/30页面连通证明替代这次手动领奖。
+- P3非阻断观察：任务页停留跨日可能暂时保留昨日“领取”按钮/页签红点（retention-ui.js drawTasks及draw页签读取缓存进度；retention-client.js activate校验当前日期）。点击会先同步，未发昨日领取请求；首页hasClaimable已有日期守卫。显示滞后不导致越日发奖，本轮未修，后续可单独选择优化。
+- 下一步为用户手机验收，不清存档、不伪造任务/日期：①最好重玩已通关关卡，记录任务完成前后金币，排除普通首次通关奖励及签到/其他领取；完成任务和访问任务页均不应发任务金币/活跃度。②手动领取未领任务1/2/3分别只增加40/60/60金币、20/30/30活跃，再点击不增加。③退出小游戏后重新进入，余额与已领取状态保持、不重复到账。④北京时间零点后未领的昨日任务过期、新日进度重置；昨日已被服务器确认的领取若回复丢失则允许恢复一次，不应误判为越日领奖。请记录客户端版本/渠道、设备系统、时间及余额前后；页面能打开不算以上通过。签到/周宝箱另有可领项时首页红点可继续存在。CI仍未实施，保留原评估的轻量方案，不开完整分支保护。
+- 共享记忆：沿用本次评估的已批准召回；functional-preview用于区分真实消费者的隔离验证与手机/云门槛，combined-reward-wal用于核对真实coin的提交/ACK顺序并复用相关输入未变的故障证据。项目当前合同优先，旧自动领奖金额轨迹不采纳；用途为review，不推定开发提效。主任务与独立QA候选均none，本次不新增方法卡。
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-functional-preview","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/development-steps.md#retention-manual-v1","date":"2026-10-04","stage":"applied","purpose":"review","action":"审阅真实Main/client/service/coin的隔离证据，仅用于本地手动领奖复核；排除旧自动领奖轨迹，不代替微信云或手机验收。"}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-combined-reward-wal","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/development-steps.md#retention-manual-v1","date":"2026-10-04","stage":"applied","purpose":"review","action":"核对真实coin持久化入账后ACK及共享收据去重，复用相关输入未变的独立钱包故障矩阵，限定新增控制器恢复probe不代表完整进程冷启动。"}
+```
+
+### 2026-09-30实施与连通性恢复记录（历史，当前状态以上方为准）
+
+- 当前交付：提交dea08fb0ad3fb756d234660580a491ee77e56dcf已推送origin/main（final-us/match3-game），包含20个本次每日金币相关文件；AGENTS.md、流程采用段、.impeccable/与promo-duel/未混入。用户随后确认微信客户端已上传，具体版本号、审核及正式发布状态未确认；代理未操作客户端上传或审核。复用相关源未变的自动测试与原生页面证据，Git交付和客户端上传不豁免下列独立复核与真机门槛。本次仅更新交付记录，不再次提交或推送。
 
 - 云端修复结果（用户已批准）：原$LATEST保存为不可变版本4，备注before-startup-repair-20260930，列表时间11:29:09，未切换版本流量。首次“上传并部署：所有文件”因候选独立复核缺失被自动审批拒绝，未执行；只读CLI下载又因服务端口关闭退出。用户随后批准临时开启CLI端口，仅下载现有battle包到/private/tmp/match3-cloud-startup-GAS6na，下载成功后已关闭端口，并确认其他权限开关不变。
 - 部署包比较与有界重试：线上17份源码/配置/vendor文件与本地逐字节一致，包含既有手动领奖业务；差异在node_modules。云端安装锁将lodash.set标为link:true，下载包对应路径是内容为../vendor/lodash-set-compat的普通文件，直接加载该下载包入口报Unexpected token '.'；本地对应完整依赖目录，入口及依赖安全检查通过。下载格式可能影响链接表现，不能仅凭下载包推断运行时文件语义。带着“业务源码完全相同、仅更换完整依赖”的新证据重新申请同一已授权部署，获准执行；控制台确认battle于11:48:50已部署。没有主动改运行时、云调用权限、数据库配置或客户端发布；未提交/推送Git。
@@ -10,20 +75,34 @@
 
 - 诊断修复候选：按用户“修复”授权，cloud-battle识别-1包裹的-504002执行失败并分类FUNCTION；retention-client复用平台脱敏分类，只在明确NETWORK时显示网络错误，超时/权限/环境/配额/未知分别保留可重试错误，失败保留待办/收据且重试成功清除诊断。retention-ui增加次级R1诊断码、不展示原始错误或身份。cloud-battle-diagnostics、retention-client/manual/qa-client/integration/preview与语法检查通过；丢回包的无分类异常测试现在期望error而不是错误断言offline，奖励去重断言不变。npm ls --omit=dev --offline、cloud-dependency-security及本地require入口成功，证明本地候选依赖完整；320×568状态预览通过（wallet2460、cloudAttempts0），诊断码与重试按钮已目视确认无重叠，初次夹具未传diagnostic已修正后复核，截图retention-error-320.png。复用相关输入未变的自动测试证据；云端恢复及原生未验项见上方当前结果，不把隔离预览当微信真机。
 
-- 最新云端诊断（2026-09-30）：用户已自行右键上传battle；控制台确认最后更新09:05:03、已部署，Node.js20.19/index.main/256MB/3s。10:06在当前match3-wechat开发者工具通过真实SDK仅调用retentionInfo（未传manual-v1、未领奖），返回-504002 functions execute fail / 0 code exit unexpected。对应云日志status_code443、Coldstart14ms、InitRuntime14ms、InitFunction0ms、Duration0ms，近期多次同类失败；没有业务异常堆栈。因此已定位云函数运行时启动/初始化阶段异常，不是已证实的断网、缺依赖或业务超时；具体部署包/平台原因待核对。本地直接require当前battle入口成功并导出main函数，但不等于云端包验证。retention-client将所有调用reject统一标记offline导致误导性“未联网”，未改代码。本次只读查配置/日志，未部署、改运行时、清缓存或领取奖励；未获得手动领取真实云成功证据。此前“未部署”描述仅指代理未部署，不能再当作用户未上传的依据。
+- 修复前云端诊断（2026-09-30历史）：用户已自行右键上传battle；控制台确认最后更新09:05:03、已部署，Node.js20.19/index.main/256MB/3s。10:06在当前match3-wechat开发者工具通过真实SDK仅调用retentionInfo（未传manual-v1、未领奖），返回-504002 functions execute fail / 0 code exit unexpected。对应云日志status_code443、Coldstart14ms、InitRuntime14ms、InitFunction0ms、Duration0ms，近期多次同类失败；没有业务异常堆栈。因此已定位云函数运行时启动/初始化阶段异常，不是已证实的断网、缺依赖或业务超时；具体部署包/平台原因待核对。本地直接require当前battle入口成功并导出main函数，但不等于云端包验证。retention-client将所有调用reject统一标记offline导致误导性“未联网”，未改代码。本次只读查配置/日志，未部署、改运行时、清缓存或领取奖励；未获得手动领取真实云成功证据。此前“未部署”描述仅指代理未部署，不能再当作用户未上传的依据。
 
 - 综合主任务实施；用户已确认：任务自动统计、金币与活跃度逐项手动领取；首页与任务页签提示红点，访问页面不清除；未领取奖励北京时间次日零点失效；已确认旧收据继续恢复，其余奖励规则不变。提示改为醒目正红色后，用户接受颜色并要求去掉白边；最终采用 #F5222D、6px实心圆点，无描边，首页和任务页签一致。去白边后retention-preview、companion-qa及语法/diff检查通过。复用既有Canvas月光控件，不新增美术或依赖。本轮禁止委派，未启用助手，以下为自验证而非独立QA。
-- 基线 b1bdb0c 加当前未提交修改。保留原有 AGENTS.md、流程采用段及 .impeccable/、promo-duel/ 改动，不纳入本次提交授权。本次未提交Git、未推送；已授权的真实云依赖修复及查询边界见顶部，未执行签到/任务/宝箱领取。
+- 实现时基线为b1bdb0c加本次候选修改，现已提交为顶部所列dea08fb；未执行签到/任务/宝箱领取。其他任务的AGENTS.md、流程采用段及.impeccable/、promo-duel/改动仍保留，当前Git/上传状态以顶部交付条目为准。
 - 服务端：retentionInfo协商并持久化manual-v1；完成任务仅记进度，retentionClaimTask校验本人日期/资格，在事务内写领取状态、活跃度和原确定性收据。旧档已完成任务迁为已领；新手动档缺少领取字段报损坏，不静默当旧档。旧账号保留旧行为，升级账号不再被旧客户端自动领奖。合同及回退限制见 docs/contracts/retention-v1.md 手动领取增量。
 - 客户端：同步先确认云端能力，再发送持久待办；旧云不支持时保留请求并提示更新中，避免错误自动发奖。首页领取提示纳入未领任务；任务卡增加未完成/领取/已领取和当日到期说明，任务页签增加红点；触控沿用Main命中与滚动裁切。共享通知圆点统一正红，未修改陪伴解锁或奖励规则。
 - 有效证据：retention-manual、retention-client、retention-qa-client、retention-integration、retention-cloud、retention-qa-recovery、retention-qa-routes、catalog-cloud、retention-preview、companion-qa均通过。覆盖手动才到账、页面访问不领取、重复/并发领取、身份伪造拒绝、旧档与旧收据、跨日未领过期/已确认恢复、丢回包/ACK、本地钱包失败、旧云能力阻断及鱼干不回归；语法和diff检查通过。测试文件名或控制台的QA字样不代表本轮独立验收。
 - 运行证据：隔离本机 tools/preview-retention.cjs --functional，真实Main/core/client/service配合内存数据库与临时钱包，无真实微信请求。390×844单人结算后进度1/1/80、钱包2460、活跃0；打开任务页不入账；逐项领取任务1/3后钱包2560、活跃50、已领1/0/1且任务红点消失。320×568、390×844、430×932待领画面已目视检查，按钮/字体和正红圆点可见；320需滚动查看下部任务，三尺寸裁切命中与44px触控由现有测试覆盖。浏览器辅助按钮鼠标点击未生效后改用键盘Enter完成操作；不把该自动化限制记为游戏缺陷。最后服务端损坏字段校验及客户端响应/跨日守卫仅重跑受影响自动测试，视觉输入未变，复用截图观察。
 - 包体检查通过：静态主包3,956,537 / 4,194,304字节，余237,767字节（约232KiB）；总包5,751,902 / 31,457,280字节。原生Canvas detector无发现，仅作辅助检查，不替代视觉验收。规则更新已写入 docs/design/retention-v1.md，事实已在项目文档维护，不重复写共享记忆。
-- 下一步：本次每日金币连通性故障修复已完成（真实SDK及原生页面通过）；非实现者复核奖励迁移/事务与客户端恢复，用户检查红点及领取体验。battle依赖修复已生效，单独该云端修复不需重传客户端；本地UI/手动领取等客户端改动仍由用户另行授权上传。真机需验证完成任务不到账、点击才到账、重进不重领与跨日规则。尚无本次独立复核或真机证据，不直接宣布正式发布放行。已升级账号不能直接回滚旧云实现；回退须保留兼容字段/逻辑，保存的版本4与本次业务源码一致，不保证能回退为可用依赖包。
+- 下一步：本次每日金币连通性故障修复已完成（真实SDK及原生页面通过），battle依赖修复已生效、用户已上传客户端；非实现者复核奖励迁移/事务与客户端恢复，用户在新上传版本真机检查红点及领取体验。真机需验证完成任务不到账、点击才到账、重进不重领与跨日规则。尚无本次独立复核或真机证据，不直接宣布正式发布放行。已升级账号不能直接回滚旧云实现；回退须保留兼容字段/逻辑，保存的版本4与本次业务源码一致，不保证能回退为可用依赖包。
 - 本地预览访问修复：用户两次反馈无法访问，确认64006及临时替代53352均已无监听。tools/preview-retention.cjs增加可选MATCH3_PREVIEW_PORT（默认仍随机端口）；以独立后台进程恢复127.0.0.1:64006，非系统自启动服务。页面及fixture.js HTTP 200，独立内存测试会话的retentionInfo manual-v1返回ok=true；语法/diff检查通过。仅预览进程和开发工具改变，未重跑输入不变的产品测试。已请求Codex打开同址，工具返回queued，不声称浏览器已实际刷新。
 - 周宝箱裁切修复：用户反馈任务卡增高后宝箱被截断。任务卡改为70px高、8px间距，保留原字号及64×44领取按钮；收紧上下间隔和去玩按钮，布局/滚动高度共享常量，390×844与430×932无上周待领时首屏完整显示三个任务和周宝箱。320×568仍可滚动，底部宝箱完整命中；retention-preview增加这些明确断言并通过。现有预览脚本390/320/430三尺寸检查通过、cloudAttempts均0，已目视查看390/430任务页和320底部宝箱截图，见assets/_incoming/retention-daily-coins-v1/screens/。初次静态预览检查因新增图鉴默认查询触发隔离断言，修正夹具catalogSample=true后通过，未放宽断言、未发真实云请求；node_repl启动浏览器受限后改用已获准的现有检查脚本。固定64006后台预览已重启并HTTP200；未更改领奖逻辑或上线状态。
 - 卡片文案精简：按用户最新要求删除累计签到/漏签说明、每日和每周刷新/到期时间、北京时间日期、规则入口及其不可达正文；“上周待领”标题与实际奖励周期不变，异常过期反馈保留。收紧被移除说明所在的内容间距，正式页无日期底栏，隔离样板仍标注“界面预览·奖励不入账”。retention-preview新增文字绘制断言；该测试、retention-client/integration通过。现有预览脚本320/390/430均通过且cloudAttempts=0，目视确认390签到和任务页文字删除、宝箱完整；固定64006后台预览已更新且HTTP200。未部署、提交或推送。
 
+<!-- workflow-adoption-20260929:start -->
+## 流程采用 · 2026-09-29
+
+用户已批准采用[统一协作流程](/Users/Admin/.codex/guidance/role-collaboration.md)及一次性通知现有负责人。该决定只改变工作方式，不改变产品批准、阶段门槛、文件归属、负责人模型或发布权限；在下一安全工作/交接点采用，已有有效证据继续复用。
+
+| 负责人 | 一次性采用确认 | 应用点 / 冲突 |
+| --- | --- | --- |
+| 三消-主 | 已读取并确认采用 | 保留综合主任务；后续评估有界执行包，复用有效证据、明确候选和未验项。本轮禁委派工具约束优先，不强行委派。 |
+| 三消编程-子 | 已读取并确认采用 | 无新任务，继续待命；获准后按有界包执行、复用证据并稳定交接，保留独立验收。 |
+
+本项目全部上述负责人已于2026-09-29收到一次性通知并明确采用方式；无阻塞流程采用的冲突。首次适用的正常交接尚待发生，此处不宣布产品验收或提效试验完成。
+
+产品经理维护本表（消除由现有主任务维护）。确认要说明下一项工作的执行包/证据复用/交接安排；首次适用的正常交接验证后结束迁移跟踪，不重复索取回执。尚未发生实际新交接时，不将规则读取写成提效或质量保证。
+<!-- workflow-adoption-20260929:end -->
 
 ## 每日任务同步提示修复 · 2026-09-30（本地完成，待手机验证）
 
@@ -279,3 +358,41 @@
 - 最终增量证据：`preview-retention --check --width=320 --scenario=states`通过，loading/offline/error/pending首屏动作完整；`--scenario=previous`通过，上周领取后本周活跃度180不变、临时钱包2460、cloudAttempts=0；规则首尾、第7天领奖前/反馈/已领截图已补齐。非受影响390/430正常页复用三档检查。
 - 最终独立QA：retention_ui_qa只读复核源码/专测与状态截图，结论无开放P1/P2；Main previous2已走实际tap断言。最终仅将异常提示改为面向玩家的清晰文案，并刷新states截图/测试通过，布局与交互不变。无微信/真机/真实服务证据。
 - 当时样板预览：`http://127.0.0.1:56722`、session34340，后续已关闭，当前入口见上方候选证据。微信CLI服务端口未开启；本地浏览器夹具不上传文件、不接真实云。
+<!-- memory-adoption-20261001:start -->
+## 共享记忆采用 · 2026-10-01-v2
+
+### 共享记忆指定主题审阅 · 2026-10-02
+
+- 授权/责任：维护会话传达用户批准，要求现有三消主负责人审阅指定9主题及2份合并支持来源；不是全局角色任命或批量批准。保留独立QA/用户视觉/平台发布门槛；本次仅审阅、原任务记录及append-only记忆写入，不改游戏代码/资产/构建/云端/凭据/角色/模型，不发布/提交Git或自动向别的会话发消息。
+- 路由/召回：已完整读取当前技能、hindsight-local、governance、record-contract及项目入口，activation为Hindsight已启用、Basic Memory已退役；原文根`/Users/Admin/.hindsight/source-memory`。解析实际仓库及“三消-主”得到canonical match3-game、module null/role unresolved，未推断旧标签为模块职责。approved bank `project-caa3c7c20278362b-approved`的严格approved/active/scope-project/project-match3-game、world/experience召回为`hit`（仅`match3-game-combined-reward-wal-r1`，与本批无关，未采用）；未做模块或候选规则召回。
+- 原文核对：`audit --project match3-game --limit 9`确认9份草案及11主/支持源仍匹配（stale_sources为空），本批均无既有回执。逐条读原文和支持源，不上传旧原文/整段会话到模型，不用草案代替审批。旧v5数值/策略、第1关永久不变、首对相邻猜组合、统一specialCombo及2×2布局不作为当前规则；现行产品记录优先。本轮candidate none，是既有候选审阅而非历史批量抽取。
+- 回执目录为source_root下`reviews/match3-game/`；项目目标为`projects/match3-game/`、revision 1、module=null。源ID保留各主题原legacy permalink；批准的只是有界方法/偏好，不放行完整产品、数值或设备版本。
+
+| 指定主题 | 结论与边界 | 回执 / 项目目标 |
+| --- | --- | --- |
+| audio-runtime-feedback | `accepted`：用户已否决统一组合cue；当前AudioFX按参与类别去重播放真实特殊音色，旧101–104同时、新105/106按共用事件时序延迟。分享入口仅在非对局且新包已下载时应用更新。现行音频合同、既有独立复核与运行/测试证据支持该边界，旧采样、预算、额度不晋升。 | `match3-game-audio-feedback-review-20261002` / `match3-game-audio-feedback-r1` |
+| difficulty-proxy-calibration | `accepted`：批准固定种子对照、变化范围独立revision及代理边界，而非旧v5数值/旧随机策略。现版已修正独立随机流、思考＋生产动画计时，并有真实指针逐步回放与非实现者复核；最新五类障碍曲线仍待审/标定，不被这条经验批准。 | `match3-game-difficulty-proxy-review-20261002` / `match3-game-difficulty-proxy-r1` |
+| low-maintenance-retention | `accepted`：原文记录用户明确不希望持续周末主题更新带来高制作负担；后续项目采用固定任务与四猫成长的独立范围。仅保留本项目低持续维护的规划偏好，不把当时讨论当成长/经济/美术实施授权，也不否定已另获批准的后续功能。 | `match3-game-low-maintenance-review-20261002` / `match3-game-low-maintenance-r1` |
+| small-screen-shop-and-cta | `accepted`：当前drawShop确为四行珍珠面板，rowH78、图标48、动作高44；UI记录明确用户否决2×2后接受清单。现有三宽截图与受影响检查支持本地布局，广告有/无CTA适配有效；不批准旧网格或真实广告配置。 | `match3-game-shop-list-cta-review-20261002` / `match3-game-shop-list-cta-r1` |
+| request-settle-once | `accepted`：现行cloud-battle adapter的settled门与定时器清理未改；Main每日info/start/checkpoint/submit显式12000ms，daily-client真实消费者/伪SDK迟到用例及step1_qa接受记录支持客户端只结算一次。PvP已有独立超时合同，不能沿用候选‘永久未改PvP’为当前事实。 | `match3-game-request-settle-once-review-20261002` / `match3-game-request-settle-once-r1` |
+| special-piece-comprehensibility | `accepted`：用户明确要求新棋子在分数/收集/障碍关都有可理解价值，否决2×2再接第五只的复杂配方。当前记录已移除该配方且强调玩法/视觉/音色分开接受；只保留产品偏好，Z形配方和新棋子具体平衡仍不在本次批准范围。 | `match3-game-special-comprehensibility-review-20261002` / `match3-game-special-comprehensibility-r1` |
+| isolated-functional-preview | `accepted`：真实Main/客户端/钱包/Core/后端createService配每页内存数据库的隔离结构仍存在；既有功能运行与retention_logic_qa证据支持预览方法。当前手动领取已替代旧自动任务到账，旧钱包轨迹只作历史；本次不为尚待复核的产品链路放行。 | `match3-game-functional-preview-review-20261002` / `match3-game-functional-preview-r1` |
+| vfx-follow-event-footprint | `accepted`：批准表现遵循核心真实作用范围/源事件的原则，不批准旧首对相邻启发式。现行Core已发specialCombo元数据，renderer以该信息识别旧组合，邻接chain无该元数据不扩大范围；Board正常/减弱时序、既有非实现者32组复核和用户接受的表现提供边界证据。 | `match3-game-vfx-event-footprint-review-20261002` / `match3-game-vfx-event-footprint-r1` |
+| asset-highlight-local-repair | `needs-evidence`：README与UI当前记录仍明确待用户确认棋盘上的五只猫柔光结果；技术检查和三宽Canvas截图支持局部加工范围，但没有明确用户视觉采用记录，亦未见本轮独立美术复核闭环。保留待证据，不晋升；其他特殊棋子或图鉴接受不能代替此项。 | `match3-game-highlight-local-repair-review-20261002` / 无目标，缺用户视觉确认及必要独立复核 |
+
+- 合并支持源单独处置：`shared-memory/inbox/match3-game/audio/match3-game-audio-20260910-v9-final-accepted` → `not-adopted`（回执`match3-game-audio-v9-old-support-review-20261002`）：当时选择仅为历史，旧统一组合cue/火箭/22cue预算已被替代；已核实的BGM只作主主题支持，不续期额度。`shared-memory/inbox/match3-game/general/match3-game-general-20260921-stamina-ui-polish` → `not-adopted`（回执`match3-game-shop-grid-old-support-review-20261002`）：2×2已被否决；仅有/无广告CTA和隔离尺寸证据作为清单主题支持。两源不重写，目标列明supporting_sources/supporting_reviews，不伪作accepted。
+- 证据：timeout现行adapter/tests未改，复用daily-client及step1_qa迟到/凭证隔离接受；商店现行UI未改，复用三宽/ui-smoke/stamina-purchase本地证据及用户接受。音频/渲染/难度已有新工作树，核最新audio-runtime-v9、content-update-1235的局部检查/真实运行/非实现者复核，不把9月旧整套测试当当前全包PASS。functional工具仍使用真实消费者与每页内存后端，手动领取已替代旧自动到账；方法接受不替代手动领取待复核/真机状态。高光记录仍待用户确认，其他造型/图鉴接受不能代替。本轮未为记忆重复构建或游戏测试。
+- 持久化/回读：19条精确参数v2校验通过，隐私/权限由现有项目主负责人逐条审核；经动作时沙箱审批，非覆盖write-record已追加11回执及8项目目标（无覆盖、无模型创作或历史批量归纳）。11回执archive原文与8目标approved原文均按后端实际document_id回读，正文逐字匹配计划；memory_id/record_kind/project_id、处置、目标及review_reference逐项一致。不是把queued/submitted当已批准：这8条是完成原门禁后的项目批准，未另capture/extract新候选。
+- 最终audit：本项目累计approved_project=10、approved_module=0、review_receipts=15；指定批次及支持来源unreviewed=0、needs_evidence=1，无陈旧草案、冲突、accepted缺目标、孤立批准或无效记录。高光仍不晋升，保留现有三宽候选和修前备份等待本项视觉确认及必要独立复核，不重新生成、不索取技术门槛豁免。以上方法卡已索引可召回，但未声称本次有新产品运行效果或跨项目验证；原产品/视觉/发布待验项不变。本次记录差异/格式检查通过，无Git提交/推送。
+
+### 首批三条审阅历史 · 2026-10-01
+
+- 主任务已收到用户授权的一次性通知，完成此批三条候选审阅；只采用 v2 治理和有边界的项目知识，不批准全部历史经验或跨项目规则。保留“三消-主”及独立QA归属。本轮没有游戏代码、云端、发布、角色或模型变更，没有委派、提交或推送。
+- 身份/召回：已读取 v2 技能、记录合同、治理及本项目入口，`resolve --root <实际仓库> --role 三消-主` 返回 `project_id=match3-game`、`module_id=null`、`role_unresolved=true`，按项目检索，不推断旧 battle 标签为模块职责。`sanxiao` 为同项目别名。结构化 `approved + project-match3-game` 首轮召回为 `empty`，审阅前回执检索亦为空；无旧 approved 知识应用于此次游戏实现。
+- 首批审阅结果（保留旧候选，不覆盖；回执目录均为 `shared-memory/reviews/match3-game/`）：
+  - `shared-memory/inbox/match3-game/general/match3-game-wallet-20260923-combined-reward-wal` → `accepted`。当前 `js/core/coin.js`、`test/retention-wallet.js` 与既有写前/写后故障矩阵及 retention_logic_qa 非实现者接受记录吻合；相关源码无未提交差异。回执 `match3-game-wallet-review-20261001`，项目目标 `shared-memory/projects/match3-game/match3-game-combined-reward-wal` revision 1。仅覆盖同步本地存储的金币+hammer共享收据恢复，不包含云端ACK/outbox、清档、并发或跨设备保证。
+  - `shared-memory/inbox/match3-game/battle/match3-game-battle-20260925-transaction-poll-contention` → `accepted`（纠正历史边界后有界提炼）。当前 `match3-wechat/cloudfunctions/battle/index.js` 的 query 只在心跳到期/首次结算/旧结算修复时写房间；已完整结算的 finished 不每秒重写，但保留到期续局心跳和既有留存幂等捕获。与 `test/battle-query-transaction.js` 及 [对战检查记录](../docs/release/pvp-dual-account-checklist.md) 中 battle_qa 指出问题后修复、复验和独立复核闭环一致；相关源码无未提交差异。回执 `match3-game-battle-poll-review-20261001`，项目目标 `shared-memory/projects/match3-game/match3-game-room-poll-write-gating` revision 1。不沿用候选“finished持续写入”的旧断言，不把3秒/10秒外推为通用参数或正式版故障根因。
+  - `shared-memory/inbox/sanxiao/general/sanxiao-catalog-20260928-source-driven-silhouettes` → `not-adopted`。用户已接受灰底、猫咪局部模糊，当前 catalog-ui/assets/catalog-locked-art 与 [视觉记录](ui-production.md) 一致；旧黑色 PNG 只作 alpha 遮罩，已迁入 catalog 子包。候选的黑色展示/主包路径已过时，不晋升为当前规则。回执 `match3-game-catalog-silhouette-review-20261001`，无 approved 目标；源图遮罩方法仅留历史参考，本地预览不证明微信/真机接受。
+- 实际采用/检查：治理流程已用于上述三条“核现行源码与既有独立QA → 有界决定 → 精确计划写入参数校验 → MCP追加回执/项目目标 → 回读关联检查”。五条参数预检均通过、`overwrite=false`，三回执与两目标已实际写入并回读确认。只复用相关既有通过证据，未为记忆审阅重复跑游戏测试；新批准方法卡尚未宣称有新的运行时应用效果。写后 audit：项目 approved 2、模块 approved 0、回执 3；无冲突、孤立批准、accepted 缺目标或无效记录。余14条候选不在本批授权内，不一并批准。
+- 首次正常交接的采用行为已得到以上实际记录，结束一次性跟踪，不新增调度/监控。后续交接仍注明候选 ID 或 `none`，仅本项目主任务晋升；跨项目模块晋升仍须两个不同真实项目及用户对具体做法的明确批准。此次局部记忆接受不解除手动领奖、整体留存、微信/真机或其他尚未完成的独立QA与发布门槛。
+<!-- memory-adoption-20261001:end -->

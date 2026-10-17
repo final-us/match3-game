@@ -66,6 +66,12 @@
 
 2026-09-26包体调整：上述4张奶糖成长JPEG原字节移动为当前运行路径 `catalog/naitang-familiar.jpg`、`catalog/naitang-trust.jpg`、`catalog/naitang-attachment.jpg`、`catalog/naitang-best-friend.jpg`，改由 `CATALOG_ASSETS` 在原生图鉴分包加载；上段 `res/catalog/` 路径仅记录迁移前历史。初见图集仍在主包，图鉴分包共16张成长原画。未重新生成、裁切或降低画质。
 
+### 普通棋子最新来源 · C 绘本手绘（2026-10-05，本地候选）
+
+用户在A哑光陶土、B羊毛毡、C绘本手绘的本地对比后选择C。`res/piece1-runtime.png` 至 `res/piece5-runtime.png` 及对应 `res/piece1-v2.png` 至 `res/piece5-v2.png` 已替换为本项目内置OpenAI image_gen生成的同一张五猫绘本原图派生；没有新增生成任务或外部供应商上传。完整最终提示、原始输出路径、生成时参考图、实际裁切及替换前备份见 `assets/_incoming/piece-styles-20261005/prompts.json` 和 `assets/_incoming/piece-styles-20261005/selected-c/provenance.json`。精确模型、seed、费用未由工具返回。
+
+保留原生alpha；本地Sharp仅按透明间隙裁切、等比缩放、透明留白及无损PNG编码。512×512源图由原始裁片制作，256×256运行图与用户选中的预览解码像素完全一致；映射、512px源图排除规则及玩法逻辑不变。用户选择的是材质方向，整盘整合效果仍待确认，微信开发者工具/真机、商业账户条款及发布门槛仍按既有流程；本次未提交、上传或发布。下方琉璃棋子来源和早期字节表对这十个文件仅作历史记录。
+
 ### 本地 B 视觉候选覆盖（2026-09-12，尚未发布）
 
 2026-09-13 地图/结算最新覆盖：`res/level-background-v2.jpg`为独立云海玻璃阶梯640×1384背景；`res/ui/result-happy-cat.png`、`res/ui/result-sad-cat.png`为新320×320真透明角色（单人及PvP共用）。内置ImageGen各生成一次，猫图checker-alpha保留原生alpha并经白/深底检查，确定性缩放。完整来源/提示/透明报告/hash/备份与运行映射见assets/_incoming/moon-ui-runtime/map-results/README.md。地图节点改为原生Canvas，旧三枚节点PNG仍注册保留但地图不绘制。本批本地待验收，未上线；下方早期来源表对此三文件仅作历史来源。商店/设置/道具前批现已获用户确认。
@@ -227,7 +233,9 @@ res/toolBar.png
 | --- | --- |
 | `res/audio/sfx-acoustic.mp3` | 用户确认Mixkit消除/升调连消和Freesound冰裂，保留四连生成音A；横竖触发采用Magic wand sparkle，通关采用Christmas reveal tones。21个cue，15.255510秒、22050Hz、单声道、32,000bit/s、61,022 bytes；SHA256 `dffb3257a79902f517013afdf09597fc13e36ba4e92e095d74444c542521337e`。 |
 
-正式音效仅包含上述最终精灵；保留的animationIsaac爆破为CC0，Kinoton火箭仅作归档；qubodup历史组合音乐盒已无运行调用，本轮从精灵移除并保留归档，原始输入保存在`docs/design/audio-sources/`。fourClear、clear、ice、rocket、bomb和win以外的15个正式cue来自既有项目原创文字生成/点击变体。运行时一次读取并解码精灵，最多12声并发。四枚成线时以一次fourClear替代本轮clear/combo，不额外提前响火箭音；特殊组合仍按当前代码同时播放前两个特殊类别并去重，优先于四连。胜负BGM压低等未改。
+上述21cue精灵保持不变；保留的animationIsaac爆破为CC0，Kinoton火箭仅作归档；qubodup历史组合音乐盒已无运行调用，原始输入保存在`docs/design/audio-sources/`。fourClear、clear、ice、rocket、bomb和win以外的15个cue来自既有项目原创文字生成/点击变体。2026-10-01另采用用户选定的ElevenLabs猫爪A与重做金属铃铛A；`res/audio/sfx-new-specials.wav`为独立monoPCM16/22050、1.849977秒、81,628字节，SHA256 `e1002e38f672d4eb43d35d84cccc30d325815b31172d5cda7ba4311402ead2d3`。来源、10/1条款复核、完整处理/批准记录及限制见`docs/design/audio-runtime-v9.md`与本地`assets/_incoming/special-sfx-runtime-20261001/runtime-provenance.json`；仅原创文字，完整已接受试听稿重采样/拼接，无新创作、上传或旧精灵重编码。
+
+两个bank各读取/解码一次、独立失败状态、共用最多12声并发。四连规则及旧101–104音色不变；组合仍按前两个类别去重，新105/106使用棋盘共用动作起点，其他类别仍同时播放。胜负BGM压低不改；取消SFX涵盖所有已排程节点。商业用途受既有付费账户条款限制，不代表输出唯一、允许任何再上传/训练或已获发布授权。微信/真机另验。
 
 四连来源：[Shimmer glitter magic](https://opengameart.org/content/shimmer-glitter-magic)，作者The Berklee College of Music / Berklee，OGA提交者qubodup；原始[Berklee samples v.13归档](https://archive.org/details/Berklee44v13)及素材页均标明[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)。2026-09-14用户选定A；原FLAC SHA256为`b6802e6ef22189058a4406ae5c7bda9a54c47e908fad3fd6212650c1aa0170af`。仅重采样/编码，未变调、增益或裁剪；素材原文件、署名要求和构建脚本见`assets/_incoming/licensed-bling-candidates-20260914/`。署名/许可链接/改编说明已加入随包`THIRD_PARTY_NOTICES.txt`，其中明确本项目版权不限制该素材的CC许可权利，并提供原FLAC无保护下载地址；不对该声追加DRM或额外法律限制、不声称作者背书。没有采用熊猫办公原音或被否决的生成候选。
 

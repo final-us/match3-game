@@ -6,6 +6,22 @@ const typography = require('./typography');
 const moon = require('./moon-controls');
 
 const CONTENT = {
+    moonbud: {
+        title: '趁开放，收走月相花苞',
+        lines: ['花苞锁住猫，不能交换或下落。', '开放：命中消猫，收走花苞。', '闭合：保护猫和花苞，等待开放。', '成功操作与连锁结束后，切换开合。']
+    },
+    parcel: {
+        title: '把小鱼干包裹送到出口',
+        lines: ['清理下方，包裹会竖直下落。', '落到底部金色出口就能送达。', '包裹不能交换，也不能用道具清除。']
+    },
+    tracking_paw: {
+        title: '拼方块，获得追踪猫爪',
+        lines: ['2×2同色方块合成猫爪。', '交换猫爪，清身边十字。', '再追踪远处障碍或目标。']
+    },
+    color_bell: {
+        title: '染色铃铛，帮猫咪变色',
+        lines: ['四只同色Z形合成铃铛。', '与普通猫交换，选择颜色。', '邻猫变色，凑够3只才消除。']
+    },
     solo_intro: {
         title: '滑动相邻猫咪',
         lines: ['从相邻格向左、右、上或下滑动', '凑够 3 只同色猫咪即可消除。']
@@ -18,9 +34,17 @@ const CONTENT = {
         title: '果冻与冰块',
         lines: ['果冻被命中会破一层，多次命中才能清掉。', '冰块被命中或被相邻消除波及时会融化。']
     },
+    jelly_clear: {
+        title: '清掉果冻，完成目标',
+        lines: ['在果冻格消除猫咪，就能破除一层。', '多层果冻需要再次命中。', '把目标果冻全部清完即可通关。']
+    },
+    ice_clear: {
+        title: '打碎冰块，完成目标',
+        lines: ['在冰块旁消除，或用特殊棋子命中。', '破冰后猫咪仍会留在棋盘上。', '把目标冰块全部清完即可通关。']
+    },
     yarn_spread: {
         title: '蔓延毛线',
-        lines: ['在源头旁消除，命中3次即可解开毛线。', '每2次有效交换蔓延1格；毛线格不能交换。']
+        lines: ['源头邻消或直击3次，清全藤。', '延伸藤只能直击，解开留猫。', '每2次有效交换蔓延，最多3藤。', '毛线锁格；邻消不伤延伸藤。']
     },
     solo_item: {
         title: '单人道具',
@@ -110,7 +134,26 @@ function draw(ctx, screen, key, context) {
     ctx.fillStyle = '#4E5B82';
     typography.set(ctx, 14, undefined, false, 'center', 'middle');
     const lines = wrapLines(ctx, content.lines, cardW - 44);
-    const lineTop = cardY + 130 - (lines.length - 1) * 12;
+    const recipe = key === 'tracking_paw' || key === 'color_bell';
+    if (recipe) {
+        const cells = key === 'tracking_paw' ? [[0, 0], [0, 1], [1, 0], [1, 1]] : [[0, 0], [0, 1], [1, 1], [1, 2]];
+        const columns = key === 'tracking_paw' ? 2 : 3;
+        cells.forEach(function (cell) {
+            const centerX = width / 2 + (cell[1] - (columns - 1) / 2) * 22;
+            const centerY = cardY + 75 + cell[0] * 22;
+            ctx.fillStyle = '#C9B6F0';
+            ctx.strokeStyle = '#8D76BB';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#4E5B82';
+            ctx.fillRect(centerX - 3, centerY - 1, 1.5, 2);
+            ctx.fillRect(centerX + 2, centerY - 1, 1.5, 2);
+        });
+    }
+    const lineTop = cardY + (recipe ? 146 : 130) - (lines.length - 1) * 12;
     for (let i = 0; i < lines.length; i++) {
         typography.drawFit(ctx, lines[i], width / 2, lineTop + i * 24, cardW - 44, {
             size: 14, minSize: 14, align: 'center'

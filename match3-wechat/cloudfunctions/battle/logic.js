@@ -3,6 +3,7 @@
 // All gameplay/security thresholds live here so production tuning is auditable.
 const CONFIG = Object.freeze({
     BATTLE_DURATION_MS: 60 * 1000,
+    SCORE_FINALIZATION_MS: 10 * 1000,
     READY_COUNTDOWN_MS: 3000,
     FREEZE_DURATION_MS: 3000,
     DISTURB_DURATION_MS: 5000,
@@ -145,6 +146,23 @@ function validateRoomItemConfig(room, items, ready, config) {
     return { ok: true, items: normalized };
 }
 
+function hasItemCooldowns(player) {
+    return !!player && !!player.itemCooldowns && typeof player.itemCooldowns === 'object' &&
+        !Array.isArray(player.itemCooldowns);
+}
+
+// Project old shared locks onto every item until the first successful cast migrates the player.
+function itemCooldowns(room, player, config) {
+    const independent = hasItemCooldowns(player);
+    const baseline = player ? Math.max(Number(player.itemCooldownUntil) || 0,
+        Number(player.activeEffectUntil) || 0) : 0;
+    const result = {};
+    for (const item of itemRules(room, config).ITEM_ALLOWLIST) {
+        result[item] = independent ? Number(player.itemCooldowns[item]) || 0 : baseline;
+    }
+    return result;
+}
+
 function validateItemUse(room, player, item, at, config) {
     const rules = config || CONFIG;
     if (itemRules(room, rules).ITEM_ALLOWLIST.indexOf(item) < 0) return { ok: false, err: '未知道具' };
@@ -155,8 +173,12 @@ function validateItemUse(room, player, item, at, config) {
     if (!player || !player.items || !finiteNonNegativeInteger(player.items[item]) || player.items[item] <= 0) {
         return { ok: false, err: '道具不足' };
     }
-    if (Number(player.itemCooldownUntil) > at) return { ok: false, err: '道具冷却中' };
-    if (Number(player.activeEffectUntil) > at) return { ok: false, err: '已有道具生效中' };
+    if (hasItemCooldowns(player)) {
+        if (itemCooldowns(room, player, rules)[item] > at) return { ok: false, err: '道具冷却中' };
+    } else {
+        if (Number(player.itemCooldownUntil) > at) return { ok: false, err: '道具冷却中' };
+        if (Number(player.activeEffectUntil) > at) return { ok: false, err: '已有道具生效中' };
+    }
     if (Number(player.frozenUntil) > at) return { ok: false, err: '冻结中不能使用道具' };
     return { ok: true };
 }
@@ -166,8 +188,10 @@ function validateRawScoreSamples(room, player, samples, at, config) {
     if (!Array.isArray(samples) || samples.length > rules.SCORE_SAMPLE_BATCH_MAX) {
         return { ok: false, err: '分数样本格式非法' };
     }
-    if (room.status !== 'playing' || !Number.isFinite(room.startTime) || at < room.startTime ||
-        at >= room.startTime + rules.BATTLE_DURATION_MS) return { ok: false, err: '对局未开始或已结束' };
+    if ((room.status !== 'playing' && !(room.status === 'finished' && player.scoreFinalized === true)) ||
+        !Number.isFinite(room.startTime) || at < room.startTime ||
+        at >= room.startTime + rules.BATTLE_DURATION_MS +
+            (room.itemRulesVersion === 3 ? rules.SCORE_FINALIZATION_MS : 0)) return { ok: false, err: '对局未开始或已结束' };
     let seq = Number(player.scoreSeq) || 0;
     let rawScore = Number(player.rawScore) || 0;
     let score = Number(player.score) || 0;
@@ -178,6 +202,7 @@ function validateRawScoreSamples(room, player, samples, at, config) {
         if (!sample || !finiteNonNegativeInteger(sample.seq) || !finiteNonNegativeInteger(sample.score) ||
             !Number.isSafeInteger(sample.at)) return { ok: false, err: '分数样本格式非法' };
         if (sample.seq === seq && lastSample && sample.score === lastSample.score && sample.at === lastSample.at) continue;
+        if (player.scoreFinalized === true) return { ok: false, err: 'SCORE_FINALIZED' };
         if (sample.seq !== seq + 1) return { ok: false, err: 'STALE_SCORE_SAMPLE' };
         if (sample.at < room.startTime || sample.at >= room.startTime + rules.BATTLE_DURATION_MS ||
             sample.at < lastAt ||
@@ -240,7 +265,13 @@ function determineFinish(room, queryingOpenid, at, config) {
     if (room.status !== 'playing' || !Number.isFinite(room.startTime) || room.startTime <= 0) {
         return { finished: false };
     }
-    if (at >= room.startTime + rules.BATTLE_DURATION_MS) return { finished: true, reason: 'time' };
+    if (at >= room.startTime + rules.BATTLE_DURATION_MS) {
+        if (room.itemRulesVersion === 3 && at < room.startTime + rules.BATTLE_DURATION_MS + rules.SCORE_FINALIZATION_MS &&
+            !(room.players.length === 2 && room.players.every(function (player) { return player.scoreFinalized === true; }))) {
+            return { finished: false };
+        }
+        return { finished: true, reason: 'time' };
+    }
     if (at < room.startTime) return { finished: false };
 
     const players = Array.isArray(room.players) ? room.players : [];
@@ -320,6 +351,7 @@ module.exports = {
     validateItemConfig: validateItemConfig,
     itemRules: itemRules,
     validateRoomItemConfig: validateRoomItemConfig,
+    itemCooldowns: itemCooldowns,
     validateItemUse: validateItemUse,
     validateRawScoreSamples: validateRawScoreSamples,
     scoreCeiling: scoreCeiling,

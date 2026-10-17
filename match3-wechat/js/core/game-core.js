@@ -3,12 +3,15 @@
  * 职责：交换校验、消除循环（消除→下落→填充→连消）、计分、胜负判定
  * 障碍系统：
  *   - 果冻（jellyGrid）：棋子在该格被消除时果冻破一层，多层需多次消除；目标=清完所有果冻
- *   - 冰块（iceGrid）：罩住棋子使其不能主动交换移动，只能被相邻消除波及，消除时冰碎棋消
+ *   - 冰块（iceGrid）：罩住棋子使其不能主动交换移动，自身/相邻消除命中后拆冰，普通猫保留
  * 动画设计：每一步通过回调（返回 Promise）留出动画时间，逻辑与视觉通过事件同步
  */
 
 const gridUtil = require('./grid');
 const config = require('./config');
+const trackingPaw = require('./tracking-paw');
+const colorBell = require('./color-bell');
+const specialCombos = require('./special-combos');
 
 function toTimerMs(seconds) {
     const value = Number(seconds);
@@ -30,8 +33,9 @@ class GameCore {
      *   obstacles: { 'row:col': 1 } 冰块
      * @param {object} callbacks 回调 { onSwap, onInvalidSwap, onMatch, onGravity, onFill, onLevelEnd }
      */
-    constructor(levelData, callbacks) {
+    constructor(levelData, callbacks, random) {
         this.level = levelData;
+        this.random = random;
         this.commonTypes = config.getCommonTypes(levelData.colorCount);
         this.callbacks = callbacks || {};
         this.grid = [];
@@ -57,6 +61,9 @@ class GameCore {
         this.pendingRemovals = []; // 道具直接命中的待消除位置
         this.pendingCombo = null; // 特殊棋子交换组合
         this.preferredGenerationPositions = []; // 玩家操作形成特殊棋子的优先落点
+        this.pendingPawSquares = [];
+        this.pendingBellShapes = [];
+        this.pendingBellColors = {};
         this.specialBases = {}; // 特殊棋子的原普通颜色，随棋子一起移动
         this.collectedCounts = {};
         this.maxCascade = 0;
@@ -69,7 +76,7 @@ class GameCore {
         const rows = this.level.rows;
         const cols = this.level.columns;
 
-        this.grid = gridUtil.createGrid(rows, cols, this.commonTypes);
+        this.grid = gridUtil.createGrid(rows, cols, this.commonTypes, this.random);
         this.score = 0;
         this.movesLeft = this.level.moveCount || 25;
         this.timeLimitMs = toTimerMs(this.level.timeLimitSec);
@@ -84,6 +91,9 @@ class GameCore {
         this.pendingRemovals = [];
         this.pendingCombo = null;
         this.preferredGenerationPositions = [];
+        this.pendingPawSquares = [];
+        this.pendingBellShapes = [];
+        this.pendingBellColors = {};
         this.specialBases = {};
         this.collectedCounts = {};
         this.maxCascade = 0;
@@ -115,14 +125,28 @@ class GameCore {
             for (let c = 0; c < cols; c++) this.iceGrid[r][c] = 0;
         }
         const obstacles = this.level.obstacles || {};
+        const iceGoals = (this.level.goals || []).filter((goal) => goal && goal.type === 'ice');
+        if (iceGoals.length && (!this.level.obstacles || typeof obstacles !== 'object' || Array.isArray(obstacles))) {
+            throw new Error('Invalid ice configuration');
+        }
         for (const key in obstacles) {
             const parts = key.split(':');
             const r = parseInt(parts[0], 10);
             const c = parseInt(parts[1], 10);
+            if (iceGoals.length && (!/^\d+:\d+$/.test(key) || obstacles[key] !== 1 ||
+                r < 0 || r >= rows || c < 0 || c >= cols || this.iceGrid[r][c])) {
+                throw new Error('Invalid ice position or layer');
+            }
             if (r >= 0 && r < rows && c >= 0 && c < cols) {
                 this.iceGrid[r][c] = 1;
             }
         }
+        this.iceTotal = this.getIceLeft();
+        iceGoals.forEach((goal) => {
+            if (!Number.isInteger(goal.target) || goal.target <= 0 || goal.target !== this.iceTotal) {
+                throw new Error('Invalid ice goal target');
+            }
+        });
         this.yarnSource = null;
         this.yarnVines = {};
         this.yarnTurns = 0;
@@ -138,6 +162,101 @@ class GameCore {
                     health: yarn.health, maxHealth: yarn.health };
             }
         }
+        this.initNewObstacles();
+        (this.level.initialSpecials || []).forEach((piece) => {
+            const position = { row: piece.row, column: piece.column };
+            if (!this.isBlocked(position) && config.isSpecialType(piece.type)) {
+                const baseType = gridUtil.getPieceType(this.grid, position);
+                gridUtil.setPieceType(this.grid, position, piece.type);
+                this.setSpecialBaseType(position, baseType);
+            }
+        });
+        // Flower locks can remove the bare board's last swap. Construction has no animation owner yet.
+        if (this.moonbudTotal > 0 && !this.hasValidMoves()) this.reshuffleGrid(true);
+    }
+
+    initNewObstacles() {
+        const buds = this.level.moonbuds === undefined ? [] : this.level.moonbuds;
+        const parcels = this.level.parcels === undefined ? [] : this.level.parcels;
+        const exits = this.level.parcelExits === undefined ? [] : this.level.parcelExits;
+        if (!Array.isArray(buds) || !Array.isArray(parcels) || !Array.isArray(exits)) {
+            throw new Error('Invalid moonbud/parcel configuration');
+        }
+        const occupied = {};
+        const legal = (pos) => Number.isInteger(pos.row) && Number.isInteger(pos.column) &&
+            gridUtil.isValidPosition(this.grid, pos);
+        const claim = (pos) => {
+            const key = positionKey(pos);
+            if (!legal(pos) || occupied[key] || this.isBlocked(pos) ||
+                (this.level.initialSpecials || []).some((piece) => positionKey(piece) === key)) {
+                throw new Error('Invalid or overlapping moonbud/parcel position');
+            }
+            occupied[key] = true;
+        };
+        if (exits.some((column, index) => !Number.isInteger(column) || column < 0 ||
+            column >= this.level.columns || exits.indexOf(column) !== index)) {
+            throw new Error('Invalid parcel exit');
+        }
+        this.moonbudCells = {};
+        this.moonbudOpen = true;
+        this.moonbudPhasePending = false;
+        buds.forEach((key) => {
+            if (typeof key !== 'string' || !/^\d+:\d+$/.test(key)) throw new Error('Invalid moonbud position');
+            const parts = key.split(':').map(Number);
+            const pos = { row: parts[0], column: parts[1] };
+            claim(pos);
+            this.moonbudCells[positionKey(pos)] = true;
+        });
+        const ids = new Set();
+        this.parcels = parcels.map((piece) => {
+            if (!piece || typeof piece.id !== 'string' || !piece.id || ids.has(piece.id) ||
+                exits.indexOf(piece.column) === -1) throw new Error('Invalid parcel identity or route');
+            claim(piece);
+            ids.add(piece.id);
+            gridUtil.setPieceType(this.grid, piece, config.OBJECT_TYPES.PARCEL);
+            return { id: piece.id, row: piece.row, column: piece.column };
+        });
+        this.parcelExits = exits.slice();
+        this.parcelDelivered = 0;
+        this.parcelTotal = this.parcels.length;
+        this.moonbudTotal = buds.length;
+        (this.level.goals || []).forEach((goal) => {
+            if (!goal || (goal.type !== 'moonbud' && goal.type !== 'parcel')) return;
+            const total = goal.type === 'moonbud' ? this.moonbudTotal : this.parcelTotal;
+            if (!Number.isInteger(goal.target) || goal.target <= 0 || goal.target !== total) {
+                throw new Error('Invalid moonbud/parcel goal target');
+            }
+        });
+    }
+
+    getMoonbudsLeft() { return Object.keys(this.moonbudCells).length; }
+
+    getIceLeft() {
+        return this.iceGrid.reduce((total, row) => total + row.filter((cell) => cell === 1).length, 0);
+    }
+
+    getParcelsLeft() { return this.parcels.length; }
+
+    isParcel(pos) { return gridUtil.getPieceType(this.grid, pos) === config.OBJECT_TYPES.PARCEL; }
+
+    moveParcels(changes) {
+        changes.forEach((change) => {
+            const parcel = this.parcels.find((piece) => gridUtil.comparePositions(piece, change[0]));
+            if (parcel) { parcel.row = change[1].row; parcel.column = change[1].column; }
+        });
+    }
+
+    async deliverParcels() {
+        const arrived = this.parcels.filter((piece) => piece.row === this.level.rows - 1 &&
+            this.parcelExits.indexOf(piece.column) !== -1);
+        if (!arrived.length) return false;
+        arrived.forEach((piece) => gridUtil.setPieceType(this.grid, piece, 0));
+        this.parcels = this.parcels.filter((piece) => arrived.indexOf(piece) === -1);
+        this.parcelDelivered += arrived.length;
+        if (this.callbacks.onParcelDelivered) await this.callbacks.onParcelDelivered({
+            parcels: arrived, delivered: this.parcelDelivered, total: this.parcelTotal
+        });
+        return true;
     }
 
     /** 是否可交互 */
@@ -242,7 +361,7 @@ class GameCore {
             const neighbors = this.yarnNeighbors(sources[i]);
             for (let j = 0; j < neighbors.length; j++) {
                 const pos = neighbors[j];
-                if (this.isBlocked(pos) || config.isSpecialType(gridUtil.getPieceType(this.grid, pos))) continue;
+                if (this.isBlocked(pos) || this.isParcel(pos) || config.isSpecialType(gridUtil.getPieceType(this.grid, pos))) continue;
                 const key = positionKey(pos);
                 this.yarnVines[key] = true;
                 if (this.hasValidMoves()) return copyPosition(pos);
@@ -324,9 +443,19 @@ class GameCore {
             return false;
         }
 
+        this.pendingPawSquares = trackingPaw.newSquares(this, from, to);
+        this.pendingBellShapes = colorBell.newShapes(this, from, to);
+        this.pendingBellColors = {};
+        if (typeA === config.SPECIAL_TYPES.COLOR_BELL && config.getPieceTypeDef(typeB)) {
+            this.pendingBellColors[positionKey(to)] = typeB;
+        }
+        if (typeB === config.SPECIAL_TYPES.COLOR_BELL && config.getPieceTypeDef(typeA)) {
+            this.pendingBellColors[positionKey(from)] = typeA;
+        }
         gridUtil.swapTypeInGrid(this.grid, from, to);
         this.swapSpecialBases(from, to);
         this.movesLeft--;
+        this.moonbudPhasePending = this.moonbudTotal > 0;
         this.yarnAdvancePending = true;
         this.preferredGenerationPositions = [copyPosition(to), copyPosition(from)];
 
@@ -344,6 +473,7 @@ class GameCore {
             }
         }
 
+        this.processing = true;
         if (this.callbacks.onSwap) await this.callbacks.onSwap(from, to);
 
         await this.processGrid();
@@ -364,13 +494,16 @@ class GameCore {
         const typeFrom = gridUtil.getPieceType(this.grid, from);
         const typeTo = gridUtil.getPieceType(this.grid, to);
 
+        if (this.isParcel(from) || this.isParcel(to)) return false;
+
         // 任一方向为特殊棋子 → 交换总是有效（用于触发特效）
         if (config.isSpecialType(typeFrom) || config.isSpecialType(typeTo)) return true;
 
         const tempGrid = gridUtil.cloneGrid(this.grid);
         gridUtil.swapTypeInGrid(tempGrid, from, to);
         const matches = gridUtil.getMatches(tempGrid, [from, to], this.minMatchCount);
-        return matches.length >= 1;
+        return matches.length >= 1 || trackingPaw.newSquares(this, from, to).length > 0 ||
+            colorBell.newShapes(this, from, to).length > 0;
     }
 
     chooseGenerationPosition(positions, preferred, fallback) {
@@ -381,7 +514,7 @@ class GameCore {
     }
 
     /** 收集消除位置并生成特殊棋子：四连火箭、五连彩球、T/L 炸弹。 */
-    collectWithSpecials(matches, preferred) {
+    collectWithSpecials(matches, preferred, pawSquares, bellShapes) {
         preferred = preferred || [];
         const reserved = [];
         const generated = [];
@@ -433,10 +566,34 @@ class GameCore {
             }
         }
 
+        const claimedSquares = [];
+        const acceptedSquares = (pawSquares || []).filter((square) => {
+            if (square.some(function (cell) { return gridUtil.includesPosition(claimedSquares, cell); })) return false;
+            if (matches.some(function (match, index) {
+                return (match.length >= 4 || usedMatches[index]) && square.some(function (cell) {
+                    return gridUtil.includesPosition(match, cell);
+                });
+            })) return false;
+            reserve(this.chooseGenerationPosition(square, preferred, square[0]), config.SPECIAL_TYPES.TRACKING_PAW);
+            square.forEach(function (cell) { claimedSquares.push(cell); });
+            return true;
+        });
+        const acceptedBells = (bellShapes || []).filter((shape) => {
+            if (shape.some(function (cell) { return gridUtil.includesPosition(claimedSquares, cell); })) return false;
+            if (matches.some(function (match, index) {
+                return (match.length >= 4 || usedMatches[index]) && shape.some(function (cell) {
+                    return gridUtil.includesPosition(match, cell);
+                });
+            })) return false;
+            reserve(this.chooseGenerationPosition(shape, preferred, shape[0]), config.SPECIAL_TYPES.COLOR_BELL);
+            shape.forEach(function (cell) { claimedSquares.push(cell); });
+            return true;
+        });
         const removed = [];
-        for (let i = 0; i < matches.length; i++) {
-            for (let j = 0; j < matches[i].length; j++) {
-                const pos = matches[i][j];
+        const allMatches = matches.concat(acceptedSquares, acceptedBells);
+        for (let i = 0; i < allMatches.length; i++) {
+            for (let j = 0; j < allMatches[i].length; j++) {
+                const pos = allMatches[i][j];
                 if (!gridUtil.includesPosition(reserved, pos) && !gridUtil.includesPosition(removed, pos)) {
                     removed.push(copyPosition(pos));
                 }
@@ -493,7 +650,7 @@ class GameCore {
     }
 
     /** 计算特殊交换组合的命中范围，并把彩球目标色转换为对应特殊棋子。 */
-    applySpecialCombo(combo) {
+    applySpecialCombo(combo, excluded, yarnHit) {
         const a = combo.first;
         const b = combo.second;
         const targets = [];
@@ -532,9 +689,13 @@ class GameCore {
                 for (let c = 0; c < cols; c++) {
                     if (this.grid[r][c] !== targetType) continue;
                     const pos = { row: r, column: c };
+                    if (this.moonbudCells[positionKey(pos)] || this.isYarnRoot(pos) || this.isYarnVine(pos)) {
+                        this.addTarget(targets, pos);
+                        continue;
+                    }
                     const transformed = this.isRocket(other.type)
                         ? (transformIndex++ % 2 === 0 ? config.SPECIAL_TYPES.H_ROCKET : config.SPECIAL_TYPES.V_ROCKET)
-                        : config.SPECIAL_TYPES.BOMB;
+                        : other.type;
                     gridUtil.setPieceType(this.grid, pos, transformed);
                     this.setSpecialBaseType(pos, targetType);
                     this.addTarget(targets, pos);
@@ -543,6 +704,10 @@ class GameCore {
             return { targets: targets, suppressed: suppressed };
         }
 
+        if (a.type === config.SPECIAL_TYPES.TRACKING_PAW || b.type === config.SPECIAL_TYPES.TRACKING_PAW ||
+            a.type === config.SPECIAL_TYPES.COLOR_BELL || b.type === config.SPECIAL_TYPES.COLOR_BELL) {
+            return specialCombos.plan(this, combo, excluded, yarnHit);
+        }
         if (this.isRocket(a.type) && this.isRocket(b.type)) {
             for (let c = 0; c < cols; c++) this.addTarget(targets, { row: combo.center.row, column: c });
             for (let r = 0; r < rows; r++) this.addTarget(targets, { row: r, column: combo.center.column });
@@ -569,7 +734,7 @@ class GameCore {
     }
 
     /** 特殊棋子触发连锁；suppressed 中的组合源不再重复触发自身默认效果。 */
-    expandSpecialTriggers(removed, suppressed) {
+    expandSpecialTriggers(removed, suppressed, yarnHit, colorChanges, reserved, comboEffects) {
         const grid = this.grid;
         const rows = grid.length;
         const cols = grid[0].length;
@@ -588,23 +753,49 @@ class GameCore {
         let guard = 0;
         while (queue.length && guard < 300) {
             guard++;
-            const pos = queue.pop();
+            let next = queue.length - 1;
+            while (next >= 0) {
+                const effect = comboEffects && comboEffects[positionKey(queue[next])];
+                if (!effect || !effect.after || triggered[positionKey(effect.after)]) break;
+                next--;
+            }
+            if (next < 0) break;
+            const pos = queue.splice(next, 1)[0];
             const key = positionKey(pos);
-            if (triggered[key]) continue;
+            if (triggered[key] || this.isClosedMoonbud(pos)) continue;
             triggered[key] = true;
             const type = grid[pos.row][pos.column];
             const targets = [];
 
-            triggeredSpecials.push({ row: pos.row, column: pos.column, type: type });
+            const trigger = Object.assign({ row: pos.row, column: pos.column, type: type },
+                comboEffects && comboEffects[key]);
+            const origin = trigger.effectOrigin || pos;
+            triggeredSpecials.push(trigger);
 
             if (type === config.SPECIAL_TYPES.H_ROCKET) {
-                for (let c = 0; c < cols; c++) targets.push({ row: pos.row, column: c });
+                for (let c = 0; c < cols; c++) targets.push({ row: origin.row, column: c });
             } else if (type === config.SPECIAL_TYPES.V_ROCKET) {
-                for (let r = 0; r < rows; r++) targets.push({ row: r, column: pos.column });
+                for (let r = 0; r < rows; r++) targets.push({ row: r, column: origin.column });
             } else if (type === config.SPECIAL_TYPES.BOMB) {
                 for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) targets.push({ row: pos.row + dr, column: pos.column + dc });
+                    for (let dc = -1; dc <= 1; dc++) targets.push({ row: origin.row + dr, column: origin.column + dc });
                 }
+            } else if (type === config.SPECIAL_TYPES.TRACKING_PAW) {
+                this.addTarget(targets, pos);
+                this.yarnNeighbors(pos).forEach((neighbor) => this.addTarget(targets, neighbor));
+                if (!trigger.pawTargets) {
+                    const destination = trackingPaw.target(this, pos, removed.concat(targets), yarnHit);
+                    trigger.pawTargets = destination ? [specialCombos.snapshot(this, destination)] : [];
+                }
+                if (trigger.pawTargets.length) Object.assign(trigger, trigger.pawTargets[0]);
+                trigger.pawTargets.forEach(impact => this.addTarget(targets, impact.target));
+            } else if (type === config.SPECIAL_TYPES.COLOR_BELL) {
+                const color = trigger.color || this.pendingBellColors[key] || this.getSpecialBaseType(pos) ||
+                    this.getMostFrequentCommonType();
+                trigger.color = color;
+                trigger.colorChanges = trigger.skipDye || trigger.replicas ? [] :
+                    colorBell.dye(this, pos, color, removed.concat(reserved || []), trigger.dyeRadius);
+                if (colorChanges) trigger.colorChanges.forEach(function (change) { colorChanges.push(change); });
             } else if (type === config.SPECIAL_TYPES.COLOR_BALL) {
                 const targetType = this.getMostFrequentCommonType();
                 for (let r = 0; r < rows; r++) {
@@ -614,6 +805,9 @@ class GameCore {
                 }
             }
 
+            if (comboEffects) {
+                trigger.hitTargets = targets.filter(target => gridUtil.isValidPosition(grid, target));
+            }
             for (let k = 0; k < targets.length; k++) {
                 const target = targets[k];
                 if (!gridUtil.isValidPosition(grid, target)) continue;
@@ -627,11 +821,16 @@ class GameCore {
         return triggeredSpecials;
     }
 
-    /** 判断位置是否被果冻/冰块覆盖（覆盖棋子锁定，不参与下落） */
+    isClosedMoonbud(pos) {
+        return !this.moonbudOpen && !!(this.moonbudCells && this.moonbudCells[positionKey(pos)]);
+    }
+
+    /** 覆盖棋子锁定交换与下落；命中保护由各障碍单独处理。 */
     isBlocked(pos) {
         if (!gridUtil.isValidPosition(this.grid, pos)) return true;
         return this.jellyGrid[pos.row][pos.column] > 0 || this.iceGrid[pos.row][pos.column] === 1 ||
-            this.isYarnRoot(pos) || this.isYarnVine(pos);
+            this.isYarnRoot(pos) || this.isYarnVine(pos) ||
+            !!(this.moonbudCells && this.moonbudCells[positionKey(pos)]);
     }
 
     /** 是否存在可行交换（排除被覆盖棋子作为交换源/目标） */
@@ -662,15 +861,13 @@ class GameCore {
 
     /** 交换后是否会产生匹配（克隆棋盘检测，不修改实际棋盘） */
     swapCreatesMatch(from, to) {
-        const temp = gridUtil.cloneGrid(this.grid);
-        gridUtil.swapTypeInGrid(temp, from, to);
-        return gridUtil.getMatches(temp, [from, to], this.minMatchCount).length > 0;
+        return this.validateMove(from, to);
     }
 
     /**
      * 自动重排：棋盘无可行交换时，重建棋子（保留障碍层，确保无匹配且有可行步）
      */
-    async autoReshuffle() {
+    reshuffleGrid(preserveInitialSpecials) {
         const types = this.commonTypes;
         const previousGrid = gridUtil.cloneGrid(this.grid);
         const previousBases = Object.assign({}, this.specialBases);
@@ -679,7 +876,8 @@ class GameCore {
         for (let row = 0; row < previousGrid.length; row++) {
             for (let column = 0; column < previousGrid[row].length; column++) {
                 const pos = { row: row, column: column };
-                if (this.isBlocked(pos)) {
+                if (this.isBlocked(pos) || this.isParcel(pos) || (preserveInitialSpecials &&
+                    (this.level.initialSpecials || []).some((piece) => positionKey(piece) === positionKey(pos)))) {
                     held.push({ pos: pos, type: previousGrid[row][column] });
                     const key = positionKey(pos);
                     if (previousBases[key]) heldBases[key] = previousBases[key];
@@ -690,18 +888,25 @@ class GameCore {
         let ready = false;
         while (guard < 100) {
             guard++;
-            this.grid = gridUtil.createGrid(this.grid.length, this.grid[0].length, types);
+            this.grid = gridUtil.createGrid(this.grid.length, this.grid[0].length, types, this.random);
             for (let i = 0; i < held.length; i++) {
                 gridUtil.setPieceType(this.grid, held[i].pos, held[i].type);
             }
-            if (!gridUtil.getMatches(this.grid, null, this.minMatchCount).length && this.hasValidMoves()) {
+            // A fully protected closed-flower match cannot be changed by reshuffling other cats.
+            const otherMatches = gridUtil.getMatches(this.grid, null, this.minMatchCount).filter((match) =>
+                match.some((pos) => !this.isClosedMoonbud(pos)));
+            if (!otherMatches.length && this.hasValidMoves()) {
                 ready = true;
                 break;
             }
         }
         if (!ready) this.grid = previousGrid;
         this.specialBases = ready ? heldBases : previousBases;
-        if (!ready) return;
+        return ready;
+    }
+
+    async autoReshuffle() {
+        if (!this.reshuffleGrid()) return;
         if (this.callbacks.onReshuffle) {
             await this.callbacks.onReshuffle();
         }
@@ -738,7 +943,7 @@ class GameCore {
                 for (let i = 0; i < candidates.length; i++) {
                     const cand = candidates[i];
                     const type = gridUtil.getPieceType(this.grid, cand);
-                    if (type && !this.isBlocked(cand)) {
+                    if (type && !this.isBlocked(cand) && !this.isParcel(cand)) {
                         // 斜向滑入：相邻列棋子 → 覆盖格下方空位
                         gridUtil.setPieceType(this.grid, emptyBelow, type);
                         gridUtil.setPieceType(this.grid, cand, 0);
@@ -762,6 +967,7 @@ class GameCore {
         // 下落 + 动画（被覆盖棋子锁定不动）
         const changes = this.applyGravityBlocked();
         this.moveSpecialBases(changes);
+        this.moveParcels(changes);
         if (this.callbacks.onGravity && changes.length) {
             await this.callbacks.onGravity({ changes: changes });
         }
@@ -776,12 +982,18 @@ class GameCore {
         // 滑走后留下的空位再次下落
         const changes2 = this.applyGravityBlocked();
         this.moveSpecialBases(changes2);
+        this.moveParcels(changes2);
         if (this.callbacks.onGravity && changes2.length) {
             await this.callbacks.onGravity({ changes: changes2 });
         }
 
+        if (await this.deliverParcels()) {
+            await this.settleBoard();
+            return;
+        }
+
         // 填充 + 动画
-        const filled = gridUtil.fillUp(this.grid, this.commonTypes);
+        const filled = gridUtil.fillUp(this.grid, this.commonTypes, this.random);
         for (let i = 0; i < filled.length; i++) this.setSpecialBaseType(filled[i], 0);
         if (this.callbacks.onFill && filled.length) {
             await this.callbacks.onFill({ filled: filled });
@@ -802,17 +1014,20 @@ class GameCore {
 
         while (guard < 50) {
             guard++;
-            const matches = gridUtil.getMatches(this.grid, null, this.minMatchCount);
+            const matches = gridUtil.getMatches(this.grid, null, this.minMatchCount).filter((match) =>
+                match.some((pos) => !this.isClosedMoonbud(pos)));
             // 有道具命中或特殊组合时，即使无普通匹配也要继续处理。
             const hasPending = this.pendingTriggers.length > 0 || this.pendingRemovals.length > 0 ||
-                !!this.pendingCombo;
+                !!this.pendingCombo || this.pendingPawSquares.length > 0 || this.pendingBellShapes.length > 0;
             if (!matches.length && !hasPending) break;
             round++;
             if (round > this.maxCascade) this.maxCascade = round;
 
             const preferred = this.preferredGenerationPositions;
             this.preferredGenerationPositions = [];
-            const collect = this.collectWithSpecials(matches, preferred);
+            const collect = this.collectWithSpecials(matches, preferred, this.pendingPawSquares, this.pendingBellShapes);
+            this.pendingPawSquares = [];
+            this.pendingBellShapes = [];
             const allRemoved = collect.removed.slice();
             const generated = collect.generated;
 
@@ -826,6 +1041,7 @@ class GameCore {
             let suppressed = [];
             const triggeredSpecials = [];
             let specialCombo = null;
+            let comboEffects = null;
             if (this.pendingCombo) {
                 // 只计玩家把两枚特殊棋子直接交换的组合；被连锁波及的特殊棋子不计。
                 if (config.isSpecialType(this.pendingCombo.first.type) &&
@@ -839,17 +1055,27 @@ class GameCore {
                     second: { row: this.pendingCombo.second.pos.row, column: this.pendingCombo.second.pos.column, type: this.pendingCombo.second.type },
                     center: { row: this.pendingCombo.center.row, column: this.pendingCombo.center.column }
                 };
-                triggeredSpecials.push({
-                    row: this.pendingCombo.first.pos.row,
-                    column: this.pendingCombo.first.pos.column,
-                    type: this.pendingCombo.first.type
+                const comboResult = this.applySpecialCombo(this.pendingCombo,
+                    allRemoved.concat(generated.map(piece => piece.pos)), yarnHitThisAction);
+                comboEffects = comboResult.effects;
+                if (comboResult.kind) {
+                    specialCombo.kind = comboResult.kind;
+                    specialCombo.obstacleSnapshots = [];
+                    for (let row = 0; row < this.grid.length; row++) {
+                        for (let column = 0; column < this.grid[row].length; column++) {
+                            const position = { row: row, column: column };
+                            if (this.jellyGrid[row][column] || this.iceGrid[row][column] ||
+                                this.isYarnRoot(position) || this.isYarnVine(position)) {
+                                specialCombo.obstacleSnapshots.push(specialCombos.snapshot(this, position));
+                            }
+                        }
+                    }
+                }
+                [this.pendingCombo.first, this.pendingCombo.second].forEach(function (item) {
+                    if (gridUtil.includesPosition(comboResult.suppressed, item.pos)) {
+                        triggeredSpecials.push({ row: item.pos.row, column: item.pos.column, type: item.type });
+                    }
                 });
-                triggeredSpecials.push({
-                    row: this.pendingCombo.second.pos.row,
-                    column: this.pendingCombo.second.pos.column,
-                    type: this.pendingCombo.second.type
-                });
-                const comboResult = this.applySpecialCombo(this.pendingCombo);
                 this.pendingCombo = null;
                 suppressed = comboResult.suppressed;
                 for (let i = 0; i < comboResult.targets.length; i++) {
@@ -869,8 +1095,16 @@ class GameCore {
             this.pendingTriggers = [];
 
             // 特殊棋子触发连锁（removed 中的特殊棋子炸行/列/3x3，波及并入）
-            const chainedSpecials = this.expandSpecialTriggers(allRemoved, suppressed);
+            const colorChanges = [];
+            const chainedSpecials = this.expandSpecialTriggers(allRemoved, suppressed, yarnHitThisAction,
+                colorChanges, generated.map(function (piece) { return piece.pos; }), comboEffects);
+            this.pendingBellColors = {};
             for (let i = 0; i < chainedSpecials.length; i++) triggeredSpecials.push(chainedSpecials[i]);
+
+            const moonbudClosedHits = allRemoved.filter((pos) => this.isClosedMoonbud(pos));
+            for (let i = allRemoved.length - 1; i >= 0; i--) {
+                if (this.isClosedMoonbud(allRemoved[i])) allRemoved.splice(i, 1);
+            }
 
             // 第一遍：决定哪些棋子真正消除，哪些被障碍挡住（棋子保留）
             const jellyHits = [];
@@ -889,8 +1123,7 @@ class GameCore {
             for (let i = 0; i < vineKeys.length; i++) {
                 const parts = vineKeys[i].split(':').map(Number);
                 const vine = { row: parts[0], column: parts[1] };
-                if (allRemoved.some((pos) => positionKey(pos) === vineKeys[i] ||
-                    Math.abs(pos.row - vine.row) + Math.abs(pos.column - vine.column) === 1)) {
+                if (allRemoved.some((pos) => positionKey(pos) === vineKeys[i])) {
                     delete this.yarnVines[vineKeys[i]];
                     yarnVineHits.push(vine);
                 }
@@ -903,12 +1136,14 @@ class GameCore {
                 });
                 this.yarnVines = {};
             }
+            const moonbudHits = [];
             const removed = []; // 真正被消除（置 0）的棋子
 
             for (let i = 0; i < allRemoved.length; i++) {
                 const pos = allRemoved[i];
                 const type = gridUtil.getPieceType(this.grid, pos);
                 const isSpecial = config.isSpecialType(type);
+                if (this.isParcel(pos)) continue;
 
                 if (gridUtil.includesPosition(yarnHeld, pos)) continue;
                 if (!isSpecial && this.jellyGrid[pos.row][pos.column] > 0) {
@@ -937,6 +1172,16 @@ class GameCore {
                         }
                     }
                 }
+            }
+
+            if (this.moonbudOpen) {
+                removed.forEach((pos) => {
+                    const key = positionKey(pos);
+                    if (this.moonbudCells[key]) {
+                        delete this.moonbudCells[key];
+                        moonbudHits.push(copyPosition(pos));
+                    }
+                });
             }
 
             // 第二遍：消除位置的上下左右邻居，若有冰块则波及融化（露出邻居棋子）
@@ -970,7 +1215,7 @@ class GameCore {
 
             // 计分：实际消除棋子 + 连消加成 + 果冻/冰块奖励 + 特殊触发奖励
             const base = removed.length * 10;
-            const comboBonus = (round - 1) * 50;
+            const comboBonus = allRemoved.length ? (round - 1) * 50 : 0;
             const jellyBonus = jellyHits.length * 30;
             const iceBonus = iceHits.length * 50;
             this.score += base + comboBonus + jellyBonus + iceBonus;
@@ -982,12 +1227,15 @@ class GameCore {
                     combo: round,
                     score: this.score,
                     jellyHits: jellyHits,
+                    moonbudHits: moonbudHits,
+                    moonbudClosedHits: moonbudClosedHits,
                     iceHits: iceHits,
                     yarnRootHit: yarnRootHit,
                     yarnVineHits: yarnVineHits,
                     yarnCleared: yarnCleared,
                     generated: generated,
                     triggeredSpecials: triggeredSpecials,
+                    colorChanges: colorChanges,
                     specialCombo: specialCombo
                 });
             }
@@ -1010,6 +1258,7 @@ class GameCore {
             }
 
             // 棋盘整理（下落+斜向滑入+填充）
+            if (colorChanges.length && gridUtil.getMatches(this.grid, null, this.minMatchCount).length) continue;
             await this.settleBoard();
         }
 
@@ -1029,8 +1278,14 @@ class GameCore {
             await this.autoReshuffle();
         }
 
-        this.processing = false;
+        if (!this.moonbudPhasePending) this.processing = false;
         this.checkLevelEnd();
+        if (this.moonbudPhasePending) {
+            this.moonbudPhasePending = false;
+            this.moonbudOpen = !this.moonbudOpen;
+            if (this.callbacks.onMoonbudPhase) await this.callbacks.onMoonbudPhase({ open: this.moonbudOpen });
+        }
+        this.processing = false;
     }
 
     /** 检查关卡是否结束（多目标：分数、果冻、指定颜色收集） */
@@ -1050,6 +1305,12 @@ class GameCore {
             } else if (goal.type === 'yarn') {
                 if (!Number.isInteger(goal.target) || goal.target <= 0 || !this.yarnSource ||
                     this.yarnSource.maxHealth !== goal.target || this.getYarnHealth() > 0) allGoalsDone = false;
+            } else if (goal.type === 'moonbud') {
+                if (this.getMoonbudsLeft() > 0) allGoalsDone = false;
+            } else if (goal.type === 'ice') {
+                if (this.getIceLeft() > 0) allGoalsDone = false;
+            } else if (goal.type === 'parcel') {
+                if (this.getParcelsLeft() > 0) allGoalsDone = false;
             } else if (goal.type === 'collect') {
                 const pieceType = Number(goal.pieceType);
                 const target = Number(goal.target);
@@ -1121,6 +1382,7 @@ class GameCore {
     }
 
     async finishSuccessfulToolUse() {
+        this.moonbudPhasePending = this.moonbudTotal > 0;
         await this.processGrid();
         if (!this.ended && this.timerStarted && this.timeLeftMs <= 0) this.checkLevelEnd('timeout');
         if (this.timeLimitMs > 0 && !this.timerStarted && !this.ended) this.timerStarted = true;
@@ -1129,7 +1391,9 @@ class GameCore {
 
     async useTool(toolType, pos) {
         if (!this.isPlaying()) return false;
-        if (!gridUtil.isValidPosition(this.grid, pos) || this.isBlocked(pos)) return false;
+        if (!gridUtil.isValidPosition(this.grid, pos) || this.isParcel(pos)) return false;
+        const openMoonbud = this.moonbudOpen && this.moonbudCells[positionKey(pos)];
+        if (this.isBlocked(pos) && !(openMoonbud && (toolType === 'hammer' || toolType === 'bomb'))) return false;
         const currentType = gridUtil.getPieceType(this.grid, pos);
         if (!currentType) return false;
 

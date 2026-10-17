@@ -26,7 +26,9 @@ function documentRef(id) {
 
 const transaction = { collection: function () { return { doc: documentRef }; } };
 const database = {
-    command: { lt: function (value) { return { lt: value }; } },
+    command: { lt: function (value) { return { lt: value }; },
+        // Existing shallow update fixture already replaces values; this is not SDK evidence.
+        set: function (value) { return value; } },
     collection: function () { return { where: function () { return { remove: function () { return Promise.resolve({ stats: { removed: 0 } }); } }; } }; },
     runTransaction: function (handler) {
         const result = transactionTail.then(function () { return handler(transaction); });
@@ -106,6 +108,7 @@ function player(room, openid) { return room.players.find(function (entry) { retu
         samples: [{ seq: 2, score: 200, at: clock }] }));
     assert.strictEqual(retry.cast.id, cheer.cast.id);
     assert.strictEqual(retry.items.cheer, 0);
+    assert.deepStrictEqual(retry.itemCooldowns, cheer.itemCooldowns);
     assert.strictEqual((await call('host', v3(roomId, roundId, 'useItem', {
         item: 'freeze', requestId: cheerRequest
     }))).err, '道具请求冲突');
@@ -116,7 +119,7 @@ function player(room, openid) { return room.players.find(function (entry) { retu
     assert.strictEqual(doubled.myScore, 400, 'delayed sample in issued cheer window remains doubled');
     assert.strictEqual((await call('host', v3(roomId, roundId, 'useItem', {
         item: 'freeze', requestId: 'freeze-too-soon'
-    }))).err, '道具冷却中');
+    }))).ok, true, 'a different item is usable during cheer cooldown');
     clock = cheer.effect.until + 100;
     const afterCheer = await call('host', v3(roomId, roundId, 'syncScore', {
         samples: [{ seq: 4, score: 400, at: clock }]
@@ -126,7 +129,7 @@ function player(room, openid) { return room.players.find(function (entry) { retu
         samples: [{ seq: 5, score: 500, at: clock + 2000 }]
     }))).err, '分数样本时间非法');
 
-    clock = cheer.itemCooldownUntil + 100;
+    clock = cheer.effect.until + 100 + logic.CONFIG.ITEM_COOLDOWN_MS;
     const shield = await call('guest', v3(roomId, roundId, 'useItem', {
         item: 'reflect', requestId: 'shield-request-1'
     }));
@@ -153,13 +156,17 @@ function player(room, openid) { return room.players.find(function (entry) { retu
     assert.deepStrictEqual(await call('old', { action: 'query', roomId: roomId }), { ok: false, err: '不在房间' });
 
     clock += 1000;
-    room.startTime = clock - logic.CONFIG.BATTLE_DURATION_MS - 1;
+    room.startTime = clock - logic.CONFIG.BATTLE_DURATION_MS - logic.CONFIG.SCORE_FINALIZATION_MS - 1;
     const finished = await call('host', v3(roomId, roundId, 'query'));
     assert.strictEqual(finished.status, 'finished');
     assert.strictEqual((await call('host', v3(roomId, roundId, 'rematch', { accept: true }))).myRematch, true);
     const next = await call('guest', v3(roomId, roundId, 'rematch', { accept: true }));
     assert.strictEqual(next.roundId, roundId + 1);
     assert.deepStrictEqual(next.myItems, logic.CONFIG.V3_ITEMS);
+    assert.deepStrictEqual(next.myItemCooldowns, zero);
+    assert(room.players.every(function (owner) {
+        return Object.values(owner.itemCooldowns).every(function (deadline) { return deadline === 0; });
+    }));
     assert.strictEqual(next.myScoreSeq, 0);
     assert.strictEqual(next.myScore, 0);
     assert.strictEqual(next.effects.length, 0);
@@ -208,6 +215,105 @@ function player(room, openid) { return room.players.find(function (entry) { retu
     assert.strictEqual(legacyJoin.ok, true);
     assert.strictEqual(legacyJoin.itemRulesVersion, undefined);
     assert.deepStrictEqual(documents[legacy.roomId].players[1].items, logic.CONFIG.INITIAL_ITEMS);
+
+    // Dedicated independent-cooldown scenario: interleave all four items at the same instant.
+    const independent = await call('cool-host', { action: 'create', protocolVersion: 2, itemRulesVersion: 3 });
+    const independentJoin = await call('cool-guest', v3(independent.roomId, 1, 'join'));
+    const independentRoom = documents[independent.roomId];
+    const independentRound = independentJoin.roundId;
+    const castItem = function (item, requestId, extra) {
+        return call('cool-host', v3(independent.roomId, independentRound, 'useItem',
+            Object.assign({ item: item, requestId: requestId }, extra || {})));
+    };
+    assert.deepStrictEqual(independentRoom.players[0].itemCooldowns, zero);
+    await call('cool-host', v3(independent.roomId, independentRound, 'ready', { ready: true }));
+    await call('cool-guest', v3(independent.roomId, independentRound, 'ready', { ready: true }));
+    clock = independentRoom.startTime;
+    const issuedAt = clock;
+    const issued = await castItem('freeze', 'independent-freeze-1', {
+        itemCooldowns: { freeze: 0 }, itemCooldownUntil: 0
+    });
+    assert.strictEqual(issued.ok, true);
+    const expectedCooldowns = { freeze: issuedAt + 10000, disturb: 0, reflect: 0, cheer: 0 };
+    assert.deepStrictEqual(issued.itemCooldowns, expectedCooldowns);
+    for (const item of ['disturb', 'reflect', 'cheer']) {
+        const cast = await castItem(item, 'independent-' + item + '-1');
+        assert.strictEqual(cast.ok, true, item + ' is independent of active effects and other cooldowns');
+        expectedCooldowns[item] = issuedAt + 10000;
+        assert.deepStrictEqual(cast.itemCooldowns, expectedCooldowns);
+    }
+    const coolPlayer = player(independentRoom, 'cool-host');
+    assert.strictEqual(coolPlayer.items.freeze, 1);
+    assert.strictEqual((await call('cool-guest', v3(independent.roomId, independentRound, 'useItem', {
+        item: 'reflect', requestId: 'frozen-reflect-1'
+    }))).err, '冻结中不能使用道具');
+    clock = issuedAt + 9999;
+    assert.strictEqual((await castItem('freeze', 'independent-freeze-2')).err, '道具冷却中');
+    const duplicate = await castItem('freeze', 'independent-freeze-1', {
+        samples: [{ seq: 999, score: 999999999, at: clock }]
+    });
+    assert.strictEqual(duplicate.cast.id, issued.cast.id);
+    assert.deepStrictEqual(duplicate.itemCooldowns, expectedCooldowns);
+    assert.strictEqual(coolPlayer.items.freeze, 1);
+    await call('cool-guest', v3(independent.roomId, independentRound, 'query'));
+    const currentView = await call('cool-host', v3(independent.roomId, independentRound, 'query'));
+    assert.deepStrictEqual(currentView.myItemCooldowns, expectedCooldowns);
+    assert.strictEqual(currentView.myItemCooldownUntil, issuedAt + 10000);
+    clock = issuedAt + 10000;
+    const boundary = await castItem('freeze', 'independent-freeze-2');
+    assert.strictEqual(boundary.ok, true, 'same item unlocks at exactly ten seconds');
+    assert.strictEqual(boundary.itemCooldowns.freeze, issuedAt + 20000);
+    assert.strictEqual(boundary.itemCooldowns.cheer, issuedAt + 10000);
+
+    // Pre-map persisted players cannot bypass the former shared cooldown or effect lock.
+    const migratedPlayer = player(independentRoom, 'cool-guest');
+    delete migratedPlayer.itemCooldowns;
+    migratedPlayer.frozenUntil = 0;
+    migratedPlayer.itemCooldownUntil = clock + 4000;
+    migratedPlayer.activeEffectUntil = clock + 5000;
+    const migrationBaseline = clock + 5000;
+    const oldView = await call('cool-guest', v3(independent.roomId, independentRound, 'query'));
+    assert.deepStrictEqual(oldView.myItemCooldowns, {
+        freeze: migrationBaseline, disturb: migrationBaseline, reflect: migrationBaseline, cheer: migrationBaseline
+    });
+    assert.strictEqual(migratedPlayer.itemCooldowns, undefined, 'query does not persist a migration');
+    assert.strictEqual((await call('cool-guest', v3(independent.roomId, independentRound, 'useItem', {
+        item: 'cheer', requestId: 'migration-cheer-1'
+    }))).err, '道具冷却中');
+    clock = migrationBaseline - 1;
+    assert.strictEqual((await call('cool-guest', v3(independent.roomId, independentRound, 'useItem', {
+        item: 'cheer', requestId: 'migration-cheer-1'
+    }))).err, '已有道具生效中');
+    clock = migrationBaseline;
+    assert.strictEqual((await call('cool-guest', v3(independent.roomId, independentRound, 'useItem', {
+        item: 'cheer', requestId: 'migration-invalid-1', samples: [{ seq: 5, score: 10, at: clock }]
+    }))).err, 'STALE_SCORE_SAMPLE');
+    assert.strictEqual(migratedPlayer.itemCooldowns, undefined, 'failed cast does not migrate');
+    const migrated = await call('cool-guest', v3(independent.roomId, independentRound, 'useItem', {
+        item: 'cheer', requestId: 'migration-cheer-1'
+    }));
+    assert.strictEqual(migrated.ok, true);
+    assert.strictEqual(migrated.itemCooldowns.cheer, clock + 10000);
+    assert.strictEqual(migrated.itemCooldowns.freeze, migrationBaseline);
+    assert.strictEqual((await call('cool-guest', v3(independent.roomId, independentRound, 'useItem', {
+        item: 'disturb', requestId: 'migration-disturb-1'
+    }))).ok, true, 'migrated player now has independent cooldowns');
+
+    // Legacy rules on the new server get the same independent behavior.
+    const legacyRound = legacyJoin.roundId;
+    const legacyEvent = function (action, extra) {
+        return Object.assign({ action: action, roomId: legacy.roomId, protocolVersion: 2, roundId: legacyRound }, extra || {});
+    };
+    await call('legacy-host', legacyEvent('ready', { ready: true }));
+    await call('new', legacyEvent('ready', { ready: true }));
+    clock = documents[legacy.roomId].startTime;
+    const legacyFreeze = await call('legacy-host', legacyEvent('useItem', { item: 'freeze' }));
+    assert.deepStrictEqual(legacyFreeze.itemCooldowns, { freeze: clock + 10000, disturb: 0 });
+    const legacyDisturb = await call('legacy-host', legacyEvent('useItem', { item: 'disturb' }));
+    assert.strictEqual(legacyDisturb.ok, true);
+    assert.strictEqual((await call('legacy-host', legacyEvent('useItem', { item: 'disturb' }))).err, '道具冷却中');
+    clock += 10000;
+    assert.strictEqual((await call('legacy-host', legacyEvent('useItem', { item: 'disturb' }))).ok, true);
     console.log('battle items v3 tests passed');
 })().catch(function (error) {
     console.error(error);

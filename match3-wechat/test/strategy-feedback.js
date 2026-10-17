@@ -5,13 +5,33 @@ const store = {
     match3_items_v1: { hammer: 1, bomb: 2, color: 0 },
     match3_music_enabled_v1: false,
     match3_sfx_enabled_v1: false,
-    match3_onboarding_v1: { solo_intro: true, special_piece: true, obstacle: true, solo_item: true, pvp_wait: true }
+    match3_onboarding_v1: { solo_intro: true, special_piece: true, obstacle: true, solo_item: true,
+        pvp_wait: true, moonbud: true, parcel: true }
 };
 const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
 global.wx = { getStorageSync: key => clone(store[key]), setStorageSync: (key, value) => { store[key] = clone(value); } };
 const Main = require('../js/main');
 const levels = require('../js/core/level');
 const feedback = require('../js/core/strategy-feedback');
+const multiCollect = {
+    level: { goals: [{ type: 'collect', pieceType: 1, target: 6 }, { type: 'collect', pieceType: 2, target: 6 }] },
+    grid: [[1, 1, 1, 1], [2, 2, 2, 2]],
+    collectedCounts: {}
+};
+assert.strictEqual(feedback.collectGoal(multiCollect.level), multiCollect.level.goals[0], '旧调用仍返回首收集目标');
+assert.deepStrictEqual(feedback.collectCells(multiCollect), [
+    { row: 0, column: 0 }, { row: 0, column: 1 }, { row: 0, column: 2 },
+    { row: 1, column: 0 }, { row: 1, column: 1 }, { row: 1, column: 2 }
+], '两种未完成颜色都须高亮');
+multiCollect.collectedCounts[1] = 6;
+assert.deepStrictEqual(feedback.collectCells(multiCollect), [
+    { row: 1, column: 0 }, { row: 1, column: 1 }, { row: 1, column: 2 }
+], '首目标完成后只提示另一个目标');
+multiCollect.collectedCounts[1] = 0;
+multiCollect.collectedCounts[2] = 7;
+assert(feedback.collectCells(multiCollect).every(cell => cell.row === 0), '第二目标完成也须排除');
+multiCollect.collectedCounts[1] = 6;
+assert.deepStrictEqual(feedback.collectCells(multiCollect), []);
 const onboarding = require('../js/core/onboarding');
 const GuideUI = require('../js/render/onboarding');
 const UI = require('../js/render/ui');
@@ -27,8 +47,8 @@ const ctx = new Proxy({}, {
     },
     set(target, key, value) { target[key] = value; return true; }
 });
-const collectionLevel = Array.from({ length: 20 }, (_, i) => levels.getLevel(i + 1)).find(feedback.collectGoal);
-assert(collectionLevel, '新版前20关应包含实际可玩的收集目标');
+const collectionLevel = Array.from({ length: 17 }, (_, i) => levels.getLevel(i + 4)).find(feedback.collectGoal);
+assert(collectionLevel, '旧玩家迁移场景须采用猫爪与铃铛均已解锁的实际收集关');
 const app = Object.create(Main.prototype);
 app.ctx = ctx;
 app.screen = { width: 320, height: 568, contentTop: 91, safeTop: 47, safeBottom: 34 };
@@ -50,6 +70,10 @@ assert(app.core.timerPaused);
 app.guideButtons = GuideUI.draw(ctx, app.screen, app.guide.key, app.guideContext());
 const skip = app.guideButtons.skip;
 assert(app.handleGuideTouch(skip.x + 2, skip.y + 2));
+assert.strictEqual(app.guide.key, onboarding.GUIDE_KEYS.TRACKING_PAW);
+app.dismissGuide();
+assert.strictEqual(app.guide.key, onboarding.GUIDE_KEYS.COLOR_BELL);
+app.dismissGuide();
 assert.strictEqual(app.guide, null);
 assert.strictEqual(app.core.timerPaused, false);
 assert(onboarding.hasSeen(onboarding.GUIDE_KEYS.COLLECT));
@@ -59,6 +83,9 @@ app.startGame(collectionLevel.id);
 assert.strictEqual(app.core.movesLeft, collectionLevel.moveCount + 3, '同版本失败计数正常沿用');
 assert.strictEqual(app.guide, null, '已跳过教学不再弹出');
 app.startGame(21);
+assert.strictEqual(app.guide, null);
+assert(onboarding.hasSeen(onboarding.GUIDE_KEYS.TRACKING_PAW));
+assert(onboarding.hasSeen(onboarding.GUIDE_KEYS.COLOR_BELL));
 assert.strictEqual(app.core.movesLeft, levels.getLevel(21).moveCount, '21关接入循环后清除旧助力');
 assert.strictEqual(app.progress.failures[21], undefined);
 assert.strictEqual(feedback.syncContentRevision(app.progress, levels.getLevel(31)), true);
@@ -136,10 +163,16 @@ async function unsettledSwapDoesNotTeach() {
     core.grid[1][2] = 103;
     assert.deepStrictEqual(feedback.specialPair(core), []);
     const swap = core.trySwap({ row: 1, column: 0 }, { row: 1, column: 1 });
-    assert.strictEqual(core.processing, false, '回归覆盖onSwap尚未完成、processing尚未开始的窗口');
+    assert.strictEqual(core.processing, true, 'onSwap尚未完成时交换仍在处理');
     assert.deepStrictEqual(feedback.specialPair(core), [], '交换动画里的临时相邻棋子不能触发一次性教学');
     release();
     await swap;
+    assert.strictEqual(core.processing, false, '完整交换结算后恢复提示观察');
+    core.grid = core.grid.map((row, r) => row.map((_, c) => (r + c) % 4 + 1));
+    core.grid[1][0] = 101;
+    core.grid[1][1] = 103;
+    assert.deepStrictEqual(feedback.specialPair(core), [{ row: 1, column: 0 }, { row: 1, column: 1 }],
+        '稳定棋盘上的相邻特殊棋子可以提示');
 }
 unsettledSwapDoesNotTeach().then(() => {
     console.log('策略反馈：旧存档保留/按关卡版本助力/首次教学/组合高亮/动画中不误提示/结算与三档布局通过');

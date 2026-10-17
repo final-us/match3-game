@@ -30,12 +30,12 @@ const GAME_CONFIG = {
     freeMoves: false       // 是否允许任意移动（调试用）
 };
 
-// 广告配置（未开通流量主时保持关闭和空 ID）
+// 用户已批准本地测试候选启用；模拟广告及远程上报保持关闭。
 const AD_CONFIG = {
-    enabled: false,
+    enabled: true,
     debugMockAds: false,
-    rewardedAdUnitId: '',
-    interstitialAdUnitId: '',
+    rewardedAdUnitId: 'adunit-035fb16fac04d21b',
+    interstitialAdUnitId: 'adunit-d4c3fac373ac66c1',
     reviveSteps: 5,
     interstitialEveryGames: 3,
     interstitialCooldownMs: 120000
@@ -49,11 +49,15 @@ const REPORTING_CONFIG = {
 };
 
 // 特殊棋子类型（type 编号 100+，与普通棋子区分）
+const OBJECT_TYPES = { PARCEL: 201 };
+
 const SPECIAL_TYPES = {
     H_ROCKET: 101, // 横消火箭：消除时炸整行
     V_ROCKET: 102, // 竖消火箭：消除时炸整列
     BOMB: 103,     // 炸弹：消除时炸 3x3
-    COLOR_BALL: 104 // 猫爪彩球：消除一种颜色或参与特殊组合
+    COLOR_BALL: 104, // 猫爪彩球：消除一种颜色或参与特殊组合
+    TRACKING_PAW: 105,
+    COLOR_BELL: 106
 };
 
 /** 特殊棋子显示定义 */
@@ -61,13 +65,16 @@ const SPECIAL_DEFS = {
     101: { label: '↔', color: '#E17055', name: '横火箭' },
     102: { label: '↕', color: '#00B894', name: '竖火箭' },
     103: { label: '💣', color: '#6C5CE7', name: '炸弹' },
-    104: { label: '🐾', color: '#F7B731', name: '猫爪彩球' }
+    104: { label: '🐾', color: '#F7B731', name: '猫爪彩球' },
+    105: { label: '🐾', color: '#F3A5C5', name: '追踪猫爪' },
+    106: { label: '♧', color: '#FFE29A', name: '染色铃铛' }
 };
 
 /** 判断是否为特殊棋子 */
 function isSpecialType(t) {
     return t === SPECIAL_TYPES.H_ROCKET || t === SPECIAL_TYPES.V_ROCKET ||
-        t === SPECIAL_TYPES.BOMB || t === SPECIAL_TYPES.COLOR_BALL;
+        t === SPECIAL_TYPES.BOMB || t === SPECIAL_TYPES.COLOR_BALL || t === SPECIAL_TYPES.TRACKING_PAW ||
+        t === SPECIAL_TYPES.COLOR_BELL;
 }
 
 /** 获取特殊棋子显示定义 */
@@ -100,6 +107,7 @@ module.exports = {
     AD_CONFIG: AD_CONFIG,
     REPORTING_CONFIG: REPORTING_CONFIG,
     SPECIAL_TYPES: SPECIAL_TYPES,
+    OBJECT_TYPES: OBJECT_TYPES,
     getCommonTypes: getCommonTypes,
     getPieceTypeDef: getPieceTypeDef,
     isSpecialType: isSpecialType,

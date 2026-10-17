@@ -3,8 +3,8 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const file=require.resolve('../js/main'),req=require('module').createRequire(file);
 const engine=req('./core/daily-challenge');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-function fixture(){
-    const requests=[],checkpoints=[],notices=[],store={},timers=[];
+function fixture(reduceEffects=false){
+    const requests=[],checkpoints=[],notices=[],store={},timers=[],matchEffects=[];
     const setTimeout=(callback,ms)=>{const timer={callback,ms,cleared:false};timers.push(timer);return timer;};
     const clearTimeout=timer=>{if(timer)timer.cleared=true;};
     const wx={
@@ -36,12 +36,14 @@ function fixture(){
         if(name==='./net/cloud-battle')return local('./net/cloud-battle');
         if(name==='./core/daily-progress')return progress;
         if(name==='./render/board-render')return class {setGame(){} animateSwap(){} animateInvalidSwap(){} animateMatch(){} animateGravity(){} animateFill(){} animateColorChange(){} animateReshuffle(){}};
-        if(name==='./audio')return new Proxy({},{get:()=>()=>{}});
+        if(name==='./audio')return new Proxy({},{get:(_,key)=>key==='match'?((data,reduced)=>matchEffects.push(reduced)):(()=>{})});
         if(name==='./core/analytics')return {track(){}};
         return req(name);
     }},{filename:file});
     const app=Object.create(module.exports.prototype);app.state='menu';
-    return {app,requests,checkpoints,notices,progress,store,timers,expireLatest(){
+    // This fixture skips Main's constructor, so supply its real screen contract.
+    app.screen={width:375,height:812,reduceEffects};
+    return {app,requests,checkpoints,notices,progress,store,timers,matchEffects,expireLatest(){
         const timer=timers.slice().reverse().find(item=>!item.cleared);
         assert(timer,'expected a pending request timeout');
         assert.strictEqual(timer.ms,12000,'daily requests use the shared 12-second timeout');
@@ -89,8 +91,8 @@ function fixture(){
         assert.strictEqual(f.progress.read().pending,null,'nonqualifying result is complete');
         assert.strictEqual(f.progress.read().best[c.date],500);assert.strictEqual(f.store.match3_coin_v1,undefined);
     }
-    {
-        const f=fixture(),yesterday=engine.challengeForDate('2026-09-21');
+    for(const reduceEffects of [false,true]) {
+        const f=fixture(reduceEffects),yesterday=engine.challengeForDate('2026-09-21');
         f.app.openDaily();
         f.requests[0].resolve({ok:true,challenge:yesterday,claimed:true,settlementId:'yesterday-reward',coinReward:500});await flush();
         assert.strictEqual(f.app.daily.claimed,true);assert.strictEqual(f.store.match3_coin_v1,500,'dailyInfo restores the configured reward');
@@ -108,6 +110,10 @@ function fixture(){
         }
         assert.strictEqual(f.requests[3].action,'dailySubmit');
         assert.strictEqual(f.checkpoints.length,25);
+        assert(f.matchEffects.length>0,'25 swaps must exercise the real Main onMatch callback');
+        assert(f.matchEffects.every(value=>value===reduceEffects),'screen effect preference reaches audio unchanged');
+        assert.strictEqual(f.store.match3_heart_v1,undefined,'daily play must not consume stamina');
+        assert.strictEqual(f.store.match3_items_v1,undefined,'daily play must not consume inventory');
         f.requests[3].reject(new Error('new-day offline'));await flush();
         assert.strictEqual(f.app.state,'daily_detail');assert.strictEqual(f.app.daily.claimed,false);
         assert.strictEqual(f.app.daily.best,0);assert(f.app.daily.pending);

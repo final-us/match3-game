@@ -27,8 +27,8 @@ function fixture() {
     const cloud = {
         describeCreateFailure: require('../js/net/cloud-battle').describeCreateFailure,
         isValidRoomId: function (id) { return /^R[0-9a-z]{8,10}[0-9a-f]{10}$/.test(id); },
-        call: function (action, data) {
-            return new Promise(function (resolve, reject) { requests.push({ action, data, resolve, reject }); });
+        call: function (action, data, options) {
+            return new Promise(function (resolve, reject) { requests.push({ action, data, options, resolve, reject }); });
         }
     };
     class Clock extends Date { static now() { return clock.now; } }
@@ -42,6 +42,7 @@ function fixture() {
         require: function (name) {
             if (name === './net/cloud-battle') return cloud;
             if (name === './core/coin') return wallet;
+            if (name === './core/ad-rewards') return { recover: () => ({ok:true,granted:false,pending:false}) };
             if (name === './audio') return new Proxy({}, { get: function () { return function () {}; } });
             if (name === './core/analytics') return { track: function () {} };
             if (name === './core/runtime') return { applyReadyUpdate: function () { return false; } };

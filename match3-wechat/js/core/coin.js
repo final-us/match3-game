@@ -10,6 +10,8 @@ const COIN_RECEIPT_HISTORY_KEY = 'match3_coin_receipts_v1';
 const COIN_PENDING_CREDIT_KEY = 'match3_coin_pending_credit_v1';
 const REWARD_PENDING_CREDIT_KEY = 'match3_reward_pending_credit_v1';
 const ITEM_KEY = 'match3_items_v1';
+const ITEM_SPEND_KEY = 'match3_item_spend_pending_v1';
+const REWARDED_ITEM_PENDING_KEY = 'match3_rewarded_item_pending_v1';
 const REWARDED_ITEM_KEY = 'match3_rewarded_items_v1';
 const REWARDED_ITEM_DAILY_LIMIT = 10;
 const STAMINA_PRICE = 1000;
@@ -235,7 +237,12 @@ function recoverPendingReward() {
 function recoverPendingWallet() {
     const credit = recoverPendingCredit();
     if (!credit.ok) return credit;
-    return recoverPendingReward();
+    const reward = recoverPendingReward();
+    if (!reward.ok) return reward;
+    const item = recoverPendingItem();
+    if (!item.ok) return item;
+    const spend = recoverPendingSpend();
+    return spend.ok ? item : spend;
 }
 
 function getCoins() {
@@ -392,6 +399,42 @@ function useItem(type) {
     return saveItems(items);
 }
 
+/** A resumed tool operation and its inventory debit share a stable receipt. */
+function recoverPendingSpend() {
+    const store = getStore(), read = readStorage(store, ITEM_SPEND_KEY);
+    if (!read.ok) return read;
+    const p = read.value;
+    if (p == null || p === '') return { ok: true };
+    if (!p || !ITEM_DEFS[p.type] || typeof p.id !== 'string' ||
+        !Number.isSafeInteger(p.before) || p.before < 1 || p.after !== p.before - 1) return { ok: false };
+    const history = readReceiptHistory(store);
+    if (!history.ok) return history;
+    if (!history.value.includes(p.id)) {
+        const items = readItemsRaw(store);
+        if (!items.ok) return items;
+        if (items.value[p.type] === p.before) {
+            items.value[p.type] = p.after;
+            const saved = writeStorage(store, ITEM_KEY, items.value);
+            if (!saved.ok) return saved;
+        } else if (items.value[p.type] !== p.after) return { ok: false };
+        const saved = writeStorage(store, COIN_RECEIPT_HISTORY_KEY, history.value.concat(p.id));
+        if (!saved.ok) return saved;
+    }
+    return writeStorage(store, ITEM_SPEND_KEY, null);
+}
+function useItemOnce(type, id) {
+    if (!ITEM_DEFS[type] || typeof id !== 'string' || !id || id.length > 160) return { ok: false };
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return recovered;
+    const store = getStore(), history = readReceiptHistory(store);
+    if (!history.ok) return history;
+    if (history.value.includes(id)) return { ok: true };
+    const items = readItemsRaw(store);
+    if (!items.ok || items.value[type] < 1) return { ok: false };
+    const saved = writeStorage(store, ITEM_SPEND_KEY, { id: id, type: type, before: items.value[type], after: items.value[type] - 1 });
+    return saved.ok ? recoverPendingSpend() : saved;
+}
+
 function localDateKey(now) {
     const date = now instanceof Date ? now : new Date(now == null ? Date.now() : now);
     const monthValue = date.getMonth() + 1;
@@ -401,43 +444,140 @@ function localDateKey(now) {
     return date.getFullYear() + '-' + month + '-' + day;
 }
 
-function getRewardedItemState(now) {
-    const store = getStore();
-    if (!hasStorage(store)) return null;
-    const recovered = recoverPendingWallet();
-    if (!recovered.ok) return null;
-    const date = localDateKey(now);
-    const stored = readStorage(store, REWARDED_ITEM_KEY);
-    if (!stored.ok) return null;
-    const saved = stored.value;
-    const count = saved && saved.date === date && Number.isSafeInteger(saved.count) && saved.count >= 0
-        ? Math.min(REWARDED_ITEM_DAILY_LIMIT, saved.count)
-        : 0;
-    const state = { date: date, count: count, remaining: REWARDED_ITEM_DAILY_LIMIT - count };
-    if (!saved || saved.date !== date) {
-        if (!writeStorage(store, REWARDED_ITEM_KEY, { date: date, count: 0 }).ok) return null;
+// Quota and receipts share one atomic storage item; inventory uses a before/after WAL.
+function readRewardedQuota(store) {
+    const saved = readStorage(store, REWARDED_ITEM_KEY);
+    if (!saved.ok) return saved;
+    const value = saved.value;
+    if (value == null || value === '') return { ok: true, value: { days: {}, receipts: [] } };
+    if (!value || typeof value !== 'object' ||
+        (value.receipts != null && (!Array.isArray(value.receipts) ||
+        value.receipts.some(id => typeof id !== 'string'))) ||
+        (value.days != null && (typeof value.days !== 'object' || Array.isArray(value.days)))) {
+        return { ok: false, reason: 'rewarded_quota_invalid' };
     }
-    return state;
+    const days = Object.assign({}, value.days);
+    if (value.date != null) {
+        if (!Number.isSafeInteger(value.count) || value.count < 0 || value.count > REWARDED_ITEM_DAILY_LIMIT) {
+            return { ok: false, reason: 'rewarded_quota_invalid' };
+        }
+        if (days[value.date] == null) days[value.date] = value.count;
+    }
+    if (Object.keys(days).some(date => !Number.isSafeInteger(days[date]) ||
+        days[date] < 0 || days[date] > REWARDED_ITEM_DAILY_LIMIT)) {
+        return { ok: false, reason: 'rewarded_quota_invalid' };
+    }
+    return { ok: true, value: Object.assign({}, value, { days: days, receipts: (value.receipts || []).slice() }) };
 }
 
-/** 完整广告观看后的唯一发奖入口；所有道具共享本地自然日 10 次上限。 */
-function claimRewardedItem(type, now) {
-    if (!ITEM_DEFS[type]) return { ok: false, reason: 'invalid_item' };
-    const state = getRewardedItemState(now);
-    if (!state) return { ok: false, reason: 'storage_write_failed' };
-    if (state.remaining <= 0) return { ok: false, reason: 'limit', state: state };
-    const next = { date: state.date, count: state.count + 1 };
+function recoverPendingItem() {
     const store = getStore();
-    if (!store || typeof store.setStorageSync !== 'function') {
-        return { ok: false, reason: 'storage_unavailable', state: state };
+    const saved = readStorage(store, REWARDED_ITEM_PENDING_KEY);
+    if (!saved.ok) return saved;
+    const pending = saved.value;
+    if (pending == null || pending === '') return { ok: true };
+    const solo = pending.kind === 'solo_item';
+    if (!Object.prototype.hasOwnProperty.call(ITEM_DEFS, pending.type) ||
+        !Number.isSafeInteger(pending.before) || pending.before < 0 ||
+        !Number.isSafeInteger(pending.after) || pending.after !== pending.before + 1 ||
+        (solo ? typeof pending.receiptId !== 'string' || !pending.receiptId || pending.receiptId.length > 160 : !pending.quota)) {
+        return { ok: false, reason: 'pending_item_invalid' };
     }
-    if (!writeStorage(store, REWARDED_ITEM_KEY, next).ok || !addItem(type, 1)) {
-        return { ok: false, reason: 'storage_write_failed', state: state };
+    const receipts = solo ? readReceiptHistory(store) : readRewardedQuota(store);
+    if (!receipts.ok) return receipts;
+    const history = solo ? receipts.value : receipts.value.receipts;
+    let granted = false;
+    if (!pending.receiptId || history.indexOf(pending.receiptId) === -1) {
+        const items = readItemsRaw(store);
+        if (!items.ok) return items;
+        if (items.value[pending.type] === pending.before) {
+            items.value[pending.type] = pending.after;
+            const written = writeStorage(store, ITEM_KEY, items.value);
+            if (!written.ok) return written;
+            granted = true;
+        } else if (items.value[pending.type] !== pending.after) {
+            return { ok: false, reason: 'pending_item_conflict' };
+        }
+        const written = solo
+            ? writeStorage(store, COIN_RECEIPT_HISTORY_KEY, appendReceipt(history, pending.receiptId))
+            : writeStorage(store, REWARDED_ITEM_KEY, pending.quota);
+        if (!written.ok) return written;
     }
-    return {
-        ok: true,
-        state: { date: next.date, count: next.count, remaining: REWARDED_ITEM_DAILY_LIMIT - next.count }
-    };
+    const cleared = writeStorage(store, REWARDED_ITEM_PENDING_KEY, null);
+    if (!cleared.ok) return cleared;
+    return { ok: true, granted: granted, receiptId: pending.receiptId };
+}
+
+function getRewardedItemState(now) {
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return null;
+    const quota = readRewardedQuota(getStore());
+    if (!quota.ok) return null;
+    const date = localDateKey(now);
+    const count = quota.value.days[date] || 0;
+    return { date: date, count: count, remaining: REWARDED_ITEM_DAILY_LIMIT - count };
+}
+
+/** now is the completion time, retained by the caller across retries and days. */
+function claimRewardedItem(type, now, receiptId) {
+    if (!Object.prototype.hasOwnProperty.call(ITEM_DEFS, type)) return { ok: false, reason: 'invalid_item' };
+    if (receiptId != null && (typeof receiptId !== 'string' || !receiptId || receiptId.length > 160)) {
+        return { ok: false, reason: 'invalid_receipt' };
+    }
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return recovered;
+    const store = getStore();
+    const quota = readRewardedQuota(store);
+    if (!quota.ok) return quota;
+    const date = localDateKey(now);
+    const count = quota.value.days[date] || 0;
+    const state = { date: date, count: count, remaining: REWARDED_ITEM_DAILY_LIMIT - count };
+    if (receiptId && quota.value.receipts.indexOf(receiptId) !== -1) return { ok: true, granted: recovered.granted === true && recovered.receiptId === receiptId, state: state };
+    if (!state.remaining) return { ok: false, reason: 'limit', state: state };
+    const items = readItemsRaw(store);
+    if (!items.ok) return items;
+    if (items.value[type] === Number.MAX_SAFE_INTEGER) return { ok: false, reason: 'item_balance_invalid' };
+    quota.value.days[date] = count + 1;
+    quota.value.date = date;
+    quota.value.count = count + 1;
+    if (receiptId) quota.value.receipts.push(receiptId);
+    const written = writeStorage(store, REWARDED_ITEM_PENDING_KEY, {
+        type: type, receiptId: receiptId, before: items.value[type], after: items.value[type] + 1,
+        quota: quota.value
+    });
+    if (!written.ok) return written;
+    const finished = recoverPendingItem();
+    if (!finished.ok) return finished;
+    return { ok: true, granted: true, state: { date: date, count: count + 1, remaining: state.remaining - 1 } };
+}
+
+/** One completed solo view grants one item, independent of the shop daily quota.
+ * Call only after completion; retain the same receipt across retries.
+ */
+function claimSoloRewardedItem(type, receiptId) {
+    if (!Object.prototype.hasOwnProperty.call(ITEM_DEFS, type)) return { ok: false, reason: 'invalid_item' };
+    if (typeof receiptId !== 'string' || !receiptId || receiptId.length > 160) {
+        return { ok: false, reason: 'invalid_receipt' };
+    }
+    const recovered = recoverPendingWallet();
+    if (!recovered.ok) return recovered;
+    const store = getStore();
+    const history = readReceiptHistory(store);
+    if (!history.ok) return history;
+    if (history.value.indexOf(receiptId) !== -1) {
+        return { ok: true, granted: recovered.granted === true && recovered.receiptId === receiptId };
+    }
+    const items = readItemsRaw(store);
+    if (!items.ok) return items;
+    if (items.value[type] === Number.MAX_SAFE_INTEGER) return { ok: false, reason: 'item_balance_invalid' };
+    const written = writeStorage(store, REWARDED_ITEM_PENDING_KEY, {
+        kind: 'solo_item', type: type, receiptId: receiptId,
+        before: items.value[type], after: items.value[type] + 1
+    });
+    if (!written.ok) return written;
+    const finished = recoverPendingItem();
+    if (!finished.ok) return finished;
+    return { ok: true, granted: true };
 }
 
 module.exports = {
@@ -458,8 +598,10 @@ module.exports = {
     getItems: getItems,
     addItem: addItem,
     useItem: useItem,
+    useItemOnce: useItemOnce,
     getRewardedItemState: getRewardedItemState,
     claimRewardedItem: claimRewardedItem,
+    claimSoloRewardedItem: claimSoloRewardedItem,
     calcStars: calcStars,
     calcWinCoins: calcWinCoins
 };

@@ -24,7 +24,9 @@ function documentRef(id) {
 
 const transaction = { collection: function () { return { doc: documentRef }; } };
 const database = {
-    command: { lt: function (value) { return { lt: value }; } },
+    command: { lt: function (value) { return { lt: value }; },
+        // Existing shallow update fixture already replaces values; this is not SDK evidence.
+        set: function (value) { return value; } },
     collection: function () { return { where: function () { return { remove: function () { return Promise.resolve({ stats: { removed: 0 } }); } }; } }; },
     runTransaction: function (handler) {
         const result = transactionTail.then(function () { return handler(transaction); });
@@ -93,7 +95,7 @@ async function finish(roomId, winner) {
     const result = await finish(roomId, 'host');
     assert.strictEqual(result.status, 'finished');
     assert.deepStrictEqual(Object.keys(result).sort(), [
-        'canRematch', 'casts', 'effects', 'myActiveEffectUntil', 'myItemCooldownUntil', 'myItems', 'myReady',
+        'canRematch', 'casts', 'effects', 'myActiveEffectUntil', 'myItemCooldownUntil', 'myItemCooldowns', 'myItems', 'myReady',
         'myRematch', 'myScore', 'myWins', 'ok', 'opp', 'oppLeft', 'oppRematch', 'oppWins', 'protocolVersion',
         'result', 'roundId', 'roundNumber', 'startTime', 'status'
     ]);
@@ -120,6 +122,7 @@ async function finish(roomId, winner) {
     assert.strictEqual(next.myRematch, false);
     assert.strictEqual(next.myScore, 0);
     assert.deepStrictEqual(next.myItems, logic.CONFIG.INITIAL_ITEMS);
+    assert.deepStrictEqual(next.myItemCooldowns, { freeze: 0, disturb: 0 });
     const raced = await Promise.all([
         call('host', v2(roomId, 2, 'rematch', { accept: false })),
         call('guest', v2(roomId, 2, 'leave')),

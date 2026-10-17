@@ -30,6 +30,7 @@ const coin = {
     }
 };
 const ad = {
+    isBusy: function () { return false; },
     showRewarded: function (placement) {
         assert.strictEqual(placement, 'heart_refill');
         rewardedShows++;
@@ -38,6 +39,7 @@ const ad = {
     markRewardGranted: function () { granted++; }
 };
 const audio = {
+    setAdActive: function () {},
     reward: function () { rewards++; },
     invalid: function () { invalids++; }
 };
@@ -49,6 +51,11 @@ vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
         if (name === './core/heart') return heart;
         if (name === './core/coin') return coin;
         if (name === './core/ad') return ad;
+        if (name === './core/ad-rewards') return {
+            hasPending: () => false,
+            createClaim: () => ({ok:true,claim:{id:'fixture',kind:'heart_refill'}}),
+            complete: () => { heart.addHeart(1); return {ok:true,granted:true,kind:'heart_refill'}; }
+        };
         if (name === './audio') return audio;
         return mainRequire(name);
     }
@@ -56,6 +63,8 @@ vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
 
 async function run() {
     const app = Object.create(mainModule.exports.prototype);
+    app.state = 'menu';
+    app.showBattleNotice = function () {};
     app.staminaDialog = true;
     app.staminaDialogButtons = {};
     app.heartAdPending = false;
