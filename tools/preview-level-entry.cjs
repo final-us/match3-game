@@ -22,7 +22,7 @@ const html = `<!doctype html><meta charset="utf-8"><title>第一关入口隔离�
 <section id="tool-ads" hidden><p>局内道具验证：隔离SDK，只操作本页内存，不请求真实广告。</p>
 <button id="ad-shop">进入商店验广告</button><button id="ad-home">进入首页验补心</button><button id="ad-stamina">打开体力弹窗</button>
 <button id="ad-consent">确认观看</button><button id="ad-decline">取消观看</button>
-<button id="ad-complete">模拟完整观看</button><button id="ad-cancel">模拟提前关闭</button><button id="ad-error">模拟无广告</button>
+<button id="ad-complete">模拟完整观看</button><button id="ad-cancel">模拟提前关闭</button><button id="ad-error">模拟无广告</button><button id="ad-load-error">下次加载失败1004</button>
 <button id="items-zero">库存全为0</button><button id="items-sample">库存2/1/12</button><p id="tool-ad-status" role="status"></p></section>
 <section id="new-obstacles" hidden><p>月相花苞与小鱼干包裹 · 固定代表场景，使用真实核心规则。正式第9/10关请在上方选择。</p>
 <button data-obstacle="moonbud">月相花苞 · 开放</button><button data-obstacle="moonbud-closed">月相花苞 · 闭合</button>
@@ -111,18 +111,21 @@ const app=Object.create(Main.prototype);
 Object.assign(app,{ctx,screen:{width,height,safeTop:47,contentTop:91,safeBottom:34},state:'levelselect',progress:{unlockedLevel:1,failures:{},stars:{}},guide:null,guideQueue:[],levelMapOffset:0});
 if(params.has('toolads')){
  document.getElementById('tool-ads').hidden=false;
- let activeAd=null,activeModal=null,requests=0;
+ let activeAd=null,activeModal=null,requests=0,nextLoadError=false;
+ wx.getAccountInfoSync=()=>({miniProgram:{envVersion:'develop'}});
  const inventory=load('js/core/coin.js');
  const report=message=>document.getElementById('tool-ad-status').textContent=message+'；请求'+requests+'次；库存'+JSON.stringify(inventory.getItems())+'；商店已领'+inventory.getRewardedItemState().count+'次';
+ wx.showToast=options=>report(options.title);
+ document.getElementById('ad-load-error').onclick=()=>{nextLoadError=true;report('下一次模拟加载1004');};
  wx.showModal=options=>{activeModal=options;report(options.content);};
- const consent=confirm=>{if(!activeModal)return;const modal=activeModal;activeModal=null;modal.success({confirm});setTimeout(()=>report(confirm?'已确认观看':'已取消观看'),0);};
+ const consent=confirm=>{if(!activeModal)return;const modal=activeModal;activeModal=null;modal.success({confirm});if(modal.complete)modal.complete({confirm});setTimeout(()=>report(confirm?'已确认观看':'已取消观看'),0);};
  document.getElementById('ad-consent').onclick=()=>consent(true);
  document.getElementById('ad-decline').onclick=()=>consent(false);
  wx.createRewardedVideoAd=options=>{
   if(options.disableFallbackSharePage!==true)throw new Error('share fallback must be disabled');
   const closes=new Set(),errors=new Set();
   const instance={onClose:fn=>closes.add(fn),offClose:fn=>closes.delete(fn),onError:fn=>errors.add(fn),offError:fn=>errors.delete(fn),
-   show(){requests++;activeAd=instance;report('隔离视频等待操作');return Promise.resolve();},load:()=>Promise.resolve(),
+   show(){requests++;activeAd=instance;report('隔离视频等待操作');return Promise.resolve();},load(){if(nextLoadError){nextLoadError=false;return Promise.reject({errCode:1004});}return Promise.resolve();},
    finish(done){activeAd=null;for(const fn of [...closes])fn({isEnded:done});},fail(){activeAd=null;for(const fn of [...errors])fn({errCode:1004});}};
   return instance;
  };

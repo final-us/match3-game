@@ -1,5 +1,200 @@
 # UI production · 当前入口
 
+## 页面插画风格效果稿 · 2026-10-20
+
+```memory-task
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","session_id":"01a16c6d-4979-71b0-9fe6-10b8a556d91a","turn_id":"01a17163-f889-79c3-a441-7faa2b91193f","state":"paused","reason":"用户指定首页单人固定蓝色已实现并实际核验；既有独立/设备与发布边界仍保留。"}
+```
+
+- 2026-10-25首页单人固定蓝色已实现/核验：用户明确纠正“单人闯关按钮一直保持蓝色，不管体力是否充足”。此决定覆盖旧的首页全粉解释。正式ui.js的drawMoonHomeButton现在按入口角色固定好友pink/单人blue，移除按canPlay换灰底/关闭光泽的参数；不足与待恢复仍使用蓝色及相同光泽，原状态文案、补体力/可玩判断、触区和点击路由不变。前轮解释准确指出预览0体力根因，但没有理解用户要求保留单人蓝色，本轮已落实明确指令。
+- 本轮证据：ui-smoke全通过，fixture及66模块语法通过；实际Canvas390两状态导出，触区异常0/渲染错误0，owner实看好友始终粉、单人充足/不足始终蓝且有相同反光。图在runtime/solo-blue-20261025/，solo-blue-both-states.png为同位置裁图。仅首页颜色变化，无几何/资源/Main/云逻辑改变，原三尺寸布局及相关业务证据复用；未声称实际操作微信开发者工具。package-budget当前主包3366589/4194304、总包8410176/31457280，ui-art1572126/1572864，启动21keys/20unique；身份仍为d5a0d4c＋本任务/其他owner dirty源。服务exec77883，同原URL，预览已刷新并停留体力充足首页；不提交/推送/上传/部署。有效approved召回复用，无新候选。
+- 历史核查（已被上方固定蓝色决定覆盖）：生产drawMoonHomeButton的正常态两个游戏入口均为淡粉；旧fixture的menu固定count0/canPlayfalse，导致所谓“首页配色”实际展示灰蓝“体力不足”态。开发者工具两粉与当前生产规则一致，未归因缓存，也未把单人入口改蓝。预览新增home-empty并明确“首页·体力充足/不足”，home改5体力可玩，体力弹窗底页仍保留0体力；仅修改preview-ui-illustration-runtime.cjs，不改产品源码/存储/玩法或已接受的外观。
+- 上述历史预览核验：66模块/fixture语法通过；CUA导出390正常/不足两帧、触区异常0/渲染错误0，owner实看两粉与粉/灰蓝及对应文案。证据runtime/home-states-20261025/{home-390.png,home-empty-390.png,home-state-comparison.png}；当前服务exec75623，原预览页已刷新并停留“首页·体力充足”。产品代码/素材/几何与上一轮相同，复用原三尺寸、ui-smoke及包体证据，不为纯fixture状态修改重复业务套件。此核查不声称操作或检验了用户的微信开发者工具。记忆沿用有效同任务召回，candidate none。
+- 当前交付（2026-10-25花瓣/按钮/金边精修）：`user_visual_accepted_device_pending`。用户要求再次仔细对照原设计，重点花瓣、按钮和边框高光；沿用原task/ui美化职责、B蓄势双猫与现有淡粉/淡蓝/亮蓝语义色。直接本地实施及owner核验，不委派；不提交、推送、上传微信或部署，保持其他owner修改。
+- 用户接受（2026-10-25）：用户查看本轮细节精修后明确“这次可以”，当前本地视觉确认通过；花簇、按钮反光/猫爪浮雕、金边细节作为后续页面一致性基准，不再因与原图微差自行重开视觉精修。仅更新接受记录，运行代码/素材不变，复用上轮有效检查；不推定独立QA、真机、发布、提交/推送或云部署获通过或授权。
+- 对照发现与修复：原生小花由规则椭圆拼成，缺花瓣卷边/细纹；按钮白反光覆盖过宽、猫爪白线平面化；金边颜色基本均匀、缺明暗交替。新增独立花簇替换房名牌/每日按钮小花，补签到主动作和商店返回花饰；按钮反光收窄且羽化，肩部高光缩小，底缘透光更清楚；共享猫爪使用连续立体明暗/局部亮点，去掉按钮两侧无依据的圆钉。边框亮线跟随原图金色轨道与九切比例，不画横穿花朵的额外整框；仅少量静态闪点，无动画负担。保留原配色、文字与44px触区。
+- 附带对照细节：商店原广告按钮仅视频图标/+1，与参考正文不同；补回“看广告+1”并独立给图标与文字足够宽度，320仍可读。pending/满额/待恢复文案与广告消费者合同不变。来源/绘制变化仅在button-material、illustration-art、retention-ui、shop-card与assets；Main、云函数、头像同意/缓存、独立10秒冷却及玩法奖励均未再改。
+- 新素材：内置image_gen新增调用1次，继续本轮用户不限次数/自有参考/现有额度授权，仅输入自有header-cat作风格参考，未用外部付费供应商或上传代码/玩家资料。原始1254×1254 RGBA、alpha0–255、795176透明像素；白/暗底实看无烘焙背景。ui-art/blossom-cluster.png为128×128 RGBA、25189bytes，Lanczos等比缩小、无损PNG编码、无调色板量化。源、完整prompt、来源路径/hash、未知model/seed/cost与before代码保留assets/_incoming/ui-detail-polish-20261025/；素材台账已同步。该素材及本轮整页细节已获用户本地视觉接受；设备/发布边界仍保留。
+- 运行证据：真实UI/Core/Board组件Canvas，320×568（23帧含5滚动）、390×844（18帧）、430×932（18帧），另320装饰idle回退23帧，共82张2×PNG，四批触区异常0/渲染错误0。位于assets/_incoming/ui-illustration-production-20261020/runtime/detail-polish-20261025/；overview-390.jpg为四页拼接，details-before-after.png是上轮/本轮同位置实际画面裁图。Owner实看标准四页、320房间/商店顶部与底部滚动/每日、大屏房间/第7天/商店及320回退代表三页，未见关键字被花瓣遮挡、操作越界或透明脏边。服务曾随中断停止，现恢复exec62700、http://127.0.0.1:52162/；缺图回退图不充当正式视觉。
+- 有效检查：本轮受影响的ui-smoke、battle-illustration-ui、retention-preview、shop-card-layout、stamina-card-layout、illustration-art、illustration-art-loader、open-source-and-assets均通过；fixture及66模块语法通过。未新增镜像实现测试，未重跑无变更头像/冷却/后端套件。素材清单由14增至15，保留精确路径/活动资源/透明检查和全部预算上限；未修改测试降低触区或状态要求。
+- 当前预算/身份：Git d5a0d4c＋本任务与其他owner既有dirty工作区。package-budget通过：启动21keys/20unique，活跃素材2043962/3670016bytes；result-art1675962/1677721.6；ui-art1572126/1572864；静态主包3365449/4194304（93文件），总包8409036/31457280（136文件）。既有coin/heart快照、onShow失效、同路径复用及精确排除继续保持。无客户端构建步骤，非微信编译包或实机性能证明。
+- 视觉与验收边界：相较原设计仍有花枝分布、飘带轮廓、系统字体与不同屏幕比例造成的差异，不宣称像素一致。Main仅在fixture中打包未自然运行，合成A/B头像与奖励示例不是真人资料或真实消费；未进行独立QA（用户指定不委派）、真实双账号、微信原生字体/胶囊/触控、真机或线上云版本验证。本轮本地视觉已获用户接受；后续独立/设备验证按原流程安排，未扩入发布或其他未完成事项。
+- 记忆：复用同任务仍有效approved项目召回/已读Hindsight路由；ui美化module not-applicable，下方3条usage保持有效。没有新增持久方法，candidate none；接受事实留在本任务记录，不因一次页面接受推广成跨项目规则或重复原候选。 本轮限定diff/语法、analytics及当前task的handoff检查均通过，issues为空、usage3/3。
+
+### 历史：六项头像、冷却与插画反馈
+
+- 当前交付（2026-10-25新增六项反馈）：`implemented_verified_pending_user_visual_and_device_acceptance`。本地实现、实际Canvas检查和相关回归已完成；保持原task、ui美化归属及用户选定的B蓄势双猫，按用户要求直接执行、未委派。未提交、推送、上传微信、部署或改变其他owner工作。
+- 玩家头像：修复Main在battle_playing未传头像、BattleUI.drawTop固定传null的问题；状态栏现在读取双方已选择的头像。胜/负/平卡片原本已有头像传参，本轮以真实Main.render入口新增断言确认三态及局内均收到双方图片，清空对手头像时传null并保留默认猫回退；头像同意、URL范围、缓存与分享合同不变。预览A/B人形头像仅为清楚区分身份槽位的合成样例，不是真人资料或正式默认头像。
+- 道具冷却核实：现行客户端/云函数合同已是四道具各自冷却10秒；本地预览却固定sharedCooldown:true且四项同为7000，导致误导。本轮改成独立冷却示例（仅冰霜7秒、其余0），普通标题显示“各自冷却10秒”；客户端和云函数独立冷却测试通过。仍保留无itemCooldowns的旧云响应兼容分支，不通过隐藏真实共享状态掩盖旧部署；线上云函数版本未检查或部署。
+- 猫咪插画：双人胜利直接复用单人uiResultWinMoon，并调整摆放以完整显示月牙；失败/平局保持。第7天新增闭眼抱粉色猫爪锤的小猫，替换重复页头猫并调整币堆间距；新猫已含锤子，正常图不重复叠锤，缺图保留旧可用回退。奖励数值、领奖、价格、广告条件与玩法均未改。
+- 按钮光泽：新增共享原生Canvas button-material，接入moon-controls、illustration-art及首页主按钮；补曲面顶部反光、肩部高光、底部透光弧和下缘立体明暗。保持淡粉主操作、淡蓝退出、亮蓝广告、禁用置灰以及原触区/文字可编辑。房间、结算、商店、体力、签到、每日、设置等实际共用，非整图按钮替换。
+- 素材与授权：沿用用户本轮“内置工具不限次数/自有参考/现有额度”授权，新增image_gen调用1次，仅输入自有header-cat参考。来源、完整prompt、透明检查与必要hash见assets/_incoming/day7-reward-20261025/；源1536×1024 RGBA、真实alpha，白暗底实看无棋盘/不透明背景。运行day7-cat为256×171、54,720bytes，Lanczos缩小、无损PNG编码且未调色板量化。旧双人win-cat已备份到同目录retired-pvp-win-cat.png后退出活动包；素材台账同步，未扩大外部供应商、购买或上传范围。
+- 当前证据身份：Git d5a0d4c＋本任务及其他owner既有dirty源码。battle-avatar-main、battle-illustration-ui、battle-items-client-v3、battle-items-v3、retention-preview、ui-smoke、illustration-art/loader、open-source-and-assets通过；fixture检查覆盖66模块。新增Main测试最初因fixture时钟不一致失败，修正测试battleNow注入后通过，产品时钟未改。素材测试原期望仍列已由启动优化移除的两张bitmap按钮，按实际21key/20unique修正陈旧清单，精确资源检查保留。没有重复未改变的业务套件。
+- 实际Canvas：本地服务exec97038，http://127.0.0.1:52162/?width=390；320×568、390×844、430×932导出63帧（19态，320含6个滚动态），触区异常0、渲染错误0。最终图在assets/_incoming/ui-illustration-production-20261020/runtime/refinement-20261025/，final-overview.png拼接局内单项冷却、胜利和第7天；button-gloss-comparison.png为前后局部对比。Owner实看三尺寸代表帧、320第7天中间滚动、390房间/商店/体力/设置、430胜利/第7天/商店，无关键遮挡或越界；320末端滚动另留day7-320-scroll-end.png。预览加载真实UI/Core/Board，Main仅打包未自然实例化；真实Main.render头像路由由独立测试入口验证，不扩大为完整自然Main、真实双账号、领奖/广告、微信字体/胶囊/触控/真机验收。全部为owner检查，独立QA未执行（用户指定不委派）。
+- 最终预算：package-budget通过，ui-art1,546,937/1,572,864bytes；活跃主素材2,043,962/3,670,016；result-art1,675,962/1,677,721.6；静态主包3,362,511/4,194,304（93文件），总包8,380,909/31,457,280（135文件），未放宽预算。保留coin/heart展示快照、onShow失效、assets同路径复用及精确排除等启动优化；未覆盖其他owner修改。无客户端构建步骤，以上不等于微信编译包或设备性能。
+- 记忆与下一步：复用本任务仍有效approved项目召回及已读技能/当前Hindsight路由；ui美化无规范module映射，module not-applicable，下方三条usage仍适用。商店旧同行规则已被用户上下排列决定覆盖。无新增持久方法候选，candidate none，不重复原候选。本轮analytics与handoff只读检查均valid、issues为空，usage为3/3；限定diff空白检查通过。下一步由用户查看最终本地视觉，平台/真机及独立接受边界保留；原其他事项不扩入此轮。
+
+### 历史：B蓄势接入与每日花框修复
+
+- 当前交付（2026-10-25）：`implemented_verified_pending_user_visual_and_device_acceptance`。用户在本轮明确选择“用蓄势动作b”，B已接入活动`ui-art/prep-duo.png`；五项精修的本地实现与owner运行核验已完成，待用户查看最终运行效果及设备接受。沿用原task/delivery及ui美化归属，按用户要求直接执行、不委派；未提交、推送、上传微信、部署或改变其他owner工作。
+- 最终范围：平局采用新月牙单猫，已接受胜/负插画不变；房间补房名牌金线/花簇与底部浮雕猫爪，B为左猫俯身蓄势/右猫抬爪回应，下方保留真实玩家头像和猫名，未邀请好友时用B右猫局部头像；商店道具及文字向内移动，购买在上、广告在下，320内滚动/返回固定；独立`daily-ui`保留已接受双猫邀请图并补按钮/花框；全游戏现用按钮统一淡粉主操作、淡蓝退出、亮蓝广告，禁用仍置灰。价格、奖励、道具规则、广告条件、头像同意/分享及Main滑动取消动作合同不变。
+- 本次接续修复：大屏实看发现daily原中段拉伸包含下角花朵，改为保留猫咪/底部完整花簇比例，长屏只延展吊饰下方空白段，短屏压缩吊饰段；内容安全区独立于装饰保护区，未改文字/状态/触区或新增素材。修复前daily帧留在`runtime/refinement-20261024/before-flower-fix/`。预览工具补A/B历史比较、独立daily批次，并修复嵌入页hidden被display覆盖；正式默认已明确标为B。
+- 素材接续：原A/B生成完成事件及prompt匹配已核实，来源、hash、alpha统计见`assets/_incoming/prep-duo-variants-20261022/generation.json`。两原图1774×887 RGBA，白/暗底实看无烘焙棋盘；B等比Lanczos缩为640×320、250,060bytes，RGBA PNG无损编码、未调色板量化，alpha 0–255。旧90,035bytes双猫保留`prep-duo-before-b.png`；A不采用。用户此前“使用内置工具不限次数”仅覆盖本轮自有参考/现有额度，未扩大外部服务、购买或数据上传；本次只恢复并采用现有B，没有新增生成调用。素材台账已同步。
+- 当前有效证据：Git `d5a0d4c`＋工作区本任务及其他owner既有未提交修改；真实Canvas经CUA检查320×568、390×844、430×932，保存房间5态、商店正常/有广告/金币不足/领取中/存储异常/满额与短屏滚动、挑战6态、平局及首页/设置/签到/任务/单人结算代表态。B接入后覆盖重导三尺寸房间15帧，daily修复后重导三尺寸18帧；逐批触区检查无异常、渲染错误0，实看小屏、标准屏、大屏、空位头像/分享提示、日挑战错误/待确认/已完成及商店滚动代表帧。320装饰idle的房间/商店/挑战回退另保存并实看，信息和操作可达。结果在`assets/_incoming/ui-illustration-production-20261020/runtime/refinement-20261024/`，汇总`final-pages-390.png`；截图中的头像为项目图标合成样例，不是真人资料。
+- 检查与预算：daily变更后`ui-smoke`通过；B接入后`battle-illustration-ui`通过；fixture与65模块语法、限定diff检查通过。复用前轮仍适用的shop-card-layout、stamina-card-layout、retention-preview、ad-main及其他业务证据，不重复未改变的检查。最终包体预算通过：静态主包3,359,569/4,194,304bytes，总包8,385,169/31,457,280，ui-art1,554,139/1,572,864；未放宽预算。保留2026-10-23启动优化：coin/heart展示快照、onShow失效、assets同路径图片复用及精确排除。
+- 运行与验收边界：本地预览`http://127.0.0.1:52162/?width=390`，服务exec95299；加载真实UI/Core/Board，Main仅打包未实例化，状态/头像为内存示例，不发奖、不调广告/云端/音频、不写设备档。全部为owner检查，不充当独立QA、自然Main链路、微信字体/胶囊/触控/真机或线上验收；独立QA尚未执行（用户指定不委派）。下一步由用户查看这版运行效果，设备/平台接受仍保留。五类障碍静态方向已接受但正式接入/自然动画/平台未完成等原事项继续保留，未扩入本轮。
+- 记忆接续：复用本任务仍有效的approved项目召回及已读原文；ui美化无规范module映射，module not-applicable，usage阶段保持下方已有记录。商店旧同行排列已被用户上下排列决定覆盖。本轮是具体素材接入与既有分段绘制原则修复，没有新增可复用规则，候选`none`，不重复原任务候选；本次analytics与handoff只读检查均valid、issues为空。
+
+### 历史：首轮接续交付与有效证据
+
+- 当前接续（2026-10-22）：按 development-steps#ui-conversation-handoff-20261022，由“ui美化”原地承接；保留本任务anchor/delivery及既有其他会话修改。用户最新要求覆盖下方旧状态：重做平局猫；准备页改为备战双猫插画＋下方真实小头像/猫名，无人加入使用插画猫头像；补房名/底部按钮装饰；商店四商品购买与广告CTA改上下排列；精修独立每日挑战页（daily-ui，不是留存签到任务页）；全游戏主要动作淡粉、退出淡蓝、广告亮蓝。只改本地UI，玩法/奖励/广告/头像隐私合同不变，不委派、不提交/上传/部署。
+- 当前交付：`awaiting_acceptance`，2026-10-22用户恢复后已完成本地实现与owner自检；未提交/推送、未上传微信、未部署或改生产。当前源为Git `d5a0d4c`＋本任务与其他会话既有未提交修改；不把该提交当完整候选身份。当前会话直接实施、运行和检查，未委派；请求Astra xhigh不等于上游实际模型证明。
+- 最终实现：①平局改为新单猫/月牙花饰，胜负插画保持；②准备页中间备战双猫，下方独立小头像/猫名，空位使用双猫图局部头像且仅本地绘制，真实头像与分享提示保持；默认“我/对手/猫咪玩家”本地显示月光小猫/星星猫咪，不改云身份或昵称协议；房名和底部动作补金边花饰；③商店仍四商品清单，购买在上/广告在下，320内部滚动、返回固定，只有完整露出的按钮可命中；④独立daily-ui继续使用原接受稿的双猫邀请框，补原生标题、币堆、外置主按钮与边框排版；⑤theme统一淡粉主动作、淡蓝退出、亮蓝广告，落实至首页/结算/体力/设置/图鉴陪伴/留存/隐私翻页与局内广告加号。玩法、价格、库存、奖励幂等、广告消费者及头像披露未变。
+- 交互与修复：Main的shopOffset/shopTouch复用原抬手确认合同，购买/返回也在有效抬手时执行；从购买/广告开始滑动会取消动作，滑回原位不复活点击。第一轮实际Canvas发现准备页道具名/说明重叠、窄屏花饰压扁及两条提示过近，改为明确文字基线/等比角饰/独立提示间距，并增加完整字形间距断言；最后320标题补足原生底牌高度，daily错误提示上移避金边。失败帧保留在runtime/refinement-20261022/first-pass，不当最终证据。320双猫缩小以保留道具信息与44px操作，长屏保留大插画。
+- 素材：用户在本会话批准内置image_gen两图、每图一次/累计两次、仅本轮、自有参考输入/现有额度/无额外购买；实际两次已用尽，无新调用。`refinement-20261022/generation.json`保留全部prompt、来源及未知model/seed/cost，原图/白暗底保留；draw-cat448×309/59,476bytes、prep-duo640×277/90,035bytes，真实alpha已检查并实看。items图集原尺寸/裁格不变，256色PNG为96,705bytes，原370,808bytes文件保留items-before.png；这是有损RGB/alpha编码。台账已同步，两图为本地待验候选。
+- 有效验证：battle-illustration-ui（实际头像/双猫/占位/同意提示/道具文字/安全触区/旧协议/胜平负）；shop-card-layout（有无广告、滚动上下可达、完整露出才命中、纵向6px间隔、44px、价格/库存/待保存/满额）；ad-main（144路由手势＋真实消费者mock，新增滑动不购买/不展示广告与之后有效抬手一次）；stamina-card-layout、retention-preview、ui-smoke、illustration-art/loader、daily-client、battle-avatar-main、solo-economy/solo-resume-main、catalog-qa/companion-qa、privacy-reader均通过。脚本名含QA不代表本轮有独立审查者：全部由当前owner执行。65模块/fixture语法、相关修改语法与限定diff空白检查通过；Impeccable手动检测返回[]。旧测试的平局图/同行/同屏/固定素材数量预期按本次新决定更新，未去掉44px、状态、存储或广告边界保护。
+- 实际Canvas：浏览器3/tab1、服务exec80905、<http://127.0.0.1:52162/?width=390>，已标记保留；app open返回queued，不宣称已在隐藏会话显示。`assets/_incoming/ui-illustration-production-20261020/runtime/refinement-20261022/`保留正式320的35帧、390/430各27帧及320装饰idle回退35帧，共124张2×PNG，签名/尺寸核对通过，另overview.png仅拼接展示。三尺寸批次及回退批次均触区异常0/渲染错误0；最后房间/每日标题修订只重导三尺寸各11个受影响状态，其余源分支未变复用有效帧。Owner实际看正式三尺寸准备/分享提示/空位、平局、商店含广告/滚动、每日正常/断网、首页、体力与单人广告复活，以及320四种代表回退；未见最终关键文字重叠或操作越界。预览有可见尺寸/状态/滚动切换，使用生产渲染及合成头像/分数，不发真实奖励、不请求真实广告/云或写设备存档。
+- 包体与门：最终静态主包3,694,542/4,194,304，总包8,560,117/31,457,280，ui-art1,394,114/1,572,864；package-budget和素材合规清单通过，未调高上限/忽略活动资源。这不是微信实际编译包或设备下载/解码性能证明。最新增量缺独立非实施者复核，不能继承旧QA结论；微信头像原生层、自然Main流程、真实双账号/广告/购买领奖、平台字体及设备性能仍未验。下一步为用户查看本地视觉候选，发布/上传/部署仍未授权。
+- 记忆：复用同任务有效approved项目召回及experience-art严格空库确认。shop-list-cta只采用仍适用的四商品单面板、状态与44px边界，旧同行决定被新用户要求覆盖；low-maintenance/functional-preview保持已读边界，不新增采用。无新增持久候选，避免重复已在权威记录的规格/进度；原同任务候选match3-game-20261020-optional-art-startup-marker保留原pending-local边界，不批准或重复创建。
+
+- 本轮交付记录检查：analytics.py与本task/current turn的handoff.py均valid、issues为空，清单/usage为3/3；限定diff空白检查通过。只证明记录完整，不替代独立审查、用户或设备接受。
+
+### 历史：上轮细节复刻（不是本轮完成状态）
+
+- 当前授权与执行：用户要求商店同步插画、体力不足使用失败结算同款猫，并继续对照原设计补齐细节；随后明确不用子智能体，后续由当前主会话直接实施、运行与检查。已确认委派任务没有运行者，此后未再派发。保留四行同行CTA、现有准备/道具/奖励/广告/头像合同，代码仅本地；不提交、上传或部署。
+- 当前实现：商店四行采用花饰暖纸金框、精细道具与金底座、同排金币/视频按钮；准备页恢复四个独立浅纸格、宋体字、星空房名牌与金白边按钮；双人结算使用大弧冠星空渐变框、真实可选头像、奖章胜利猫与立体币堆。签到/任务使用独立场景背景，取消透出的首页控件，补趴框猫、币堆、已领缎带、条内进度和周箱横向布局。体力不足仍与失败页共用uiResultLoseMoon/uiResultSadCat，补细金信息框和粉蓝倒计时；异常说明分两行。用户要求的实际头像替换、猫咪房名及既有独立冷却规则保持，不恢复原概念中的假猫头像/示例奖励。
+- 细节对照与修复：直接实看四张接受稿和真实Canvas。第一轮平底通用框仍把结算大弧冠变成窄标题牌，且举手猫、平币与原图不同；当前主会话补四个独立无字透明装饰并使用专用结果框。运行时又修正胜利猫爪离框、金币透明留白导致缩小、320商店说明碰分隔线三项；最后一项只重导320商店六态，长屏相同分支保留有效帧。仍保留320必要滚动、44px操作和动态数据，不以一张生成整图代替交互。
+- 素材与包体：首轮worker生成空白纸框1张，用户停止委派后主会话直接调用内置image_gen4次制作header-cat/win-cat/reward-coins/result-frame；source、完整prompt、实际路径及未知model/seed/cost记录在refinement/details/generation.json。源RGBA保留；活动PNG经技术裁边、缩放和256色有损RGB/alpha编码，四图281,330bytes。主会话实看原/量化白暗底，真实透明，无明显脏边/条带。当前ui-art12图1,518,706/1,572,864字节，新增细节家族后内部预算明确为1.5MiB；没有放宽主包/总包/result-art上限或忽略活动资源。最终静态主包3,689,335/4,194,304，总包8,679,502/31,457,280；不是微信实际编译包体。
+- 有效验证：最终battle-illustration-ui、stamina-card-layout、retention-preview、shop-card-layout及ui-smoke通过；真实helpers集成，保留未就绪、满额、pending、存储异常、头像/准备与旧协议覆盖。商店新增具体回归：说明完整字形与下一分隔线至少1px空隙。illustration-art-loader原子发布/超时/重试测试通过；素材合规清单补入五张新增资源后通过；package-budget、受影响源码/fixture及65模块语法、限定diff空白检查通过。旧头像云/Main、单人经济与局内道具行为未变，复用其有效检查，不重跑后端或声称发布验收。
+- 真实运行证据：当前预览服务25248，http://127.0.0.1:50353/，真实生产Canvas/Core/Board/资产；Main只加载未实例化自然流程。CUA导出三尺寸24态及320四个必要滚动帧共76张正式素材帧，再导出320同28张装饰idle回退，总104张PNG签名/2×尺寸核对通过。三批正式/一批回退均显示触区无异常、渲染错误0。owner实看390胜负/签到/体力/商店，320分享提示/胜利/体力与存储异常/商店/任务首屏及滚动、430签到/胜利，以及320商店/结果/任务滚动回退；未见当前关键文字遮挡、按钮越界或花饰压住必要动作。runtime/refinement-v1/保留前一轮代表帧，不充当当前证明。
+- 交付与边界：本次遵从用户直接主会话执行，最终新增改动由owner实看检查；之前独立QA结论仅适用其旧源，最新只读QA429失败未计通过，不虚构新增独立验收。预览是合成头像/分数/存储模型，无真实云、自然购买/领奖/广告、微信授权或设备性能证据；微信真机与用户最终视觉接受仍待验。当前整体更接近原稿，但系统字体、响应式高度及生成插画微细纹理不宣称像素完全相同。只保留本地。
+- 记忆：复用同任务approved recall，shop-list-cta r1已从静态简报实际落实为生产四行同行CTA并经三档状态测试/CUA确认；low-maintenance r1仍仅检索。接收并核读worker召回的functional-preview r1，仅用于明确静态组件预览的证据边界，未声称已采用其完整自然功能fixture。小批原Markdown审计待审为空、历史needs-evidence1无冲突；原候选match3-game-20261020-optional-art-startup-marker仍按原回执pending-local，不重复创建候选或自动批准。
+
+- 本轮交付自检：analytics.py与本task/current turn的handoff.py均valid、issues为空，declared/recorded为3/3；限定文档/测试差异空白检查通过。仅证明记录完整，不替代用户视觉接受、独立复核或微信真机验证。
+
+### 历史：首轮插画接入与此前证据
+
+- 当前授权（2026-10-20）：用户接受页面插画方向并要求本地实现：双人准备中心用双方微信头像框替代两猫插画，房间用稳定随机猫咪地名；双人结算比分头像使用玩家头像；四种对战道具及三种单人道具统一精细插画外观；更新体力卡和签到/任务页。保留既有玩法、奖励、广告与导航，商店四行合同不变；不包含局内障碍接入、上线部署或提交。先落实头像与资产合同，再分域实现、实际Canvas多尺寸检查、独立QA及修复，最终交用户视觉验收。综合owner负责Main/整合和记录，有界worker负责冻结的渲染包。此前静态效果稿与证据保留在下方。
+- 当前实现：Main整合可选插画预取、单独的头像同步与双方头像传参；battle-ui更新准备/结算及局内四道具，Board更新三种单人工具；retention-ui与stamina-card更新签到/任务/周箱及体力卡。房间标题由roomId稳定映射猫咪地名。全部文字、状态和操作仍为原生Canvas，未改玩法、奖励和广告触发规则；商店未改。新增`ui-art`普通分包及`illustration-art`裁区/九切助手，真实启动不等待装饰下载，失败沿用可操作回退。源文件与当前其他会话dirty修改共存，不提交或覆盖无关内容。
+- 新素材边界：本轮内置imagegen仅生成道具/周箱两张透明图集源，参照自有接受稿；无外部供应商、账号/代码/个人资料上传。原始源、完整提示、返回路径与未知模型/费用字段在`assets/_incoming/ui-illustration-production-20261020/{outputs.json,*-prompt.md}`，alpha白/暗底组合图已实看无棋盘烘焙。程序仅裁格、修透明边和缩放打包，活动图集`ui-art/items.png`768×384与`chests.png`576×192，计532,941bytes；同分包迁移五张旧装饰图558,811bytes，合计1,091,752bytes。沿用既有结算框和月牙猫；1×1全透明`res/ui/avatar-tap.png`为原生头像按钮点击层，非生成美术。
+- 头像合同与隐私：仅在“点头像设置／向本房间好友展示”说明下主动选择后向当前房间分享qlogo HTTPS头像URL，历史本地头像不自动共享；退出/新房清理同意，同房换轮保留。云`profile`只改自己的头像，成员/轮次校验和URL白名单不触分数/道具/准备；query只向当前房员返回对方头像URL。Main独立请求不占玩法锁，旧房/轮回包隔离，选择A尚未回包又选B时按序补B，进入对局/结果或同房换轮仍可完成主动选择。失败保留默认形象和等待页重试提示。头像披露先同步至运行正文/审阅源2026-10-20.1；随后其他会话加入已获其授权的单人分析增量，当前版本2026-10-20.2，保留其变更，不据本轮头像检查替代其平台/法律/运营审核。发布时需客户端与`battle`云函数一起更新，本轮未上传。
+- 合同独立QA：未实施的`illustration_contract_qa`实际复现可选装饰未加载时旧uiToolBomb启动标识丢失，资产worker将该图移回启动res/ui且保留原key；QA在真实启动预载、插画idle下确认特殊炸弹标识正常，未用近似fallback掩盖。QA又复现A待回包→选B→进入playing/result后B被等待页守卫丢弃；owner扩为当前房间三状态可完成同步，并于新轮配置后补当前选择。QA独立验证成功/失败×playing/result及换轮旧失败不能清新request，均闭合。头像透明PNG实际alpha=0，拒绝/迟到回调隔离仍合理。未操作账号/线上或修改实现，候选none。
+- 最终视觉修复：准备/结算初版大内矩形遮住金框，第一次修复后准备页仍把按钮压到花饰/台座外；同一外框保真criterion两次实质失败，停止Sol微调，由固定`escalation` Astra xhigh路线重组准备框的拱冠/安静中段/花台，320的44px±范围x37.9–282.1/y302.5–430，花台从y434开始。体力标题整体落在浅色面，未只换颜色掩盖。冷却提示与当前既有独立CD合同一致为“各道具冷却10秒”，未改规则。父任务实际发现留存标题碰关闭按钮，worker下移标题/副标题并加三档避让断言；fresh只读QA实际指出金边仍穿过浅色字，worker仅给framed两行标题加局部深色柔影，状态不泄漏，未加内框或生成美术。角色/owner不变，不宣称上游模型或成本。
+- 当前运行证据：最终真实生产Canvas/Core/Board由父任务CUA导出320×568、390×844、430×932的23态与短屏6个必要滚动帧，共75张正式素材帧；另320/390装饰idle共52张回退帧。127张PNG签名与2×尺寸核对通过，保存在`assets/_incoming/ui-illustration-production-20261020/runtime/`根，`initial-390/`仅初轮失败历史。最后页头柔影只重导受影响留存8态/必要滚动，未改页面复用有效帧。owner实际看三档准备/同意提示、390胜利/签到/体力、320任务/滚动/体力/双人道具/单人工具、430任务及390工具回退等，无裁切/操作压框/棋盘重叠。CUA批次均完成、未出现渲染错误。预览采用内存合成头像/分数/奖励和固定种子棋盘，不运行自然Main或存档、真实云/广告/音频；分包本地成功适配，不把其当微信下载/性能。当前最终模块快照62个（含其他会话的广告诊断模块），未改区域渲染源一致，旧61模块批次对未变页面仍有效。
+- 最终独立视觉QA：fresh `illustration_visual_final_qa`实际看参考及320/390并指出金边穿标题，其后因429终止，未算最终通过。改由未实施绘制的`illustration_contract_qa`承接补核，实际看四张接受稿与14张最终运行帧：准备320/430、体力320、结算390、单/双局内320、两张390回退，以及signin390/tasks320及scroll/tasks430/chests390/previous320。其确认标题柔影后可辨、320滚动后周箱和上周待领完整，框饰未压必要信息；局部源码确认裁切控件不收点击，≥44复用有效几何证据。最终无must-fix；不冒充自然触摸/授权/领取/性能，未改实现或盲重复套件，候选none。owner据此接受本地实现与证据，最终用户视觉门仍保留。
+- 验证与包体：loader原子发布/20秒超时/重试/迟到回调、裁格/九切、结果装饰、头像平台与云profile隔离、Main顺序同步/跨房轮、旧对战客户端/等待恢复、单人经济、隐私入口/全文与素材来源检查均在对应改动后通过；新增头像边界已由独立QA复现闭合。最终框体`battle-illustration-ui`/`stamina-card-layout`及页头`retention-preview`通过，父任务UI-smoke在框体最终源通过；最后仅页头柔影由受影响留存专项证明局部状态平衡，未重复无关套件。fixture及62递归模块语法通过。当前合并工作区静态主包3,659,231/4,194,304（91文件），总包8,222,444/31,457,280（126文件），ui-art1,091,752/1,258,291；旧result-art预算及主/总上限未放宽。其他会话改动保留，不把估算当微信实际打包大小。
+- 交付与边界：实际预览<http://127.0.0.1:50353/?width=390&state=wait>，最终服务12230、CUA tab12标为deliverable，菜单中文可切准备/胜负/体力/签到任务/单人工具及三尺寸；先前tab11已失效，已在同一browser2新建恢复，未操作账号。用户视觉接受仍待确认；微信原生头像授权/透明点击层、真实双账号网络、自然领奖/广告及设备字体/分包/性能未验。本轮客户端和battle云源仅本地，无上传、部署、提交或推送。
+- 本轮方法候选：`match3-game-20261020-optional-art-startup-marker`，依据已独立闭合的炸弹标识迁移回归，提炼“沿资产key全部调用判断启动必需性”的项目方法。v2参数/隐私检查通过，capture返回`pending-local`；尚未提交/提取/审阅/批准，不作为本轮规则。其余worker候选none，不把常规任务状态重复写记忆。
+- 本轮交付自检（2026-10-21）：当前记录analytics和本task/turn的handoff.py均valid、issues为空，清单2项与usage2项一致；只证明记忆交付记录完整，不替代上述技术/视觉验收或未验的微信设备环节。
+
+### 历史：此前已交付的静态方向图
+- 视觉输入：沿用用户接受的C系插画结算卡：月夜花园、猫咪/月牙破框、深蓝星空向珍珠暖白渐变、香槟金细边和樱粉缎带、精细立体道具，标题/数值/操作分层。概念图文字仅供方向查看，后续仍需原生可编辑排版与真实数据，不用整图替代UI。
+- 制作边界：使用内置imagegen，首轮每展示板一次、累计四次；不激活外部付费供应商或CLI/API，不上传账号/代码/个人资料。自有已接受卡片只作视觉参照，产物隔离于`assets/_incoming/ui-illustration-concepts-20261020/`，不进入活动资源或打包。最终生成提示、实际返回路径与未知模型/费用字段如实记录。
+- 最终产物：`battle-prep.png`853×1844、`battle-result.png`1536×1024、`stamina-shop.png`1534×1025、`retention.png`1459×1078。首轮四次＋商店CTA一次定点图像编辑，共五次内置调用；初稿`stamina-shop-initial.png`另存。各完整提示见同目录`prompts.md`，实际原始来源路径/输入/未知参数见`outputs.json`。PNG头/尺寸已核对；不对仅静态概念补做产品构建/玩法/包体测试。
+- 方向与修复：四稿保留接受的月牙、猫咪、星空/珍珠暖底和金边缎带；商店首稿未遵循同行CTA，被owner和独立QA指出，追加一次仅右侧行操作布局编辑后金币/视频同行。体力图背景中的活动/邮箱等只属生成示意，非本轮新导航提案；实际实现须保留现有首页、规则与原生文字合同。双卡展示板并非390手机等比布局，不把图像字形/触区或内容数字当正式实现验收。
+- 独立视觉QA：未实施的`ui_illustration_concept_qa`实际看接受锚点与四张原图，确认风格一致、关键信息/动作完整，双人四道具/5预算/10秒/鼓舞5秒×2、胜负比分/再战及签到/任务/周箱齐全，仅商店同行CTA为must-fix。第一次最终图补看遭连接中断，未计通过；重派同一只读补看最终商店后确认同行CTA、四行文案、体力/返回动作完整，无新增遮挡裁切，最终无must-fix。其余三图未变复用首轮证据；候选none。准备插画较高，后续真实布局需保护道具字号，非阻断方向建议。
+- 浏览与有效证据：有界worker只实现`tools/preview-ui-illustration-concepts.cjs`与README，固定四图白名单、loopback、原图入口与示例标签。整图显示criterion先后在强制最小宽度与固定视口减数方案失败两次，随后按授权由工具固定Astra xhigh escalation路线改为flex剩余区域适配；不声称上游配置/费用。最终工具语法通过，主任务CUA实际切换四图并保存`viewer-{prep,result,shop,retention}.png`，1280×720下均完整显示无底部裁图，保留<http://127.0.0.1:49337/>对战结算页（服务27697）。只证明图片浏览，不证明真实游戏响应式/微信/自然链路。正式代码、活动素材、云端、存档未修改，无上传部署或提交。
+- 记忆：复用上一轮同一页面范围的approved严格标签检索，命中shop-list-cta r1与low-maintenance r1；本轮核读原文。采用前者的四行单面板与价格/库存/CTA同基线约束；后者仅检索原文，留存内容规划偏好不扩作本轮美术授权。综合owner无规范module映射，module not-applicable。候选none；当前方向未被用户接受，不新增偏好候选。
+- 交付自检：本记录analytics结构检查、该task/turn的handoff.py均valid且issues为空，相关工具/任务文档diff空白检查通过；仅证明记录完整，不替代独立视觉检查、用户选择或真实UI/设备验收。
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-shop-list-cta","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","delivery_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","date":"2026-10-22","stage":"validated","purpose":"execution","action":"保留四商品单面板、广告/存储状态与44px边界；旧同行/共享基线被用户2026-10-22上下排列明确覆盖，不采用旧排列。生产商店纵向CTA与短屏滚动经shop-card-layout和三尺寸Canvas核对，Main滑动取消购买/广告由ad-main确认。","check":{"result":"effective","evidence":"/Users/Admin/codex/sanxiao/match3-game/match3-wechat/test/shop-card-layout.js"}}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-low-maintenance","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","delivery_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","date":"2026-10-20","stage":"retrieved","purpose":"execution","action":"核读本项目留存内容的低维护规划偏好；本轮只画既有签到/任务状态，不据此声称美术或奖励规则获额外授权。"}
+```
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-functional-preview","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","delivery_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","date":"2026-10-22","stage":"retrieved","purpose":"execution","action":"worker召回后owner核读approved原文，仅确认组件Canvas静态预览不能充当自然Main/网络/领奖验收；未据此声称本任务采用完整功能fixture或获得平台门禁豁免。"}
+```
+
+```memory-handoff
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#页面插画风格效果稿--2026-10-20","turn_id":"01a17163-f889-79c3-a441-7faa2b91193f","recall":{"project":"reused","module":"not-applicable"},"memories":[{"memory_id":"match3-game-shop-list-cta","revision":1,"stage":"validated","purpose":"execution"},{"memory_id":"match3-game-low-maintenance","revision":1,"stage":"retrieved","purpose":"execution"},{"memory_id":"match3-game-functional-preview","revision":1,"stage":"retrieved","purpose":"execution"}],"no_usage_reason":null}
+```
+
+## 局内障碍材质统一 · 2026-10-20
+
+- 用户2026-10-20以“可以”确认新版冰块全覆盖预览；至此五类障碍的本地静态材质方向均已接受。该任务的视觉等待已结束，后续正式渲染接入、自然受击/动画、分包和微信/真机验证仍未完成。本轮用户转为询问其他页面/卡片的美化空间，先做当前画面的只读设计建议，不据此扩大产品实现或素材制作范围。
+
+```memory-task
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#局内障碍材质统一--2026-10-20","session_id":"01a0d93b-1096-7f21-9808-15e4eb691813","turn_id":"01a15703-6d1a-7212-99f8-a86a2f1d5c81","state":"complete"}
+```
+
+- 预览制作决定：用户此前接受其他四类障碍，要求仅把新版冰块的透明中心改为完全覆盖棋子，保留新版冰晶质感；该次只修改隔离预览，不变更其他障碍或正式产品。复用本任务仍适用的approved检索与r1原文，未扩大至玩法或动态验证。
+- 冰块全覆盖预览交付：仅隔离工具的ice函数改绘完整晶体图，候选drawPiece按trackingObstacle隐藏仍有冰的底层棋子；Core数据、其他四类绘制与正式客户端未改。工具及生成fixture语法通过，CUA最终源导出三尺寸六状态36帧并保留预览页，浏览器错误空。透明冰开3三尺寸原图存transparent-ice/；新图仍在同目录根。独立只读QA实际看新320/390/430开3及旧390基线：完整雪花晶纹、玻璃高光保留，猫脸/耳朵无露出、无跨格，其余四类未见变化，无must-fix。复用其他未改分支证据，不重复产品套件/包体。当前服务81932，URL仍56165；仅静态预览，不等同正式自然对局或微信/真机。用户已认可其他四类方向，冰块此版按请求供查看；候选none，无生成、上传或提交。
+- Owner：三消-主综合实现/集成，状态`material_anchor_user_visual_accepted_pending_integration`。用户认可当前结算卡片，并要求局内障碍采用同样材质。已交付可运行的局内新旧材质对比，五类为果冻、冰块、毛线、花苞、包裹；保持核心规则、猫咪颜色辨识和既有开闭状态，原生数字可编辑。此阶段只做本地隔离预览，待用户确认棋盘尺度效果后再推广到正式渲染与完整状态资产，不绕过锚点门。
+- 当前制作范围：复用已在本项目生成并获用户视觉认可的结算目标图集及现有棋子，原生Canvas负责可透猫脸的边缘材质、层数/耐久/开闭标识。当前不追加图像生成、不调用外部供应商、不上传项目材料或改变正式产品源；具体局内资产制作需求由预览反馈决定。
+- 执行分工：主任务冻结棋盘尺度、五类材质、透猫脸及状态含义，隔离预览工具与候选README交由有界Sol medium worker实现；主任务负责实际浏览器检查、修复决策和记录，另由未实施worker独立看图。只新增工具和隔离产物，避免与正在修改广告/正式客户端的会话互写。该分工依现有role-collaboration授权，不新建产品任务或角色。
+- 隔离实现：`tools/preview-obstacle-materials.cjs`在两套独立CommonJS缓存运行实际Board/GameCore，当前与候选使用同一序列化8×8快照；仅候选实例覆盖障碍绘制。复用既有480×320目标图集，果冻/冰晶保留透明中心，双层紫色双沿＋2，毛线根角使用纤维线球并保留耐久数字，藤蔓无伪计数，花苞保留开合几何差异，包裹使用藤编篮与现有出口。HUD/道具、Core和活动素材均未改，正式分包加载与包体输入不变；不重复原有效产品套件/包体检查。
+- 有效运行：工具与生成浏览器脚本语法通过，父任务实际CUA打开127.0.0.1:56165并使用可见按钮导出320×568/390×844/430×932的开/合×耐久1/2/3，共36张2×Canvas至`assets/_incoming/obstacle-materials-20261020/`。首轮36张计数/尺寸一致、浏览器错误空；父任务实看390开3、320合1、430开2及320逻辑尺寸。发现花苞圆章对8px文字太小（首个criterion失败），有界worker首次修复成至少10×10px原生开合底标并向格内收；其他材质/数字章不变。该次修订重导36帧，父任务实看320合1字形清楚且格内；其后发现大屏标识过大，最终修复及复核见下。窄窗口用CSS优先新材质，宽窗口并列对照。
+- 最终标识修复：上述首次Sol修复虽使窄屏字形清楚，但标识随大格增长而遮挡猫脸，主任务再次否决，同一标识平衡criterion累计两次实质失败。按已授权策略由固定Astra xhigh escalation路线仅将开合标记改为固定10×10px/8px文字，外描边距格边1.4px；保留暖色开、深色合。元数据可见，不声称上游配置或费用。最终工具及浏览器fixture语法、三种棋格的开合几何检查通过。父任务重启最终源并再次实际CUA导出36帧完成，实看390开3，浏览器错误空；之前的比例标识截图不作最终证据。
+- 独立复核：旧QA上下文多次等待未返回收据后中断，不当作通过。改用fresh fork-none Sol medium只读worker实际查看最终320开3/合1、390开3/开2、430合1、390当前基线和目标图集，确认五色猫脸、单双果冻/冰/开闭/根藤/耐久1–3可辨，标签/花瓣无跨格，未见新增HUD或按钮重叠，静态方向锚点无must-fix。非阻断建议：320纤维细节较细，主要靠紫色轮廓与角落线球辨识。QA未改文件、未重复产品套件；候选none。实现者检查未代替独立复核。
+- 当前门与交付：本地预览<http://127.0.0.1:56165/?width=390&state=open-3>由CUA标为交付页，服务进程93616。遵守casual-game-visual-production的“Do not expand an unaccepted anchor across the complete UI.”，先由用户确认棋盘尺度方向，再正式接入。当前绑定paused表示真实视觉门，不代表用户接受或检查豁免。只新增隔离工具/README/截图与本记录，无活动障碍源码、规则、素材或包配置改动，无提交/上传/部署。当前项目事实已在权威记录，无需重复持久候选，候选none。
+- 当前范围：本地静态材质锚点，准确标明内存排布、示例分数与步数；没有棋盘输入、Main、存档、云调用或自然受击/交换动画验证，不把透明边缘截图解释为已接入正式对局。后续正式受击、无效交换偏移、动画中断、分包预取、微信/真机性能及完整自然链路仍需对应实现与验收。
+- 记忆检索：本轮approved项目严格标签检索hit，返回special-comprehensibility、vfx-event-footprint、low-maintenance；仅核读`match3-game-vfx-event-footprint` r1原文与当前Board的trackingObstacle/visualMoonbuds分层，确认造型接受不能扩为玩法/VFX接受。当前仅静态状态材质比较，不据此声称自然受击链路有效。其余结果与局内材质局部请求无直接适用知识，不采用；综合owner无规范模块映射，module not-applicable。
+
+- 交付自检：当前记录的只读analytics结构检查及本task/turn的handoff.py均valid、issues为空；仅证明声明与记录一致，不替代上述独立视觉复核或用户接受。候选none，未新增候选或批准。
+
+```memory-usage
+{"schema_version":1,"memory_id":"match3-game-vfx-event-footprint","revision":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#局内障碍材质统一--2026-10-20","delivery_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#局内障碍材质统一--2026-10-20","date":"2026-10-20","stage":"retrieved","purpose":"execution","action":"核读approved原文并对照Board当前trackingObstacle/visualMoonbuds绘制分层；本轮为静态材质锚点，不扩为玩法或VFX授权。"}
+```
+
+```memory-handoff
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#局内障碍材质统一--2026-10-20","turn_id":"01a15703-6d1a-7212-99f8-a86a2f1d5c81","recall":{"project":"reused","module":"not-applicable"},"memories":[{"memory_id":"match3-game-vfx-event-footprint","revision":1,"stage":"retrieved","purpose":"execution"}],"no_usage_reason":null}
+```
+
+## 单人结算卡片方案 · 2026-10-18
+
+```memory-task
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#单人结算卡片方案--2026-10-18","session_id":"01a0d93b-1096-7f21-9808-15e4eb691813","turn_id":"01a154bc-efb7-73b2-a884-4bfefbeefb77","state":"active"}
+```
+
+- Owner：三消-主综合实现/集成，状态`user_visual_accepted_pending_device`。三/四目标图标超金边及花饰混淆已修复并独立复核通过；用户2026-10-20反馈“这次做的好看极了”，接受当前本地卡片视觉，并要求将材质方向扩至局内障碍。该认可不替代微信/真机或发布授权。成功及单/双目标保持现有版本，仅保留本地。
+- 当前实现：失败目标直接排在共享拱框背景上，不再绘制内面板。果冻、毛线、冰块、花苞、包裹、分数改用同风格立体图标图集，收集目标保留正式猫棋子；名称为暖棕衬线字，真实剩余数为玫红字。普通双目标整组各向中心收16px，单目标居中。最新三/四目标：短屏左右各留48px，长屏左82/右46px为边缘花饰预留空间，列宽依卡内可用宽度计算，图标34/40px且文字占余下列宽，图文间隙4px。长屏初修对称内距仍被独立QA发现左下花苞与花饰相接，已改上述非对称留白，未增加内框。文字、星级、目标值、统计、按钮与触区仍为原生，缺图时保留可用原生图标；目标/广告/奖励/保存合同未改。
+- 资源：内置image_gen此前按自有C参考各生成一次拱框、成功猫/月牙、失败猫/月牙，本轮再生成一次无文字六图标图集；完整提示、原始输出、透明白/深底检查与尺寸/来源记录在`assets/_incoming/result-card-c-fidelity-20261018/`。图集由1536×1024原图逐格统一裁边、缩至144px内容并留8px透明边，组成480×320 RGBA运行图，196,867bytes；既有三图未降质。四文件在独立`result-art`分包，单人开局非阻塞预取、全部解码后原子发布，加载失败/超时保留原生卡；未使用整屏贴图或新增外部供应商。底层模型、seed与独立费用未知。
+- 修复与有效检查：本轮将现有UI冒烟从屏幕边界加强为多行图标/文字在卡内44px区域、长屏左列避开78px花饰区。卡内断言在修复前明确失败；最终UI/冒烟语法、`ui-smoke`及原`strategy-feedback`通过，保留1–4目标、待保存、真实剩余值、裁区、无内框、回退与原统计/触区断言，单/双目标位置未变。四图登记后的`result-art-loader`、相关`solo-economy`/`solo-resume-main`、共享assets改动后`catalog-subpackage-qa`与Main/assets/typography/预览语法证据仍适用；本轮未改对应合同、资源或加载器。
+- 包体：最终花饰避让源`package-budget`通过；活跃素材2,942,204/3,670,016，四图1,675,962/1,677,721.6，静态主包4,192,359/4,194,304（92文件，余1,945），总包7,663,774/31,457,280（119文件）。装饰不进主包，未放宽预算、修改忽略规则或删减既有素材。此为共同工作区静态估算，非微信实际编译包；合并其他会话源变化后不能沿用。
+- 运行：本轮最终源启动`tools/preview-result-runtime.cjs`并由CUA重新加载，更新320×568/390×844/430×932各三/四目标共6张2×Canvas（长屏花饰修复后重导4张，短屏分支未变复用2张），位于同目录`runtime/{triple,dense}-{320,390,430}.png`，尺寸核对通过。Owner实看320四目标与430三目标、最终390四目标，图标在金边内，花苞与装饰分开，文字/按钮无重叠；触区仍≥44px且在contentTop91/safeBottom34内。`dense-preview-390.png`仅用sips将实际Canvas缩至390×844供查看。上轮33态的其他27帧与390失败回退对应分支未变，相关证据复用；不把旧三/四目标帧当修复证据。
+- 协作与升级历史：首次原生C被否决、随后Sol保真修订的失败目标又被否决，同一C保真criterion连续两次实质失败后，由`failure_goal_refine`走工具固定Astra xhigh路线实现失败绘制区及冒烟；父任务适配素材/运行fixture/包体与记录，不声称上游精确模型或费用。此前`result_concept_qa`的加载器/白深底与Main剩余目标语义审查仍适用。其最终等待恢复后仍未返回，另由有界`result_goals_final_qa`固定worker路线完成上轮五帧静态复核，无独立内框、风格协调、文字/按钮在屏幕内；用户本轮发现证明该复核漏掉金边内包含，未将其继续当本轮通过证据。
+- 本轮独立QA：主综合owner完成局部布局/既有回归修复，`result_goals_final_qa`独立只读实看三尺寸的三/四目标共六帧，确认图标已全部进入金边、文字/两列/按钮不重叠，但指出390/430左下花苞与花饰仍混淆。按此实际must-fix改成长屏非对称内距，重导4张长屏图；QA实际补看最终390/430三/四目标四张原图，确认花苞与花饰有清晰可见空隙、图标/文字均在金边内且无新增重叠，该项修复通过。320分支不变复用已通过2帧。QA未写文件或重跑有效套件，实施者检查未替代独立复核；合成示例不代表自然流程、微信/真机或用户视觉接受。候选none。
+- 当前门/边界：本地预览使用实际渲染/Core/Main目标getter及内存示例，不实例化自然Main战局、不发奖、不调广告/云端、不写设备存档；0星待保存示例遵循真实异常对象合同，不能证明自然待保存统计。320成功角色区较390/430紧凑，下沿与星级相叠，已初审为非阻塞但不声称等比例保真。微信分包下载/解码/实际打包、设备字体/胶囊/DPR/触控、自然结算全链路与真机性能仍未验；预览已保留390四目标态，等待用户查看。
+- 记忆与交付检查：复用同任务仍适用的approved检索与audit，无适用采用条目，候选`none`；具体实现和证据留在本记录，不重复成持久候选。当前task/turn的`handoff.py`只读检查valid、issues空；相关文档/产品差异空白检查通过。最终用户视觉、微信/真机接受及发布授权仍待取得，不上传、部署或提交。
+
+### 历史 · 初次原生C实现，用户认为偏离设计图
+
+- 当时状态`implemented_verified_pending_user_visual_and_device_acceptance`。用户反馈“c好些”，按C方向完成本地单人成功/失败卡：猫咪破框、月牙舞台、拱形背板、珍珠信息区与粉蓝主次行动。保留现有花园/猫咪/金币/棋子素材，文字、星级、目标与按钮均原生可编辑。方向选择不等于最终运行视觉/真机接受；未上传、部署或提交。
+- 实现范围：`UI.drawResult`按内容收紧自然高度，320短屏压缩上方角色区；成功保留实际星级、得分、金币、最高连消和特殊组合，失败展示真实未完成目标。花苞/包裹复用`new-obstacles-render`，冰块/果冻/毛线用可辨的原生轮廓和纹理；不增加位图、字体或依赖，也不接入概念整图。奖励待保存只留重试结算；复活待保存显示无需再看广告，实际可用广告才显示继续，原有+5步/限时另+30秒规则保持。
+- 数据：`Main.remainingSoloGoals`从真实Core生成分数差额、各色收集缺口、果冻剩余层数、冰块/花苞/包裹剩余数量和毛线耐久；失败结果保存该快照，恢复旧失败存档时从恢复后的Core补齐。未改核心判定、经济规则、广告调用、存储结构或离开拦截。`solo-economy`覆盖7型/已完成过滤/分层果冻/毛线耐久/快照独立性/隐式果冻与默认分数；`solo-resume-main`覆盖旧失败结果恢复后的目标重建。
+- 有效检查：最终UI与测试语法、`ui-smoke`、原有`strategy-feedback`通过；Main与新预览工具语法、`solo-economy`、`solo-resume-main`通过。中途首个实现遗漏两项统计，被原有策略反馈用例检出后恢复标签及实际值，未删除原断言；毛线分母同时补齐。新增测试的序列化及恢复后实例归属夹具问题已修正后通过。实看初版另发现长屏空白、简陋色块及卡底直角，一次有界修复后重导最终图，未重复失效方法。
+- 包体：最终产品源检查通过；活跃素材2,942,204/3,670,016，主包4,185,820/4,194,304（92文件，余8,484），总包5,981,185/31,457,280（114文件）。绘制块7702bytes；无放宽预算或排除活跃资源。现有其他dirty工作保留，此数值为当前共同工作区，合并新变化后按实际输入复核。
+- 运行：`tools/preview-result-runtime.cjs`在最终UI修复后重启，启动时读取真实UI/Core/Main目标适配及活动素材；CUA在<http://127.0.0.1:56164/?width=390>完成320×568、390×844、430×932各9态导出，另有320四目标降低效果，共28帧在`assets/_incoming/result-card-concepts-20261018/runtime/`。涵盖成功、双目标失败、超时、广告不可用、重复通关、结算待保存、复活待保存、四目标、收集与分数；每次绘制检查返回触区≥44px且在contentTop91/safeBottom34内。Owner实看各状态代表帧及降低效果短屏，无关键信息遮挡/裁切；正常主按钮52px、复活64px，次按钮44px。
+- 独立QA：原`result_concept_qa`只读核对Main/Core语义与保存/奖励/复活合同，独立枚举真实1–2000关，目标最多3项、剩余数值有效，当前4槽不截断此批真实配置；实看9张代表帧，无实质重叠、裁切或入口丢失。核对触区44/52/64、待保存仅重试、复活待保存无二次广告邀请及Main离开拦截；未盲重跑已通过套件。其指出pending夹具星级/统计与真实Main异常对象不符，父任务仅将示例改为0星且缺省统计，重新导出三尺寸pending；QA补看pending320，灰星/0连/0次、说明及单重试按钮清晰，无裁切，最终限定范围无阻塞。实际异常结果按旧合同显示0统计，不据此声称自然待保存统计获验证。实施有界worker `result_concept_draft`仅写UI/冒烟用例，父任务写Main适配/对应测试与预览，文件不交叉；工具固定Sol medium路线，不声称上游精确模型/费用，耗时/费用未知。候选none。
+- 当前门/边界：本地预览使用真实渲染与内存示例，不实例化Main自然对局，不发奖、不调广告/云端、不写设备存档；不能证明自然结算全链路、微信字体/胶囊/触控/DPR、广告或真机。预览已保留390成功态，可切换其他状态；下一步为用户查看，最终运行视觉与设备接受仍待用户，沿用仅留本地的发布安排。
+- 记忆：复用同任务仍适用的approved检索与已完成audit，未出现适用更新；shop-list-cta/low-maintenance与该卡片无直接适用知识，未另读原文或采用。实现事实已在权威记录，不再复制成候选。
+
+### 历史第二轮 · C / D 概念与选择
+
+- 方法：首轮用户否决计为一次完整方向比较失败（A/B不是两轮独立失败）；按visual-production外部UI升级参考停止原生Canvas方案微调，准备图像概念制作简报及供应商/权限边界，不把方向未获接受当作设备或实现失败。
+- 制作边界：先按imagegen/供应商登记的内置图像优先路径改成纯文字生成美术方向稿；不发送现有项目图片/代码/账号资料，不调用外部付费API、注册或购买服务。Recraft/Lovart仅按公开价格/权利资料准备外部备用评估，未激活或授权，不把公开调研当供应商准入或费用承诺。图像只作参考，不进入产品资源；中文/数字正式落地仍用原生排版。
+- 本轮交付：内置image_gen每方向一次，原样复制到`assets/_incoming/result-card-concepts-20261018/pair-c.png` / `pair-d.png`；完整最终提示/原始输出名/参数/未验信息在同目录`prompts-cd.md`。C为角色破框/月牙拱舞台，D为月夜花园场景/轻量玻璃信息区。未引用项目原图；实际底层模型、seed、独立费用未知，不作外部余额或预算结论。未把生成图中文字/角色/图标接受为正式素材。
+- 复核/运行：owner与原独立只读`result_concept_qa`实看C/D四态，构图较首轮明显不同，成功/失败和关键分数/目标/全部行动清晰，未见关键遮挡裁切。C生成的亭台/灯笼/流苏有中式场景漂移，呈现时只作舞台构图参考，不能改变既定花园；D更贴近当前世界。工具仅增加本地图片查看C/D和旧A/B切换，修改后语法通过；CUA在原50811预览实看两图加载与切换，保留D页。产品无变更，未重跑游戏测试或包体。
+- 当时边界：C/D静态图不等于UI/真机/触区/响应布局或剩余目标合同已实现；广告和奖励都是示例。用户随后选C，进入上方本地原生实现；没有上传、部署、提交或新开付费服务，不把方向图当运行UI整图接入。
+
+### 历史首轮 · A / B 已被用户否决
+
+- 当前问题：`UI.drawResult`把标题贴片、猫咪、星星、分数、奖励、两项统计和多枚按钮自上而下堆放；在正式可用复活时，继续、重玩和返回会同时争夺注意力。本轮改信息层级与视觉编排，不据此改变既定复活与结算规则。
+- 初始两方向：A「星光庆典」大结果/猫咪/星级、紧凑奖励、单个主行动；B「月光成绩单」克制标题、结果数据分区、图标目标状态、整齐的操作区。成功突出下一关，失败清楚写尚未达成的目标和继续价值，保留显式重玩/首页。复活仍为用户主动观看广告＋5步，限时关另＋30秒；样例只为概念，不实际请求广告或发奖。
+- 参考：实际经CUA查看 [Royal Match公开通关图所在页](https://www.malavida.com/en/soft/royal-match/android/) 的大结果、星形奖励与单一继续按钮，以及 [Candy Crush Jelly社区失败图](https://community.king.com/en/candy-crush-jelly-saga/discussion/463929/i-can-039-t-complete-the-level-5-on-candy-crush-jelly-saga) 的步数耗尽、未完成果冻和追加步数继续提示。仅借鉴信息层级，不复制角色/界面素材，也不声称是所有版本的现行布局。
+- 文件/证据：`tools/preview-result-concepts.cjs`为独立原生Canvas离线比较工具，不加载Main、广告或云服务；`assets/_incoming/result-card-concepts-20261018/README.md`记录示例与边界。CUA在<http://127.0.0.1:50811/>切换两方向并通过保存按钮导出`pair-a.png` / `pair-b.png`（各1600×1520，800×760逻辑）；owner实看四卡，字号层级清晰、无重叠裁切。修改示例措辞后刷新两图，不用旧图证明最终文案。修改后的工具语法检查通过；产品代码/资源未变，不重复运行游戏回归或包体。
+- 独立复核：有界`worker` `result_concept_draft`只做上述工具/README首轮，主任务整合修正；不同的`result_concept_qa`只读实看全部四卡及局部源码，无重叠裁切，广告继续的+5步/+30秒与重玩/首页齐全，两方向可区分。其指出限时说明与步数失败可能混淆、A耐久含义不够明确，已将示例标为步数＋限时、A写剩余耐久；B使用中性“尚未完成的目标”。QA补看修正处清晰无must-fix。工具定义固定worker GPT-6.1 Sol medium路线，不宣称上游精确配置/费用。未新增或改绑产品会话，候选none。
+- 边界/下一步：用户选择A、B或成功A＋失败B后再实现正式组件。画中关卡、分数、金币和目标都是设计示例；真实`UI.drawResult`尚未传入剩余目标，选型后需接数据合同。静态概念不证明320/430适配、微信/真机、真实结算流转、广告或奖励；未上传/部署/提交，也未把示例图当接受的生产素材。
+- 记忆：本轮Hindsight approved项目严格标签检索成功，返回shop-list-cta和low-maintenance两条，与当前结算局部方案无直接适用条目，未另读原文或采用。实际owner无规范模块映射，module not-applicable；本轮有界audit候选13、unreviewed0、needs-evidence1、pending_batch空，无冲突/坏格式/未关联批准；未处理无关历史候选。候选none，未接受概念不提炼成持久偏好。
+
+```memory-handoff
+{"schema_version":1,"project_id":"match3-game","task_id":"/Users/Admin/codex/sanxiao/match3-game/project-status/ui-production.md#单人结算卡片方案--2026-10-18","turn_id":"01a154bc-efb7-73b2-a884-4bfefbeefb77","recall":{"project":"reused","module":"not-applicable"},"memories":[],"no_usage_reason":"复用同任务仍适用的approved项目检索；shop-list-cta与low-maintenance为商店/留存相关，与本轮结算卡片边界修复无直接适用知识，未另读原文或采用。当前设计、实现及验证事实保留于权威记录，无需重复候选。"}
+```
+
 ## 单人 / 双人对局布局 · 多目标状态栏重做 · 2026-10-17
 
 ```memory-task

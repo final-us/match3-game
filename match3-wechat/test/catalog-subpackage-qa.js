@@ -117,7 +117,7 @@ function canvasTrace() {
             'main preload catalog set must contain only the entry icon');
         assert(catalogKeys.every(key => !mainKeys.includes(key)), 'main and catalog asset registries must be disjoint');
         api.preload();
-        assert.strictEqual(wx.createCount, mainKeys.length, 'main preload must not decode subpackage images');
+        assert.strictEqual(wx.createCount, new Set(Object.values(api.ASSETS)).size, 'main preload must decode each main source once, without subpackage images');
         assert(wx.images.every(image => !String(image.src).startsWith('catalog/')),
             'main preload must not request a catalog subpackage path');
     }

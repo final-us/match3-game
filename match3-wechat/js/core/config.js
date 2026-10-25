@@ -30,7 +30,7 @@ const GAME_CONFIG = {
     freeMoves: false       // 是否允许任意移动（调试用）
 };
 
-// 用户已批准本地测试候选启用；模拟广告及远程上报保持关闭。
+// 用户已批准本地测试候选广告启用；模拟广告保持关闭。
 const AD_CONFIG = {
     enabled: true,
     debugMockAds: false,
@@ -41,11 +41,39 @@ const AD_CONFIG = {
     interstitialCooldownMs: 120000
 };
 
-// 远程上报默认完全关闭；只允许以后通过显式映射开启，不存凭证。
+// 通用事件/监控上报保持关闭；微信关卡/首页分析使用下方独立配置。
 const REPORTING_CONFIG = {
     enabled: false,
     eventIds: {},
     monitorNames: {}
+};
+
+// 2026-10-23用户要求正式上线准备；此为本地正式候选，上传/发布另行确认。
+// 事件10000003已由账号模板确认；不依赖广告归因或首页branchId。
+const LEVEL_ANALYTICS_CONFIG = {
+    enabled: true,
+    testOnly: false,
+    debug: false,
+    debugInTest: true, // 仅确认开发版/体验版时启用原生调试和安全本地诊断。
+    gameVersion: null // 未指定时由实际微信发布版本推导，取不到就省略。
+};
+
+// 用户提供的实际branchId已完成iPhone曝光/点击提交核对；正式候选关闭调试日志。
+const HOME_ANALYTICS_CONFIG = {
+    enabled: true,
+    testOnly: false,
+    debug: false,
+    branches: { solo: 'BCBgAAoXHx5d0hJfR8jiP3', pvp: 'BCBgAAoXHx5d0hJfR8jiP0' }
+};
+
+// 系统场景7由微信关联启动耗时；不填业务侧Date差作为costTime。
+const STARTUP_ANALYTICS_CONFIG = { enabled: true, testOnly: false };
+
+// 首次消除/引导指标需账号后台先定义。当前仅保留本地事件，不猜事件名上报。
+const MILESTONE_ANALYTICS_CONFIG = {
+    enabled: false,
+    testOnly: true,
+    eventIds: { board_ready: '', first_match: '', guide_confirm: '', guide_skip: '' }
 };
 
 // 特殊棋子类型（type 编号 100+，与普通棋子区分）
@@ -106,6 +134,10 @@ module.exports = {
     GAME_CONFIG: GAME_CONFIG,
     AD_CONFIG: AD_CONFIG,
     REPORTING_CONFIG: REPORTING_CONFIG,
+    LEVEL_ANALYTICS_CONFIG: LEVEL_ANALYTICS_CONFIG,
+    HOME_ANALYTICS_CONFIG: HOME_ANALYTICS_CONFIG,
+    STARTUP_ANALYTICS_CONFIG: STARTUP_ANALYTICS_CONFIG,
+    MILESTONE_ANALYTICS_CONFIG: MILESTONE_ANALYTICS_CONFIG,
     SPECIAL_TYPES: SPECIAL_TYPES,
     OBJECT_TYPES: OBJECT_TYPES,
     getCommonTypes: getCommonTypes,

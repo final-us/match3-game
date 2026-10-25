@@ -6,7 +6,7 @@ const type=require('./typography');
 const moon=require('./moon-controls');
 const INK='#303653';
 function text(ctx,s,x,y,w,size=13,bold=false){ctx.fillStyle=INK;type.drawFit(ctx,s,x,y,w,{size,minSize:10,align:'center',weight:bold?'700':'500'});}
-function button(ctx,r,s,buttons,key){art.button(ctx,r,s,'lavender');if(key)buttons[key]=r;}
+function button(ctx,r,s,buttons,key){art.button(ctx,r,s,key==='close'?'blue':'lavender');if(key)buttons[key]=r;}
 function drawHome(ctx,screen,r,selection,resources){
     const cat=catalog.cats.find(c=>c.id===selection.id),buttons={};if(!cat)return buttons;
     const width=Math.min(screen.width-32,320),x=(screen.width-width)/2,barY=r.y+r.h-46;
@@ -77,7 +77,7 @@ function drawSwitch(ctx,screen,view,model,companion,resources){
     if(buttons.maxScroll){ctx.fillStyle='#9C77B3';ctx.fillRect(x+w-6,v.y+view.offset/buttons.maxScroll*(v.h-26),3,26);}
     const footer=y+h-100,r={x:x+14,y:footer+46,w:w-28,h:44};
     button(ctx,{x:r.x,y:footer,w:r.w,h:44},'去猫咪图鉴',buttons,'catalog');
-    art.button(ctx,r,'恢复默认首页','muted');buttons.default=r;
+    art.button(ctx,r,'恢复默认首页','blue');buttons.default=r;
     notice(ctx,screen,x+10,footer-12,w-20,companion.error||'选择仅保存在本机');
     return buttons;
 }

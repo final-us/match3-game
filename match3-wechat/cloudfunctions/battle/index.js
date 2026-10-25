@@ -43,7 +43,18 @@ function safeNickname(value) {
     return trimmed || '玩家';
 }
 
-function newPlayer(openid, nickname, at, protocolVersion, itemRulesVersion) {
+// Only share WeChat-hosted avatar URLs; never fetch remote resources server-side.
+function isSafeAvatarUrl(value) {
+    return typeof value === 'string' && value.length <= 768 &&
+        !/[\x00-\x20\x7f\\#]/.test(value) &&
+        /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*qlogo\.cn(?:[/?][^#]*)?$/i.test(value);
+}
+
+function invalidAvatar(event) {
+    return event.avatarUrl !== undefined && event.avatarUrl !== '' && !isSafeAvatarUrl(event.avatarUrl);
+}
+
+function newPlayer(openid, nickname, at, protocolVersion, itemRulesVersion, avatarUrl) {
     const player = {
         openid: openid,
         nickname: safeNickname(nickname),
@@ -56,6 +67,7 @@ function newPlayer(openid, nickname, at, protocolVersion, itemRulesVersion) {
         online: true,
         lastSeen: at
     };
+    if (isSafeAvatarUrl(avatarUrl)) player.avatarUrl = avatarUrl;
     if (protocolVersion === 2) {
         player.wins = 0;
         player.rematchAccepted = false;
@@ -152,6 +164,7 @@ function buildQueryResponse(room, openid, at) {
         myActiveEffectUntil: me ? Number(me.activeEffectUntil) || 0 : 0,
         opp: opponent ? {
             nickname: opponent.nickname,
+            avatarUrl: isSafeAvatarUrl(opponent.avatarUrl) ? opponent.avatarUrl : '',
             score: opponent.score,
             ready: opponent.ready,
             configuring: !opponent.ready,
@@ -277,6 +290,7 @@ async function cleanupExpiredRooms(at, includeRetention) {
 
 /** 创建房间。 */
 async function create(openid, event) {
+    if (invalidAvatar(event)) return { ok: false, err: 'INVALID_AVATAR_URL' };
     if (event.itemRulesVersion !== undefined && event.itemRulesVersion !== 3) return { ok: false, err: 'UPDATE_REQUIRED' };
     if (event.itemRulesVersion === 3 && event.protocolVersion !== 2) return { ok: false, err: 'UPDATE_REQUIRED' };
     const at = now();
@@ -294,7 +308,7 @@ async function create(openid, event) {
             status: 'waiting',
             startTime: 0,
             createdAt: at,
-            players: [newPlayer(openid, event.nickname, at, protocolVersion, itemRulesVersion)],
+            players: [newPlayer(openid, event.nickname, at, protocolVersion, itemRulesVersion, event.avatarUrl)],
             effects: [],
             casts: [],
             result: {}
@@ -317,6 +331,7 @@ async function create(openid, event) {
 }
 
 async function join(openid, event) {
+    if (invalidAvatar(event)) return { ok: false, err: 'INVALID_AVATAR_URL' };
     const at = now();
     return runRoomTransaction(event.roomId, async function (room, ref) {
         if (!room) return { ok: false, err: '房间不存在' };
@@ -329,13 +344,14 @@ async function join(openid, event) {
         if (isV2(room) && event.retentionEnabled === true) room.retentionEnabled = true;
         const index = players.findIndex(function (player) { return player.openid === openid; });
         if (index >= 0) {
+            if (event.avatarUrl !== undefined) players[index].avatarUrl = event.avatarUrl;
             players[index].online = true;
             players[index].lastSeen = at;
         } else {
             if (players.length >= 2) return { ok: false, err: '房间已满' };
             // 换了对手后，留下的玩家也要重新确认准备。
             players.forEach(function (candidate) { candidate.ready = false; });
-            players.push(newPlayer(openid, event.nickname, at, room.protocolVersion, room.itemRulesVersion));
+            players.push(newPlayer(openid, event.nickname, at, room.protocolVersion, room.itemRulesVersion, event.avatarUrl));
             if (isV2(room)) updateV2Room(room, at, false);
         }
         await ref.update({ data: isV2(room) ? {
@@ -347,6 +363,22 @@ async function join(openid, event) {
         return isV2(room)
             ? ruleResponse(room, { ok: true, roomId: event.roomId, protocolVersion: 2, roundId: room.roundId, roundNumber: room.roundNumber })
             : { ok: true, roomId: event.roomId };
+    });
+}
+
+async function profile(openid, event) {
+    return runRoomTransaction(event.roomId, async function (room, ref) {
+        if (!room) return { ok: false, err: '房间不存在' };
+        const stale = staleRound(room, event);
+        if (stale) return stale;
+        const player = room.players.find(function (candidate) { return candidate.openid === openid; });
+        if (!player || player.left) return { ok: false, err: '不在房间' };
+        if (invalidAvatar(event)) return { ok: false, err: 'INVALID_AVATAR_URL' };
+        if (event.avatarUrl !== undefined && event.avatarUrl !== player.avatarUrl) {
+            player.avatarUrl = event.avatarUrl;
+            await ref.update({ data: { players: room.players } });
+        }
+        return isV2(room) ? ruleResponse(room, { ok: true, protocolVersion: 2, roundId: room.roundId }) : { ok: true };
     });
 }
 
@@ -822,6 +854,7 @@ exports.main = async function (event) {
             case 'create': return await create(openid, input);
             case 'join': return await join(openid, input);
             case 'configureItems': return await configureItems(openid, input);
+            case 'profile': return await profile(openid, input);
             case 'ready': return await ready(openid, input);
             case 'syncScore': return await syncScore(openid, input);
             case 'useItem': return await useItem(openid, input);

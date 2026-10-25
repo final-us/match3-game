@@ -7,14 +7,14 @@ const CHINESE_FONT_STACK = '"Hiragino Maru Gothic ProN", "PingFang SC", "Microso
 const NUMBER_FONT_STACK = '"Arial Rounded MT Bold", "SF Pro Rounded", "DIN Alternate", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif';
 const TEXT_SCALE = 1.1;
 
-function font(size, weight, numbers) {
+function font(size, weight, numbers, family) {
     const px = Math.max(1, Math.round((Number(size) || 1) * TEXT_SCALE));
     const w = weight || '500';
-    return w + ' ' + px + 'px ' + (numbers ? NUMBER_FONT_STACK : CHINESE_FONT_STACK);
+    return w + ' ' + px + 'px ' + (family || (numbers ? NUMBER_FONT_STACK : CHINESE_FONT_STACK));
 }
 
-function set(ctx, size, weight, numbers, align, baseline) {
-    ctx.font = font(size, weight, numbers);
+function set(ctx, size, weight, numbers, align, baseline, family) {
+    ctx.font = font(size, weight, numbers, family);
     ctx.textAlign = align || 'left';
     ctx.textBaseline = baseline || 'middle';
 }
@@ -24,12 +24,12 @@ function measure(ctx, text) {
     return String(text).length * 8;
 }
 
-function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight, numbers) {
+function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight, numbers, family) {
     let size = Math.max(1, Math.round(Number(maxSize) || 1));
     const minimum = Math.max(1, Math.round(Number(minSize) || 1));
     const width = Math.max(0, Number(maxWidth) || 0);
     while (size > minimum) {
-        set(ctx, size, weight, numbers);
+        set(ctx, size, weight, numbers, undefined, undefined, family);
         if (measure(ctx, text) <= width) break;
         size--;
     }
@@ -38,8 +38,8 @@ function fitFontSize(ctx, text, maxWidth, maxSize, minSize, weight, numbers) {
 
 function drawFit(ctx, text, x, y, maxWidth, options) {
     const opts = options || {};
-    const size = fitFontSize(ctx, text, maxWidth, opts.size || 16, opts.minSize || 10, opts.weight || '500', !!opts.numbers);
-    set(ctx, size, opts.weight || '500', !!opts.numbers, opts.align || 'left', opts.baseline || 'middle');
+    const size = fitFontSize(ctx, text, maxWidth, opts.size || 16, opts.minSize || 10, opts.weight || '500', !!opts.numbers, opts.family);
+    set(ctx, size, opts.weight || '500', !!opts.numbers, opts.align || 'left', opts.baseline || 'middle', opts.family);
     ctx.fillText(String(text), x, y);
     return size;
 }

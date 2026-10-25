@@ -56,7 +56,7 @@ function create(api, call, wallet, notify, clock, resumeSoloId) {
     function write(s) { api.setStorageSync(KEY,clone(s)); }
     function show(s) {
         serverOffset=s.clockOffset;
-        if (s.state) {delete model.previousWeek;Object.assign(model,s.state);}
+        if (s.state) {delete model.previousWeek;Object.assign(model,s.state);model.loaded=true;}
         model.real = true;
     }
     function failure(error) {
@@ -70,6 +70,13 @@ function create(api, call, wallet, notify, clock, resumeSoloId) {
         // its notice if later requests/receipts remain unresolved.
         try {
             const s=read();
+            if(error&&error.retentionAction==='retentionAck'&&s.state&&!s.pending.length&&!s.receipts.length&&s.acks.length){
+                // The wallet has already durably applied every receipt. A lost ACK
+                // is bookkeeping recovery, not a failed claim or a reason to hide cards.
+                model.status='ready';model.diagnostic='';
+                model.message='领取成功，奖励已到账';
+                return {ok:false,reason:error&&error.message};
+            }
             if(notify&&(s.pending.length||s.receipts.length||s.acks.length))
                 notify(s.pending.length||s.receipts.length?'每日任务或奖励待同步，请重试':'奖励已入账，领取状态待同步');
         } catch(ignore) { /* The storage error is already visible in model. */ }
@@ -92,7 +99,7 @@ function create(api, call, wallet, notify, clock, resumeSoloId) {
     async function request(action,input) {
         let r;
         try { r=await call(action,input,{timeoutMs:12000}); }
-        catch(e) { const error=Error('retention_call_failed');error.connection=cloudErrors.describeRetentionFailure(e);throw error; }
+        catch(e) { const error=Error('retention_call_failed');error.retentionAction=action;error.connection=cloudErrors.describeRetentionFailure(e);throw error; }
         if(r&&r.ok===false&&r.terminal===true)return r;
         if(!r||!r.ok) { const e=Error(r&&r.err||'retention_service');e.code=r&&r.code;throw e; }
         if(!validState(r.state)||!Array.isArray(r.receipts)||!r.receipts.every(validReceipt))throw Error('retention_response_invalid');
@@ -128,7 +135,7 @@ function create(api, call, wallet, notify, clock, resumeSoloId) {
             s.receipts.shift();if(!s.acks.includes(r.id))s.acks.push(r.id);write(s);
         }
         if(total||hammer) {
-            model.message='每日金币 +'+total+'金币'+(hammer?' · 锤子×'+hammer:'');
+            model.message='领取成功 +'+total+'金币'+(hammer?' · 锤子×'+hammer:'');
             if(notify)notify(model.message);
         }
         return total>0||hammer>0;
@@ -175,29 +182,30 @@ function create(api, call, wallet, notify, clock, resumeSoloId) {
     }
     function sync() {
         if(syncing)return syncing;
-        syncing=run().finally(()=>{syncing=null;});return syncing;
+        model.busy=true;
+        syncing=run().finally(()=>{syncing=null;model.busy=false;model.pendingAction='';});return syncing;
     }
     function activate(action) {
         if(action==='close')return 'close';
         if(action==='signinTab'||action==='tasksTab'){model.tab=action==='signinTab'?'signin':'tasks';model.rules=false;model.offset=0;return;}
-        if(action==='primary'&&['offline','error','pending'].includes(model.status)){model.offset=0;sync();return;}
+        if(action==='primary'&&['offline','error','pending'].includes(model.status)){if(!syncing)sync();return;}
         if(model.status!=='ready')return;
         const task=/^task([0-2])$/.exec(action);
         if(task) {
             const index=Number(task[1]);
             if(model.date!==date()){model.offset=0;sync();return;}
             if(model.taskClaimMode==='manual-v1' && !model.taskClaimed[index] &&
-                model.taskProgress[index]>=[1,2,80][index] && enqueue('retentionClaimTask',{date:model.date,index}).ok)sync();
+                model.taskProgress[index]>=[1,2,80][index] && enqueue('retentionClaimTask',{date:model.date,index}).ok){model.pendingAction=action;sync();}
             return;
         }
         if(action==='primary') {
             if(model.tab==='tasks')return 'play';
-            if(!model.signed&&enqueue('retentionSign',{date:model.date}).ok)sync();
+            if(!model.signed&&enqueue('retentionSign',{date:model.date}).ok){model.pendingAction=action;sync();}
         }
         const m=/^(weekly|previous)([0-2])$/.exec(action);
         if(m) {
             const week=m[1]==='previous'?model.previousWeek&&model.previousWeek.week:model.week;
-            if(week&&enqueue('retentionClaim',{week,index:Number(m[2])}).ok)sync();
+            if(week&&enqueue('retentionClaim',{week,index:Number(m[2])}).ok){model.pendingAction=action;sync();}
         }
     }
     function startSolo(levelId) {

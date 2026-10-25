@@ -65,6 +65,14 @@
       },
       {
         "type": "file",
+        "value": "res/home/button-primary.png"
+      },
+      {
+        "type": "file",
+        "value": "res/home/button-secondary.png"
+      },
+      {
+        "type": "file",
         "value": "res/game-background-v2.jpg"
       },
       {

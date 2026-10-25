@@ -65,6 +65,8 @@ assert(GuideUI.CONTENT.moonbud.lines.join('').includes('不能交换或下落'))
 assert(GuideUI.CONTENT.moonbud.lines.join('').includes('保护猫和花苞'));
 assert(GuideUI.CONTENT.yarn_spread.lines.join('').includes('邻消不伤延伸藤'));
 assert(GuideUI.CONTENT.yarn_spread.lines.join('').includes('解开留猫'));
+assert(GuideUI.CONTENT.pvp_wait.lines.includes('各道具独立冷却10秒。'), '对战引导须说明各道具独立冷却');
+assert(!GuideUI.CONTENT.pvp_wait.lines.join('').includes('共享10秒冷却'), '不得保留过时的共享冷却说明');
 
 const mainSource = fs.readFileSync(path.join(__dirname, '../js/main.js'), 'utf8');
 [

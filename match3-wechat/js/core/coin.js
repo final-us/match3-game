@@ -64,6 +64,20 @@ function getStore() {
     return typeof wx !== 'undefined' ? wx : global.wx;
 }
 
+// Presentation only. Transactions continue to read/recover persisted state.
+let displayCoins = null;
+let displayStore = null;
+function invalidateDisplayCoins() { displayCoins = null; }
+
+function getDisplayCoins() {
+    const store = getStore();
+    if (displayCoins !== null && displayStore === store) return displayCoins;
+    const value = getCoins();
+    displayStore = store;
+    displayCoins = value;
+    return value;
+}
+
 // ===== 金币 =====
 
 function hasStorage(store) {
@@ -75,11 +89,13 @@ function readStorage(store, key) {
     try {
         return { ok: true, value: store.getStorageSync(key) };
     } catch (error) {
+        invalidateDisplayCoins();
         return { ok: false, reason: 'storage_read_failed' };
     }
 }
 
 function writeStorage(store, key, value) {
+    invalidateDisplayCoins();
     if (!hasStorage(store)) return { ok: false, reason: 'storage_unavailable' };
     try {
         store.setStorageSync(key, value);
@@ -246,6 +262,7 @@ function recoverPendingWallet() {
 }
 
 function getCoins() {
+    invalidateDisplayCoins();
     const store = getStore();
     if (!store || !store.getStorageSync) return 0;
     const recovered = recoverPendingWallet();
@@ -591,6 +608,8 @@ module.exports = {
     REWARDED_ITEM_DAILY_LIMIT: REWARDED_ITEM_DAILY_LIMIT,
     STAMINA_PRICE: STAMINA_PRICE,
     getCoins: getCoins,
+    getDisplayCoins: getDisplayCoins,
+    invalidateDisplayCoins: invalidateDisplayCoins,
     addCoins: addCoins,
     spendCoins: spendCoins,
     creditOnce: creditOnce,

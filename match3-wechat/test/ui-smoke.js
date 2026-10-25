@@ -7,6 +7,7 @@
 const drawnText = [];
 const drawnImages = [];
 const drawnArcs = [];
+const drawnFills = [];
 const drawnStrokes = [];
 const canvasStats = { fill: 0 };
 function mockCtx() {
@@ -31,14 +32,14 @@ function mockCtx() {
             };
             if (k === 'fillText') return function (text, x, y) {
                 drawnText.push({ text: String(text), x: transform[0]*x+transform[2]*y+transform[4],
-                    y: transform[1]*x+transform[3]*y+transform[5], font: t.font, align: t.textAlign, baseline: t.textBaseline });
+                    y: transform[1]*x+transform[3]*y+transform[5], font: t.font, color: t.fillStyle, align: t.textAlign, baseline: t.textBaseline });
             };
             if (k === 'measureText') return function (text) { return { width: String(text).length * 8 }; };
             if (k === 'drawImage') return function () {
                 const args = Array.prototype.slice.call(arguments);
                 drawnImages.push({ src: args[0] && args[0].src, args: args });
             };
-            if (k === 'fill') return function () { canvasStats.fill++; };
+            if (k === 'fill') return function () { canvasStats.fill++; drawnFills.push({path:(t.path || []).slice(),color:t.fillStyle}); };
             if (k === 'arc') return function (x, y, radius) {
                 drawnArcs.push({ x, y, radius, color: t.fillStyle });
             };
@@ -65,6 +66,8 @@ const OnboardingUI = require('../js/render/onboarding');
 const ctx = mockCtx();
 const screen = { width: 375, height: 667 };
 assets.preload();
+const startupGet = assets.get;
+assets.get = key => key === 'uiIllustrationItems' ? {src:'ui-art/items.png',width:768,height:384} : key === 'uiIllustrationDrawCat' ? {src:'ui-art/draw-cat.png',width:448,height:309} : startupGet(key);
 let allOk = true;
 function textValues() {
     return drawnText.map(function (item) { return item.text; });
@@ -179,10 +182,12 @@ assert('商店页', function () {
             throw new Error('商店价格未与金币图标分离 ' + price);
         }
     });
-    if (!shopButtons.reward_hammer || !shopButtons.reward_bomb || !shopButtons.reward_color || !shopButtons.reward_heart) {
+    const shopEnd=UI.drawShop(ctx,screen,999999999,{hammer:9999,bomb:0,color:2},{canReward:true,count:3,limit:10,heartCount:2,heartMax:5,offset:shopButtons.maxScroll});
+    const reachable={...shopButtons,...shopEnd};
+    if (!reachable.reward_hammer || !reachable.reward_bomb || !reachable.reward_color || !reachable.reward_heart) {
         throw new Error('真实广告可用时缺少商品领取入口');
     }
-    if (!shopButtons.buy_heart) throw new Error('商店缺少1000金币体力商品');
+    if (!reachable.buy_heart) throw new Error('商店缺少1000金币体力商品');
     const hidden = UI.drawShop(ctx, screen, 0, { hammer: 0, bomb: 0, color: 0 }, { canReward: false });
     if (hidden.reward_hammer || hidden.reward_bomb || hidden.reward_color || hidden.reward_heart) {
         throw new Error('广告不可用时仍显示领取入口');
@@ -204,7 +209,7 @@ assert('体力耗尽提醒', function () {
         drawnText.length = 0;
         const shown = UI.drawStaminaEmpty(ctx, s, { timeLeftText: '12:34', canBuy: true, canAd: true });
         if (!shown.buy || !shown.ad || !shown.close) throw new Error('双补充入口或关闭入口缺失');
-        if (!textValues().includes('体力耗尽') || !textValues().includes('广告 · +1')) {
+        if (!textValues().includes('体力不足') || !textValues().includes('看广告')) {
             throw new Error('提醒文案缺失');
         }
         Object.keys(shown).forEach(function (key) {
@@ -235,6 +240,7 @@ assert('B商店与设置：三档状态、触控与独立开关', function () {
             drawnText.length=0;
             const b=UI.drawShop(ctx,s,0,{hammer:0,bomb:0,color:0},options);
             for(const [key,r] of Object.entries(b)) {
+                if(key==='viewport'||key==='maxScroll')continue;
                 if(r.w<44||r.h<44||r.x<0||r.y<s.safeTop||r.x+r.w>width||r.y+r.h>height-s.safeBottom) throw new Error('商店触控溢出或过小 '+key);
             }
             if (!textValues().includes('金币不足')) throw new Error('未显示金币不足原因');
@@ -242,7 +248,7 @@ assert('B商店与设置：三档状态、触控与独立开关', function () {
             if (options.count===10 && !textValues().includes('今日已满')) throw new Error('未显示领取上限');
             for (const type of ['hammer','bomb','color','heart']) {
                 const a=b['buy_'+type],r=b['reward_'+type];
-                if (r && a.x+a.w>=r.x) throw new Error('购买与领取命中范围重叠');
+                if (r&&a&&(a.x!==r.x||r.y<a.y+a.h+6)) throw new Error('购买与广告未按上下排列/安全间隔');
             }
         }
         drawnText.length=0;
@@ -297,8 +303,9 @@ assert('单人短屏：棋盘完整且不被道具遮挡', function () {
             board.toolAdPending=true;board.onTouchStart(r.x+r.w/2,r.y+r.h/2);board.onTouchEnd(r.x+r.w/2,r.y+r.h/2);
             if(requested)throw new Error('领取中重复触发');board.toolAdPending=false;
         }
-        for(const type of ['hammer','bomb','yarn']) {
-            if(!imageRecords('res/ui/tool-'+type+'.png').length) throw new Error('道具图标未绘制 '+type);
+        const atlasRecords=imageRecords('ui-art/items.png');
+        for(const [type,index] of [['hammer',4],['bomb',5],['color',6]]) {
+            if(!atlasRecords.some(record=>record.args[1]===(index%4)*192&&record.args[2]===192&&record.args[3]===192&&record.args[4]===192)) throw new Error('道具图集裁区错误 '+type);
         }
         drawnText.length=0;board.toolAdAvailable=false;board.drawTools();
         if(textValues().includes('+')||textValues().includes('视频'))throw new Error('广告关闭仍显示加号');
@@ -322,6 +329,7 @@ assert('单人珍珠状态栏：三列大字、复合目标与原圆形工具安
         const s={width,height,safeTop:47,contentTop:91,safeBottom:34};
         const board=new BoardRenderer(ctx,s);board.setGame(new GameCore(levels.getLevel(id),{}));
         board.setTools({hammer:2,bomb:1,color:0});drawnText.length=0;board.drawTopBar();
+        if(textValues().includes('单人闯关')) throw new Error('已删除的棋盘页小标题仍在绘制');
         const label=drawnText.find(t=>t.text==='剩余步数'),level=drawnText.find(t=>t.text===String(id)&&t.x===width/2);
         if(!label||!level||!textValues().includes('当前关卡')||!textValues().includes('当前得分')||parseFloat(label.font.match(/(\d+)px/)[1])<15||parseFloat(level.font.match(/(\d+)px/)[1])<20) throw new Error('三列说明或大数字缺失');
         const goals=drawnText.filter(t=>['目标分','果冻层','冰块','毛线源头','花苞','配送','收集'].includes(t.text));
@@ -335,8 +343,7 @@ assert('单人珍珠状态栏：三列大字、复合目标与原圆形工具安
             });
             if(values.some(value=>!value)||values.some(value=>value.y!==values[0].y)) throw new Error('双目标数值与倒计时未共用基线');
         }
-        const detail=drawnText.filter(t=>t.text!=='单人闯关');
-        if(detail.some(t=>t.y-8<s.contentTop||t.y+8>board.boardY-4)) throw new Error('状态栏文字超出独立区域');
+        if(drawnText.some(t=>t.y-8<s.contentTop||t.y+8>board.boardY-4)) throw new Error('状态栏文字超出独立区域');
         if(board.tools.some(t=>t.r!==35)||board.boardY+board.boardH+8>board.tools[0].y-44) throw new Error('原工具布局遮住棋盘');
         const first=board.pointToGrid(board.boardX+board.tileSize/2,board.boardY+board.tileSize/2);
         if(!first||first.row!==0||first.column!==0) throw new Error('单人棋盘命中位置未跟随');
@@ -379,7 +386,7 @@ assert('单人倒计时与超时文案', function () {
     if(canvasStats.fill!==timedFills) throw new Error('计时状态增加了额外框体');
     drawnText.length = 0;
     UI.drawResult(ctx, screen, { win: false, reason: 'timeout', score: 0, coinReward: 0, star: 0, canRevive: false });
-    if (textValues().indexOf('时间到') === -1) throw new Error('结算页未显示超时文案');
+    if (textValues().indexOf('时间用完了') === -1) throw new Error('结算页未显示超时文案');
 });
 assert('特殊棋子静态标识与触发动画', function () {
     const board = new BoardRenderer(ctx, screen);
@@ -467,22 +474,116 @@ assert('第一关及静止地图五个节点在全面屏均可点击', function 
         }
     }
 });
-assert('月光结算各状态安全区、按钮与内容不重叠', function () {
-    for (const [width,height] of [[320,568],[375,812],[430,932]]) {
-        for (const state of [{win:true,star:3,hasNext:true},{win:true,star:0,hasNext:false},{win:false,canRevive:false},{win:false,canRevive:true},{win:false,reason:'timeout',timed:true,canRevive:true}]) {
+assert('C结算装饰皮肤与可选衬线排版', function () {
+    const originalGet=assets.get;
+    const skins={uiResultFrame:{src:'result-frame-test',width:600,height:900},uiResultWinMoon:{src:'result-win-test',width:900,height:600},uiResultLoseMoon:{src:'result-lose-test',width:900,height:600},homeButtonPrimary:{src:'result-button-test',width:760,height:180}};
+    try {
+        assets.get=key=>skins[key]||originalGet(key);
+        for(const win of [true,false]) {
+            drawnImages.length=0;drawnText.length=0;
+            const b=UI.drawResult(ctx,{width:390,height:844,contentTop:91,safeBottom:34},{win,score:12480,star:2,coinReward:180,canRevive:!win,timed:true,hasNext:true});
+            for(const src of ['result-frame-test',win?'result-win-test':'result-lose-test']) if(!imageRecords(src).length) throw new Error('新结算皮肤未绘制');
+            const title=drawnText.find(t=>t.text===(win?'通关成功':'挑战未完成'));
+            if(!title || !title.font.includes('Songti SC')) throw new Error('标题未使用可选衬线字体');
+            if(win && b.menu.w>=b.main.w) throw new Error('首页次按钮未缩窄');
+            if(win) {
+                const reward=drawnText.find(t=>t.text==='+180 金币'), stat=drawnText.find(t=>t.text==='最高连消');
+                if(!reward || stat.y-reward.y>60) throw new Error('成功奖励与统计留白过大');
+                if(Math.abs(imageRecords('result-win-test')[0].args[2]-124.5)>.01) throw new Error('缩短成功卡改变猫月顶部');
+            }
+            if(!win && b.main.y!==b.menu.y) throw new Error('失败次按钮未同排');
+        }
+        typography.drawFit(ctx,'默认排版',0,0,200,{size:16});
+        if(ctx.font!==typography.font(16,'500',false)) throw new Error('可选字体改变默认排版');
+    } finally {assets.get=originalGet;}
+});
+assert('C结算各状态安全区、按钮与内容不重叠', function () {
+    const remainingGoals=[{type:'collect',pieceType:2,left:3,target:9},{type:'jelly',left:2,target:6},{type:'yarn',left:1,target:3},{type:'parcel',left:2,target:4}];
+    for (const [width,height] of [[320,568],[390,844],[430,932]]) for(const contentTop of [72,91]) {
+        for (const state of [{win:true,star:3,hasNext:true},{win:true,star:0,coinReward:0},{win:false},{win:false,canRevive:true},
+            {win:false,reason:'timeout',timed:true,canRevive:true,remainingGoals},
+            {win:false,canRevive:true,revivePending:true,remainingGoals},
+            {win:false,canRevive:true,remainingGoals:[{type:'score',left:800,target:9000},{type:'ice',left:3,target:8},{type:'moonbud',left:2,target:4}]},
+            {win:true,rewardPending:true},{win:false,canRevive:true,rewardPending:true}]) {
             drawnText.length=0;
-            const b=UI.drawResult(ctx,{width,height,contentTop:72,safeBottom:34}, {...state,score:999999999,coinReward:999999});
+            const b=UI.drawResult(ctx,{width,height,contentTop,safeBottom:34}, {score:999999999,coinReward:999999,maxCascade:4,specialComboCount:2,...state,retentionMessage:'保存失败，请重试'});
             const controls=Object.values(b);
             for (const a of controls) {
-                if (a.w<44 || a.h<44 || a.x<0 || a.y<72 || a.x+a.w>width || a.y+a.h>height-34) throw new Error('结算按钮越界');
+                if (a.w<44 || a.h<44 || a.x<0 || a.y<contentTop || a.x+a.w>width || a.y+a.h>height-34) throw new Error('结算按钮越界');
                 for (const c of controls) if (a!==c && a.x<c.x+c.w && a.x+a.w>c.x && a.y<c.y+c.h && a.y+a.h>c.y) throw new Error('结算按钮相交');
             }
-            const content=drawnText.filter(t=>t.text.startsWith('得分：') || t.text.includes('金币') || t.text.startsWith('别急'));
+            const content=drawnText.filter(t=>t.text.startsWith('得分：') || t.text.includes('金币') || t.text.startsWith('还差'));
             const firstButtonY=Math.min(...controls.map(b=>b.y));
             if (content.some(t=>t.y+16>firstButtonY)) throw new Error('结果文字遮挡按钮');
-            if (!!b.revive!==!!(!state.win&&state.canRevive)) throw new Error('复活可用性改变');
+            const stats=drawnText.filter(t=>['最高连消','特殊组合','4 连','2 次'].includes(t.text));
+            if(stats.length!==4 || stats.some(t=>t.y>=firstButtonY-14)) throw new Error('结算统计缺失或遮挡动作');
+            if(content.some(t=>t.y>=Math.min(...stats.map(t=>t.y))-12)) throw new Error('结果文字遮挡统计');
+            if (!!b.revive!==!!(!state.win&&state.canRevive&&!state.rewardPending)) throw new Error('复活可用性改变');
+            if ((b.revive||b.main).h<52) throw new Error('主动作过小');
+            const texts=textValues();
+            if(state.rewardPending && (b.menu||b.revive||texts.includes('看广告继续'))) throw new Error('结算未保存允许离开');
+            if(state.revivePending && (!texts.includes('无需再看广告')||texts.includes('看广告继续'))) throw new Error('复活重试再次邀请广告');
+            if(state.timed && !texts.includes('+5步 · +30秒')) throw new Error('限时复活价值缺失');
+            if(state.remainingGoals && !state.remainingGoals.every(g=>texts.includes(g.type==='yarn'?'剩余'+g.left+'/'+g.target:'还差'+g.left+(g.type==='jelly'?'层':'')))) throw new Error('剩余目标缺失');
+            if(!state.remainingGoals && texts.some(t=>t.startsWith('还差'))) throw new Error('编造剩余目标');
+            if(state.win && state.coinReward===0 && !state.rewardPending && !texts.includes('重复通关不发金币 · 体力已返还')) throw new Error('重复奖励说明缺失');
         }
     }
+});
+assert('失败目标直接落在卡面：六型图集、猫咪收集与一至四项目标', function () {
+    const originalGet=assets.get;
+    let atlas={src:'result-goals-test',width:480,height:320};
+    const skins={uiResultFrame:{src:'goal-frame-test',width:640,height:832},uiResultLoseMoon:{src:'goal-cat-test',width:900,height:600},piece2:{src:'goal-piece-test',width:256,height:256}};
+    const crops={jelly:[0,0],yarn:[160,0],ice:[320,0],moonbud:[0,160],parcel:[160,160],score:[320,160]};
+    const names={jelly:'果冻层',yarn:'毛线耐久',ice:'冰块',moonbud:'花苞',parcel:'包裹',score:'分数',collect:'猫咪'};
+    const goals=Object.keys(names).map((type,i)=>({type,pieceType:2,left:i+1,target:i+9}));
+    const remaining=g=>g.type==='yarn'?'剩余'+g.left+'/'+g.target:'还差'+g.left+(g.type==='jelly'?'层':'');
+    try {
+        assets.get=key=>key==='uiResultGoals'?atlas:skins[key]||originalGet(key);
+        for(const [width,height] of [[320,568],[390,844],[430,932]]) for(const rewardPending of [false,true]) {
+            for(const selected of [goals.slice(0,1),goals.slice(0,2),goals.slice(2,5),goals.slice(3,7)]) {
+                drawnImages.length=0;drawnText.length=0;drawnFills.length=0;drawnStrokes.length=0;
+                UI.drawResult(ctx,{width,height,contentTop:91,safeBottom:34},{win:false,score:8640,canRevive:true,rewardPending,retentionMessage:'保存失败，请重试',remainingGoals:selected});
+                const images=imageRecords(atlas.src), expected=selected.filter(g=>g.type!=='collect');
+                if(images.length!==expected.length) throw new Error('图集目标缺失或使用了原生替代');
+                const reason=drawnText.find(t=>t.text==='步数用完了'), score=drawnText.find(t=>t.text==='得分：8640');
+                images.forEach((image,i)=>{
+                    const a=image.args, crop=crops[expected[i].type];
+                    if(a.length!==9 || a[1]!==crop[0] || a[2]!==crop[1] || a[3]!==160 || a[4]!==160) throw new Error('目标类型与160px图集裁切不符');
+                    if(a[7]!==a[8] || a[7]<=0 || a[5]<0 || a[5]+a[7]>width || a[6]<=reason.y+12 || a[6]+a[8]>=score.y-12) throw new Error('目标图标越过内容空间');
+                    if(width>320 && selected.length<=2 && (a[7]<64 || a[7]>72)) throw new Error('常规目标图标未采用64–72px');
+                });
+                if(imageRecords('goal-piece-test').length!==selected.filter(g=>g.type==='collect').length) throw new Error('收集目标未复用原猫咪');
+                const iconCenters=width===320?(selected.length===1?[118]:[57,182]):selected.length===1?[width/2]:selected.length===2?[width/2-60,width/2+60]:[width/2-130,width/2+22];
+                const textCenters=width===320?(selected.length===1?[182]:[117.5,242.5]):selected.length<=2?iconCenters:[width/2-56,width/2+96];
+                for(const goal of selected) {
+                    const name=drawnText.find(t=>t.text===names[goal.type]), value=drawnText.find(t=>t.text===remaining(goal));
+                    if(!name || !value || !name.font.includes('Songti SC') || !value.font.includes('Songti SC') || name.color!=='#765347' || value.color!=='#B34C73') throw new Error('目标名称或真实剩余数缺失风格层次');
+                    if(value.y<=name.y || value.y+12>=score.y) throw new Error('目标文字与得分重叠');
+                    const col=selected.indexOf(goal)%2, a=(goal.type==='collect'?imageRecords('goal-piece-test')[0]:images[expected.indexOf(goal)]).args;
+                    const center=goal.type==='collect'?a[1]+a[3]/2:a[5]+a[7]/2;
+                    if(selected.length<=2 && (center!==iconCenters[col] || name.x!==textCenters[col] || value.x!==textCenters[col])) throw new Error('单/双目标位置发生改变');
+                    if(selected.length>2) {
+                        const cardW=Math.min(346,width-28), innerLeft=(width-cardW)/2+44, innerRight=(width+cardW)/2-44;
+                        const iconSize=goal.type==='collect'?a[3]:a[7];
+                        if(center-iconSize/2<innerLeft || center+iconSize/2>innerRight) throw new Error('多行目标图标越过装饰金边内部');
+                        if(width>320 && col===0 && center-iconSize/2<(width-cardW)/2+78) throw new Error('长屏左列目标未避开边缘花饰');
+                        for(const t of [name,value]) {
+                            const half=ctx.measureText(t.text).width/2;
+                            if(t.x-half<innerLeft || t.x+half>innerRight) throw new Error('多行目标文字越过卡内内容边界');
+                        }
+                    }
+                }
+                const innerSurface=p=>p.path.length>2 && p.path.some(v=>v.y>reason.y+12&&v.y<score.y-12);
+                if(drawnFills.some(innerSurface) || drawnStrokes.some(innerSurface)) throw new Error('失败目标仍有独立底板或边框');
+            }
+        }
+        for(const missing of [null,{src:'empty-goals-test',width:0,height:0}]) {
+            atlas=missing;drawnImages.length=0;drawnText.length=0;drawnArcs.length=0;
+            UI.drawResult(ctx,{width:390,height:844,contentTop:91,safeBottom:34},{win:false,score:0,canRevive:true,remainingGoals:goals.slice(0,2)});
+            if(imageRecords('result-goals-test').length || imageRecords('empty-goals-test').length || !drawnArcs.some(a=>a.radius===34) || !goals.slice(0,2).every(g=>textValues().includes(remaining(g)))) throw new Error('图集未就绪时原生目标回退不可用');
+        }
+    } finally {assets.get=originalGet;}
 });
 assert('PvP UI（倒计时/警告/受击）', function () {
     const pvpScreen = { width: 375, height: 812, safeTop: 0, safeBottom: 0, reduceEffects: false };
@@ -613,7 +714,7 @@ assert('B对战准备/结算状态：安全区、44px控件、互不交叠', fun
         for(const result of ['win','draw','lose']) {
             drawnText.length=0;drawnImages.length=0;
             check(BattleUI.drawResult(ctx,s,{result,myScore:999999999,oppScore:888888888,coinReward:result==='lose'?0:150}));
-            if(result==='draw'&&!imageRecords('res/home/duel-heads.png').length) throw new Error('平局双猫缺失');
+            if(result==='draw'&&!imageRecords('ui-art/draw-cat.png').length) throw new Error('平局新猫缺失');
             if(result==='lose'&&textValues().includes('奖励 +150 金币')) throw new Error('虚构奖励');
         }
     }
@@ -668,7 +769,9 @@ assert('四道具 V3：短屏分配、锁定、战斗栏与效果边缘提示', 
             const buttons=BattleUI.drawWait(ctx,s,{itemRulesVersion:3,roomId:'room',oppJoined:true,...state});
             for(const name of names) if(!textValues().includes(name)) throw new Error('缺少道具名称 '+name);
             for(const description of ['冻结对手3秒','5秒需四连','5秒反弹一次','5秒得分×2']) if(!textValues().includes(description)) throw new Error('缺少道具说明 '+description);
-            if(!textValues().some(t=>t.includes('剩余 '+(5-Object.values(state.items).reduce((a,b)=>a+b,0))))) throw new Error('额度提示错误');
+            const allocated=Object.values(state.items).reduce((a,b)=>a+b,0);
+            if(!textValues().some(t=>t.includes('对战道具 '+allocated+'/5'))) throw new Error('额度提示错误');
+            if(allocated<5&&!textValues().some(t=>t.includes('还需分配 '+(5-allocated)+' 次额度'))) throw new Error('待分配额度提示缺失');
             const controls=Object.values(buttons);
             for(const a of controls) {
                 if(a.x<0||a.y<s.contentTop||a.x+a.w>width||a.y+a.h>height-s.safeBottom||a.w<44||a.h<44) throw new Error('V3 控件越界或不足44px');

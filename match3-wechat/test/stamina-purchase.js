@@ -39,6 +39,7 @@ const ad = {
     markRewardGranted: function () { granted++; }
 };
 const audio = {
+    isMusicEnabled: () => true, isSfxEnabled: () => true,
     setAdActive: function () {},
     reward: function () { rewards++; },
     invalid: function () { invalids++; }

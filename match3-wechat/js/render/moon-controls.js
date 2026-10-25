@@ -1,5 +1,7 @@
 // B support-page controls: native drawing only; callers own text, state and hitboxes.
 const typography = require('./typography');
+const theme = require('./theme');
+const material = require('./button-material');
 
 function path(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -41,14 +43,13 @@ function button(ctx, x, y, w, h, text, tone, fontSize) {
     const pink=tone==='pink', muted=tone==='muted';
     ctx.save();
     const g=ctx.createLinearGradient(x,y,x,y+h);
-    g.addColorStop(0,'#FFFFFF');g.addColorStop(.18,pink?'#FAD9EE':'#EAF2FF');
-    g.addColorStop(.65,muted?'#D1D6E5':pink?'#DB9FC7':'#ABC4EE');
-    g.addColorStop(1,muted?'#E3E6EE':pink?'#F1C8E3':'#DCE9FB');
+    (theme.buttonPalettes[tone]||theme.buttonPalettes.blue).forEach((c,i)=>g.addColorStop([0,.32,.70,1][i],c));
     ctx.fillStyle=g;path(ctx,x,y,w,h,h/2);ctx.fill();
     ctx.strokeStyle=muted?'#BEC5D8':pink?'#CCA3BB':'#9FAFD3';ctx.lineWidth=1.3;ctx.stroke();
     ctx.strokeStyle='#FFF9F0';path(ctx,x+2,y+2,w-4,h-4,h/2-2);ctx.stroke();
     ctx.strokeStyle='rgba(255,255,255,.8)';ctx.beginPath();ctx.moveTo(x+h/2,y+5);ctx.lineTo(x+w-h/2,y+5);ctx.stroke();
-    if (text) {ctx.fillStyle=muted?'#626B88':'#303C70';typography.drawCentered(ctx,text,x+8,y,w-16,h,{size:fontSize||16,minSize:10,weight:'bold'});}
+    material.shine(ctx,x,y,w,h,tone);
+    if (text) {ctx.fillStyle=theme.buttonText[tone]||theme.buttonText.blue;typography.drawCentered(ctx,text,x+8,y,w-16,h,{size:fontSize||16,minSize:10,weight:'bold'});}
     ctx.restore();
 }
 

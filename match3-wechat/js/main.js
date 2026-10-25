@@ -10,6 +10,7 @@ const UI = require('./render/ui');
 const AudioFX = require('./audio');
 const heart = require('./core/heart');
 const ad = require('./core/ad');
+const drawAdDiagnostics = require('./render/ad-diagnostics');
 const adRewards = require('./core/ad-rewards');
 const soloResume = require('./core/solo-resume');
 const soloSnapshot = require('./core/solo-snapshot');
@@ -17,6 +18,9 @@ const coin = require('./core/coin');
 const config = require('./core/config');
 const runtime = require('./core/runtime');
 const analytics = require('./core/analytics');
+const levelAnalytics = require('./platform/level-analytics');
+const homeAnalytics = require('./platform/home-analytics');
+const activationAnalytics = require('./platform/activation-analytics');
 const onboarding = require('./core/onboarding');
 const strategyFeedback = require('./core/strategy-feedback');
 const assets = require('./render/assets');
@@ -84,6 +88,9 @@ function battleErrorReason(error, category) {
 
 class Main {
     constructor(options) {
+        this.initialEntryResolved = false;
+        heart.invalidateDisplayState();
+        coin.invalidateDisplayCoins();
         runtime.init('menu');
 
         // 主屏 canvas
@@ -99,6 +106,11 @@ class Main {
         if (typeof wx.getMenuButtonBoundingClientRect === 'function') {
             try { menuButton = wx.getMenuButtonBoundingClientRect() || {}; } catch (e) { menuButton = {}; }
         }
+        const menuTop = Number(menuButton.top), menuBottom = Number(menuButton.bottom);
+        const menuLeft = Number(menuButton.left), menuRight = Number(menuButton.right);
+        const validMenu = [menuTop, menuBottom, menuLeft, menuRight].every(Number.isFinite) &&
+            menuTop >= 0 && menuBottom > menuTop && menuBottom <= height &&
+            menuLeft >= 0 && menuRight > menuLeft && menuRight <= width;
         const deviceText = [info.platform, info.system, info.AppPlatform, info.osName, info.brand, info.model]
             .map(function (value) { return String(value || ''); })
             .join(' ')
@@ -115,6 +127,7 @@ class Main {
             safeRight: safeRightEdge > 0 ? Math.max(0, width - safeRightEdge) : 0,
             contentTop: Math.max(0, Number(safeArea.top) || 0, (Number(menuButton.bottom) || 0) + 4),
             contentRight: Math.max(0, Math.min(width, Number(menuButton.left) || width) - 4),
+            menuButtonRect: validMenu ? { x: menuLeft, y: menuTop, w: menuRight - menuLeft, h: menuBottom - menuTop } : null,
             dpr: dpr,
             isHarmony: isHarmony,
             reduceEffects: isHarmony
@@ -149,8 +162,9 @@ class Main {
         AudioFX.init();
 
         // 素材预加载（猫咪 UI）
-        assets.preload();
+        assets.preload(() => { assets.loadIllustrationArt(); assets.loadResultArt(); });
         userProfile.init();
+        userProfile.setChangeListener(() => this.syncBattleAvatar());
 
         // 状态
         this.state = 'menu';
@@ -192,6 +206,8 @@ class Main {
         if(this.retention)this.retentionPreview=this.retention.model;
         this.resultButtons = null;
         this.shopButtons = null;
+        this.shopOffset = 0;
+        this.shopTouch = null;
         this.shopRewardPending = false;
         this.soloItemAdPending = false;
         this.staminaDialog = false;
@@ -214,6 +230,8 @@ class Main {
         this.soloCompletionTracked = false;
         this.soloReviveCount = 0;
         this.soloRunStartedAt = 0;
+        this.soloSettingsPausedMs = 0;
+        this.soloSettingsPausedAt = null;
         this.guide = null;
         this.guideButtons = null;
         this.guideQueue = [];
@@ -267,9 +285,74 @@ class Main {
         this.lastTime = Date.now();
         this.loop();
         this.offerSoloResume(false);
+        this.initialEntryResolved = true;
     }
 
     // ===== 场景切换 =====
+
+    activationService() {
+        if (!this.activationReporter) this.activationReporter = activationAnalytics.create(wx,
+            config.STARTUP_ANALYTICS_CONFIG, config.MILESTONE_ANALYTICS_CONFIG, analytics.track);
+        return this.activationReporter;
+    }
+
+    reportActivationFrame() {
+        if (!this.initialEntryResolved || this.backgrounded || this.adFlow || this.battleCreating ||
+            this.soloOperationBusy || this.soloResumeSaveFailed || this.soloResumePrompt) return;
+        const boardReady = this.state === 'playing' && this.board && this.core && this.core.isPlaying();
+        const controls = this.guide ? this.guideButtons : this.staminaDialog ? this.staminaDialogButtons :
+            this.state === 'menu' ? this.menuButtons : this.state === 'levelselect' ? this.levelSelectButtons :
+            this.state === 'result' ? this.resultButtons : this.state === 'battle_wait' ? this.battleButtons : boardReady;
+        if (controls) this.activationService().interactive();
+        if (boardReady && !this.guide && !this.staminaDialog) this.activationService().mark(this.soloActivation, 'board_ready');
+    }
+
+    homeReportService() {
+        if (!this.homeReporter) this.homeReporter = homeAnalytics.create(wx, config.HOME_ANALYTICS_CONFIG);
+        return this.homeReporter;
+    }
+
+    homeEntryAvailable() {
+        return this.state === 'menu' && !!this.menuButtons && !this.backgrounded &&
+            !this.guide && !this.staminaDialog && !this.adFlow && !this.battleCreating &&
+            !this.menuBattlePress && !this.soloOperationBusy && !this.soloResumeSaveFailed && !this.soloResumePrompt;
+    }
+
+    reportHomeFrame() {
+        if (this.state !== 'menu') {
+            this.homeReportVisit = false;
+            this.homeEntryDrawn = false;
+            return;
+        }
+        const reporter = this.homeReportService();
+        if (!this.homeReportVisit) { reporter.beginVisit(); this.homeReportVisit = true; }
+        this.homeEntryDrawn = this.homeEntryAvailable();
+        if (this.homeEntryDrawn) {
+            if (this.menuButtons.start) reporter.expose('solo');
+            if (this.menuButtons.battle) reporter.expose('pvp');
+        }
+    }
+
+    reportHomeClick(branch) {
+        const reporter = this.homeReportService();
+        const drawn = !!this.homeEntryDrawn, available = this.homeEntryAvailable();
+        reporter.inspectClick(branch, { drawn: drawn, available: available, backgrounded: !!this.backgrounded,
+            guide: !!this.guide, stamina: !!this.staminaDialog, ad: !!this.adFlow,
+            creating: !!this.battleCreating, press: !!this.menuBattlePress, busy: !!this.soloOperationBusy,
+            saveFailed: !!this.soloResumeSaveFailed, resume: !!this.soloResumePrompt });
+        if (drawn && available) reporter.click(branch);
+    }
+
+    soloReportService() {
+        if (!this.levelReporter) this.levelReporter = levelAnalytics.create(wx, config.LEVEL_ANALYTICS_CONFIG);
+        return this.levelReporter;
+    }
+
+    syncSoloReportClock() {
+        if (this.soloReport) this.soloReportService().setRunning(this.soloReport,
+            this.state === 'playing' && !!this.core && !this.core.ended &&
+            !this.backgrounded && !this.adFlow && !this.soloResumeSaveFailed);
+    }
 
     showGuide(key) {
         if (this.guide) {
@@ -285,7 +368,11 @@ class Main {
         return true;
     }
 
-    dismissGuide() {
+    dismissGuide(outcome) {
+        if (this.guide && this.guide.key === onboarding.GUIDE_KEYS.SOLO && this.state === 'playing' &&
+            (outcome === 'confirm' || outcome === 'skip')) {
+            this.activationService().mark(this.soloActivation, 'guide_' + outcome);
+        }
         if (this.guide) onboarding.markSeen(this.guide.key);
         this.guide = null;
         this.guideButtons = null;
@@ -300,10 +387,8 @@ class Main {
     handleGuideTouch(x, y) {
         if (!this.guide) return false;
         const buttons = this.guideButtons;
-        if (buttons && (OnboardingUI.hitTest(x, y, buttons.skip) ||
-            OnboardingUI.hitTest(x, y, buttons.confirm))) {
-            this.dismissGuide();
-        }
+        if (buttons && OnboardingUI.hitTest(x, y, buttons.skip)) this.dismissGuide('skip');
+        else if (buttons && OnboardingUI.hitTest(x, y, buttons.confirm)) this.dismissGuide('confirm');
         return true;
     }
 
@@ -354,11 +439,17 @@ class Main {
         this.soloReviveCount = 0;
         this.soloPendingResult = null;
         this.soloRunStartedAt = Date.now();
+        this.soloSettingsPausedMs = 0;
+        this.soloSettingsPausedAt = null;
         this.retentionSolo = this.retention ? this.retention.startSolo(level.id) : null;
         this.retentionNotice='';
         analytics.track('solo_start', { level: level.id });
 
         this.createSoloBoard(level);
+        const previousReport = this.soloReport;
+        const reporter = this.soloReportService();
+        reporter.close(previousReport, previousReport && previousReport.levelId === level.id ? 3 : null);
+        this.soloReport = reporter.start(level);
         const failureCount = Number(this.progress.failures[level.id]) || 0;
         const assistance = soloAssistanceFor(failureCount);
         if (assistance) {
@@ -373,6 +464,7 @@ class Main {
         }
 
         this.state = 'playing';
+        this.syncSoloReportClock();
         this.showGuide(onboarding.GUIDE_KEYS.SOLO);
         if (strategyFeedback.collectGoal(level)) this.showGuide(onboarding.GUIDE_KEYS.COLLECT);
         if (Object.keys(level.underlays || {}).length) this.showGuide(onboarding.GUIDE_KEYS.JELLY);
@@ -388,6 +480,7 @@ class Main {
     }
 
     createSoloBoard(level, restoredCore) {
+        assets.loadResultArt();
         // Replacing the board retires only the previous live action, not a restore request.
         if (this.soloOperationBusy && this.soloOperationBusy.kind === 'action') {
             this.soloOperationBusy = false;
@@ -396,6 +489,9 @@ class Main {
         // 先创建渲染层（动画回调需要引用它）
         const board = this.board = new BoardRenderer(this.ctx, this.screen);
         const core = restoredCore || new GameCore(level, {});
+        if (!restoredCore) this.soloActivation = this.activationService().newRound(level);
+        const activation = this.soloActivation;
+        let inputAction = null;
         const run = this.retentionSolo, startedAt = this.soloRunStartedAt;
         const current = () => {
             if (this.core !== core || this.board !== board || this.retentionSolo !== run ||
@@ -408,6 +504,7 @@ class Main {
         // 再创建逻辑层，动画回调绑定到渲染层
         const callbacks = {
             onSwap: (from, to) => {
+                if (inputAction && inputAction.kind === 'swap') inputAction.validSwap = true;
                 if(run)run.validMove=true;
                 return board.animateSwap(from, to);
             },
@@ -416,6 +513,13 @@ class Main {
                 return board.animateInvalidSwap(from, to);
             },
             onMatch: (data) => {
+                if (this.soloActivation === activation && inputAction && inputAction.kind === 'swap' &&
+                    inputAction.validSwap && data && data.removed && data.removed.length) {
+                    // A real accepted swap also proves board readiness if no render ran between input events.
+                    const reporter = this.activationService();
+                    reporter.mark(activation, 'board_ready');
+                    reporter.mark(activation, 'first_match');
+                }
                 if(run){run.cleared+=data.removed.length;if(data.removed.length)run.validMove=true;}
                 AudioFX.match(data, this.screen.reduceEffects);
                 if (data && data.generated && data.generated.length) this.showGuide(onboarding.GUIDE_KEYS.SPECIAL);
@@ -440,6 +544,23 @@ class Main {
         this.core = core;
         core.callbacks = callbacks;
 
+        // Preserve the engine's outcome/errors; only attribute matches to their actual input kind.
+        const observeInput = (kind, work, args) => {
+            if (inputAction || !current()) return work(...args);
+            const action = inputAction = {kind, validSwap:false};
+            try {
+                return Promise.resolve(work(...args)).finally(() => {
+                    if (inputAction === action) inputAction = null;
+                });
+            } catch (error) {
+                if (inputAction === action) inputAction = null;
+                throw error;
+            }
+        };
+        const swap = core.trySwap.bind(core), tool = core.useTool.bind(core);
+        core.trySwap = (...args) => observeInput('swap', swap, args);
+        core.useTool = (...args) => observeInput('tool', tool, args);
+
         this.board.setGame(this.core);
         const items = coin.getItems();
         this.board.setTools(items || {});
@@ -457,14 +578,19 @@ class Main {
     }
 
     soloResumeMeta(result) {
-        return { retentionSolo: this.retentionSolo || null, reviveCount: this.soloReviveCount || 0,
+        const meta = { retentionSolo: this.retentionSolo || null, reviveCount: this.soloReviveCount || 0,
             failureRecorded: !!this.soloFailureRecorded, completionTracked: !!this.soloCompletionTracked,
-            startedAt: this.soloRunStartedAt || Date.now(), result: result || this.result || null,
+            startedAt: this.soloRunStartedAt || Date.now(), settingsPausedMs: this.soloSettingsPausedMs || 0,
+            result: result || this.result || null,
             guide: this.guide || null, guideQueue: this.guideQueue || [] };
+        if (this.soloReport) meta.levelAnalytics = this.soloReportService().snapshot(this.soloReport);
+        if (this.soloActivation) meta.activation = this.activationService().snapshot(this.soloActivation);
+        return meta;
     }
 
     resumeSaveError() {
         this.soloResumeSaveFailed = true;
+        this.syncSoloReportClock();
         if (this.core) this.core.pauseTimer();
         this.showBattleNotice('原局待保存，点击重试，不会重新看广告');
     }
@@ -537,19 +663,36 @@ class Main {
 
     installSoloResume(record) {
         const core = soloSnapshot.restore(record.snapshot, {}), meta = record.meta;
+        const sameRun = this.soloResumeRecord && this.soloResumeRecord.id === record.id &&
+            this.soloRunStartedAt === meta.startedAt && this.core && this.core.level.id === core.level.id;
+        // A failed checkpoint may leave this run's pause total newer than storage.
+        // Merge once; the normal checkpoint below persists it under the recovered revision.
+        let settingsPausedMs = Math.max(meta.settingsPausedMs || 0, sameRun ? this.soloSettingsPausedMs || 0 : 0);
+        if (sameRun && this.state === 'solo_settings' && this.soloSettingsPausedAt != null)
+            settingsPausedMs += Math.max(0, Math.floor(Date.now() - this.soloSettingsPausedAt));
+        const sameActivation = this.soloActivation && this.soloResumeRecord && this.soloResumeRecord.id === record.id &&
+            this.core && this.core.level.id === core.level.id;
+        if (!sameActivation) this.soloActivation = this.activationService().restoreRound(core.level, meta.activation);
+        const sameReport = this.soloReport && this.soloResumeRecord &&
+            this.soloResumeRecord.id === record.id && this.soloReport.levelId === core.level.id;
+        if (!sameReport) this.soloReport = this.soloReportService().restore(core.level, meta.levelAnalytics);
         this.soloResumeRecord = record;
         this.soloResumeSaveFailed = false;
         this.retentionSolo = meta.retentionSolo;
         this.soloReviveCount = meta.reviveCount;
+        this.soloReportService().revive(this.soloReport, meta.reviveCount);
         this.soloFailureRecorded = meta.failureRecorded;
         this.soloCompletionTracked = meta.completionTracked;
         this.soloRunStartedAt = meta.startedAt;
+        this.soloSettingsPausedMs = settingsPausedMs;
+        this.soloSettingsPausedAt = null;
         this.soloPendingResult = null;
         this.resultLeaving = false;
         this.result = meta.result;
         this.guide = meta.guide || null; this.guideQueue = meta.guideQueue || [];
         this.createSoloBoard(core.level, core);
         this.bindSoloResume(core);
+        if (core.ended && this.result && !this.result.win) this.result.remainingGoals = this.remainingSoloGoals();
         this.state = core.ended ? 'result' : 'playing';
         if (core.ended) {
             if (!this.soloCompletionTracked && meta.result) this.handleLevelEnd(meta.result);
@@ -558,6 +701,7 @@ class Main {
             if (!this.saveSoloResume()) core.pauseTimer();
             this.lastTime = Date.now();
         }
+        this.syncSoloReportClock();
     }
 
     bindSoloResume(core) {
@@ -636,6 +780,7 @@ class Main {
     }
 
     backToMenu() {
+        this.retireSoloReport();
         this.guide = null;
         this.guideQueue = [];
         this.state = 'menu';
@@ -644,8 +789,66 @@ class Main {
         this.result = null;
     }
 
+    openSoloSettings() {
+        if(this.state!=='playing'||!this.core||!this.core.isPlaying()||this.adFlow||this.soloOperationBusy||this.guide)return;
+        this.board.onTouchCancel();
+        this.core.pauseTimer();
+        this.soloSettingsPausedAt=Date.now();
+        this.state='solo_settings';this.soloSettingsButtons=null;
+        this.syncSoloReportClock();
+        if(this.soloResumeRecord)this.updateSoloClock(false);
+    }
+
+    resumeSoloSettings() {
+        if(this.state!=='solo_settings'||!this.core)return;
+        const at=Date.now();
+        this.soloSettingsPausedMs=(this.soloSettingsPausedMs||0)+Math.max(0,Math.floor(at-(this.soloSettingsPausedAt==null?at:this.soloSettingsPausedAt)));
+        this.soloSettingsPausedAt=at;
+        if(this.soloResumeRecord&&!this.saveSoloResume())return;
+        this.soloSettingsPausedAt=null;
+        this.state='playing';this.lastTime=Date.now();
+        if(this.soloResumeRecord&&!this.updateSoloClock(!this.backgrounded))return;
+        if(!this.backgrounded&&!this.soloResumeSaveFailed)this.core.resumeTimer();
+        this.syncSoloReportClock();
+    }
+
+    exitSoloSettings() {
+        if(this.soloSettingsLeaving||this.state!=='solo_settings')return;
+        const core=this.core;
+        this.soloSettingsLeaving=true;
+        const complete=()=>{this.soloSettingsLeaving=false;};
+        try { wx.showModal({title:'返回首页？',content:'本局将结束，已消耗的体力不退回。',confirmText:'返回首页',cancelText:'继续游戏',success:res=>{
+            if(this.state!=='solo_settings'||this.core!==core)return;
+            if(!res.confirm){this.resumeSoloSettings();return;}
+            if(this.soloResumeRecord&&!soloResume.close(this.soloResumeRecord).ok){this.showBattleNotice('本局记录暂未保存，请重试');return;}
+            this.soloResumeRecord=null;
+            this.backToMenu();
+        },complete}); } catch(e){complete();this.showBattleNotice('暂时无法退出，请重试');}
+    }
+
+    retireSoloReport(preserveResume) {
+        // A still-recoverable ordinary run is suspended, not permanently abandoned.
+        const resumable = preserveResume && soloResume.eligible(this.soloResumeRecord);
+        this.soloReportService().close(this.soloReport, resumable ? null : 6);
+        this.soloReport = null;
+        this.soloActivation = null;
+    }
+
+    remainingSoloGoals() {
+        const core = this.core, goals = (core.level.goals || []).slice();
+        if (core.jellyTotal > 0 && !goals.some(g => g.type === 'jelly')) goals.push({type:'jelly',target:core.jellyTotal});
+        if (!goals.length) goals.push({type:'score',target:1000});
+        const counts = {jelly:core.getJellyLeft(),ice:core.getIceLeft(),yarn:core.getYarnHealth(),
+            moonbud:core.getMoonbudsLeft(),parcel:core.getParcelsLeft()};
+        return goals.map(g => ({type:g.type,pieceType:g.pieceType,
+            target:g.type === 'jelly' ? core.jellyTotal : g.target,
+            left:g.type === 'score' ? Math.max(0,g.target-core.score) : g.type === 'collect' ?
+                Math.max(0,g.target-(core.collectedCounts[g.pieceType]||0)) : counts[g.type]})).filter(g => g.left > 0);
+    }
+
     handleLevelEnd(result) {
         if (this.soloCompletionTracked) return;
+        this.soloReportService().result(this.soloReport, !!result.win);
         if (this.soloResumeRecord && !this.saveSoloResume(result)) return;
         if(this.retention&&this.retentionSolo) {
             this.retentionSolo.date=this.retention.date();
@@ -725,6 +928,7 @@ class Main {
             star: star,
             maxCascade: this.core.maxCascade || 0,
             specialComboCount: this.core.specialComboCount || 0,
+            remainingGoals: result.win ? [] : this.remainingSoloGoals(),
             // 只要激励视频可用，失败后可重复观看广告复活
             canRevive: !result.win && ad.isRewardedAvailable()
         };
@@ -734,7 +938,7 @@ class Main {
             result: result.win ? 'win' : 'lose',
             reason: this.result.reason,
             stars: star,
-            durationBucket: durationBucket(Date.now() - this.soloRunStartedAt),
+            durationBucket: durationBucket(Date.now() - this.soloRunStartedAt - (this.soloSettingsPausedMs || 0)),
             reviveCount: this.soloReviveCount
         });
 
@@ -789,7 +993,10 @@ class Main {
     }
 
     heartView() {
-        try { return { state: heart.getHeartState(), timeLeftText: heart.formatTimeLeft() }; }
+        try {
+            const state = heart.getDisplayState();
+            return { state: state, timeLeftText: heart.formatTimeLeft(state) };
+        }
         catch (error) { return { state: null, timeLeftText: '--:--' }; }
     }
 
@@ -810,19 +1017,33 @@ class Main {
         if (this.adFlow || ad.isBusy() || /^battle_|^daily_/.test(this.state || '')) return Promise.resolve(false);
         const originCore = this.core;
         this.adFlow = true;
+        this.syncSoloReportClock();
         this.menuBattlePress = null;
+        const context = this.adDiagnosticContext = {music:AudioFX.isMusicEnabled(), sfx:AudioFX.isSfxEnabled()};
         AudioFX.setAdActive(true);
+        context.audioPausedAt = Date.now();
         if (this.core && this.state === 'playing') this.core.pauseTimer();
-        return Promise.resolve().then(work).catch(() => {
+        return Promise.resolve().then(() => work(context)).catch(() => {
             this.showBattleNotice('广告暂不可用，请稍后重试');
             return false;
         }).then(value => {
             this.adFlow = false;
+            this.syncSoloReportClock();
+            if (this.adDiagnosticContext === context) this.adDiagnosticContext = null;
             this.lastTime = Date.now();
             AudioFX.setAdActive(false);
             if (this.adRewardSound) { this.adRewardSound = false; AudioFX.reward(); }
             if (!this.backgrounded && !this.soloResumeSaveFailed && this.state === 'playing' && this.core === originCore && this.core && !this.guide) this.core.resumeTimer();
             return value;
+        });
+    }
+
+    playRewarded(placement, options) {
+        const outcome = {}, diagnosticContext = this.adDiagnosticContext;
+        if (diagnosticContext) diagnosticContext.toastAt = this.lastNativeNoticeAt;
+        return ad.showRewarded(placement, Object.assign({}, options, {outcome, diagnosticContext})).then(completed => {
+            if (!completed) this.showBattleNotice(ad.failureMessage(outcome));
+            return completed;
         });
     }
 
@@ -855,7 +1076,7 @@ class Main {
             this.adFlow || ad.isBusy() || this.soloItemAdPending || this.soloOperationBusy ||
             this.soloResumeSaveFailed || this.backgrounded || this.guide || !this.core.isPlaying()) return Promise.resolve(false);
         if (adRewards.hasPending()) { this.recoverAdRewards(true); return Promise.resolve(false); }
-        if (!ad.isRealRewardedAvailable()) { this.showBattleNotice('广告暂不可用，请稍后重试'); return Promise.resolve(false); }
+        if (!ad.isRealRewardedAvailable()) { this.showBattleNotice(ad.failureMessage({reason:ad.getRewardedBlockReason()})); return Promise.resolve(false); }
         const core = this.core, board = this.board, run = this.retentionSolo, startedAt = this.soloRunStartedAt;
         const current = () => this.state === 'playing' && this.core === core && this.board === board &&
             this.retentionSolo === run && this.soloRunStartedAt === startedAt;
@@ -864,18 +1085,20 @@ class Main {
             this.showBattleNotice('存储暂不可用，请稍后重试'); return Promise.resolve(false);
         }
         this.soloItemAdPending = board.toolAdPending = true;
-        return this.runAdFlow(() => {
+        return this.runAdFlow(context => {
             if (this.soloResumeRecord && !this.saveSoloResume()) { adRewards.cancel(prepared.claim); return false; }
             const consent = confirm ? new Promise(resolve => {
                 if (typeof wx.showModal !== 'function') { resolve(false); return; }
+                context.modalOpenedAt = Date.now();
                 wx.showModal({ title: '领取' + coin.ITEM_DEFS[type].name, content: '完整观看视频可获得' + coin.ITEM_DEFS[type].name + '×1。',
                     confirmText: '观看视频', cancelText: '取消',
-                    success: result => resolve(!!result.confirm), fail: () => resolve(false) });
+                    success: result => { context.modalSuccessAt = Date.now(); resolve(!!result.confirm); },
+                    fail: () => resolve(false), complete: () => { context.modalCompleteAt = Date.now(); } });
             }) : Promise.resolve(true);
             return consent.then(accepted => {
                 if (!accepted || !current() || this.backgrounded) { adRewards.cancel(prepared.claim); return false; }
-                return ad.showRewarded('solo_item', { allowMock: false }).then(completed => {
-                    if (!completed) { adRewards.cancel(prepared.claim); this.showBattleNotice('广告未完成，未领取道具'); return false; }
+                return this.playRewarded('solo_item', { allowMock: false }).then(completed => {
+                    if (!completed) { adRewards.cancel(prepared.claim); return false; }
                     return this.reportAdReward(adRewards.complete(prepared.claim), 'solo_item', true);
                 });
             });
@@ -895,7 +1118,7 @@ class Main {
     claimShopAdItem(type) {
         if (this.adFlow || this.shopRewardPending || !coin.ITEM_DEFS[type] || this.state !== 'shop') return Promise.resolve(false);
         if (adRewards.hasPending()) { this.recoverAdRewards(true); return Promise.resolve(false); }
-        if (!ad.isRealRewardedAvailable()) { this.showBattleNotice('广告暂不可用，请稍后重试'); return Promise.resolve(false); }
+        if (!ad.isRealRewardedAvailable()) { this.showBattleNotice(ad.failureMessage({reason:ad.getRewardedBlockReason()})); return Promise.resolve(false); }
         const state = coin.getRewardedItemState();
         if (!state) { this.showBattleNotice('奖励正在恢复保存，请稍后重试'); return Promise.resolve(false); }
         if (state.remaining <= 0) {
@@ -905,8 +1128,8 @@ class Main {
         const prepared = adRewards.createClaim('shop_item', type);
         if (!prepared.ok) { this.showBattleNotice('存储暂不可用，请稍后重试'); return Promise.resolve(false); }
         this.shopRewardPending = true;
-        return this.runAdFlow(() => ad.showRewarded('shop_item', { allowMock: false }).then(completed => {
-            if (!completed) { adRewards.cancel(prepared.claim); this.showBattleNotice('广告未完成，未领取道具'); return false; }
+        return this.runAdFlow(() => this.playRewarded('shop_item', { allowMock: false }).then(completed => {
+            if (!completed) { adRewards.cancel(prepared.claim); return false; }
             const result = adRewards.complete(prepared.claim);
             const ok = this.reportAdReward(result, 'shop_item', true);
             analytics.track(ok ? 'shop_ad_reward_success' : 'shop_ad_reward_failure', { category: type });
@@ -927,8 +1150,8 @@ class Main {
         if (!prepared.ok) { this.showBattleNotice('存储暂不可用，请稍后重试'); return Promise.resolve(false); }
         this.heartAdPending = true;
         const origin = this.state;
-        return this.runAdFlow(() => ad.showRewarded('heart_refill').then(completed => {
-            if (!completed) { adRewards.cancel(prepared.claim); this.showBattleNotice('广告未完成，未领取体力'); return false; }
+        return this.runAdFlow(() => this.playRewarded('heart_refill').then(completed => {
+            if (!completed) { adRewards.cancel(prepared.claim); return false; }
             const result = adRewards.complete(prepared.claim);
             const ok = this.reportAdReward(result, 'heart_refill', true);
             if (ok && source === 'dialog' && this.state === origin) this.closeStaminaDialog();
@@ -979,8 +1202,8 @@ class Main {
         if (!prepared.ok) { this.showBattleNotice('原局暂未保存，请稍后重试'); return Promise.resolve(false); }
         this.soloResumeRecord = prepared.record;
         const claim = { core: this.core, run: this.retentionSolo, record: prepared.record };
-        return this.runAdFlow(() => ad.showRewarded('revive').then(completed => {
-            if (!completed) { this.showBattleNotice('广告未完成，未复活'); return false; }
+        return this.runAdFlow(() => this.playRewarded('revive').then(completed => {
+            if (!completed) return false;
             if (this.core !== claim.core || this.retentionSolo !== claim.run || this.state !== 'result') return false;
             this.pendingRevive = claim;
             return this.applyPendingRevive();
@@ -1285,6 +1508,7 @@ class Main {
                     self.battleCore = null;
                     self.battleBoard = null;
                     self.state = 'menu';
+                    userProfile.clearRoomProfile();
                     self.showBattleNotice(BATTLE_INVITE_EXPIRED_MESSAGE);
                 }
                 return;
@@ -1305,7 +1529,8 @@ class Main {
     /** 应用轮询结果 */
     applyPoll(res, sentAt) {
         if (!this.battle) return;
-        let b = this.battle;
+        const previousBattle = this.battle;
+        let b = previousBattle;
         if (b.protocolVersion === 2) {
             if (res.protocolVersion !== 2 || !Number.isSafeInteger(res.roundId) || res.roundId < b.roundId) return;
             if (res.roundId > b.roundId) {
@@ -1325,11 +1550,13 @@ class Main {
             b.oppOnline = !!(res.opp && res.opp.online);
         }
         battleItems.configure(b, res);
+        if (b !== previousBattle) this.syncBattleAvatar();
         if (b.itemRulesVersion === 3) {
             battleItems.status(b, res, sentAt);
             if (battleItems.acknowledge(b, res)) b.scoreUncertain = false;
             if (b.pendingItem && (res.casts || []).some(cast => cast.requestId === b.pendingItem.requestId)) b.pendingItem = null;
         }
+        b.oppAvatarUrl = res.opp && res.opp.avatarUrl || '';
         if (b.completedTracked) return;
         if (b.itemRulesVersion !== 3 && Number.isFinite(res.myScore)) b.syncedScore = Math.max(b.syncedScore, res.myScore);
 
@@ -1506,6 +1733,7 @@ class Main {
     /** 创建房间并进入等待页；邀请由房主主动点击。 */
     showBattleNotice(message) {
         if (typeof wx !== 'undefined' && typeof wx.showToast === 'function') {
+            this.lastNativeNoticeAt = Date.now();
             wx.showToast({ title: message, icon: 'none', duration: 2200 });
         }
     }
@@ -1529,6 +1757,7 @@ class Main {
         if (this.battleCreating || this.state === 'playing' || this.state === 'daily_playing' || this.state === 'battle_wait' || this.state === 'battle_playing') return;
         this.battleExitRequest = null;
         this.battleCreating = true;
+        userProfile.clearRoomProfile();
         analytics.track('pvp_click');
         const self = this;
         const b = this.battle = this.newBattleState(true);
@@ -1542,6 +1771,8 @@ class Main {
                 b.roundNumber = res.roundNumber || 1;
                 battleItems.configure(b, res);
                 self.state = 'battle_wait';
+                userProfile.beginRoom();
+                self.retireSoloReport(true);
                 analytics.track('pvp_create', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
                 self.startPolling();
@@ -1578,6 +1809,7 @@ class Main {
             this.battleCancel();
         }
         const self = this;
+        userProfile.clearRoomProfile();
         this.battleCreating = true;
         this.battleExitRequest = null;
         const b = this.battle = this.newBattleState(false);
@@ -1591,6 +1823,8 @@ class Main {
                 b.roundNumber = res.roundNumber || 1;
                 battleItems.configure(b, res);
                 self.state = 'battle_wait';
+                userProfile.beginRoom();
+                self.retireSoloReport(true);
                 analytics.track('pvp_join', { result: 'success' });
                 self.showGuide(onboarding.GUIDE_KEYS.PVP_WAIT);
                 self.startPolling();
@@ -1622,6 +1856,7 @@ class Main {
             offline: false, expired: false, rewardPending: false,
             myName: '我',
             oppName: '',
+            oppAvatarUrl: '', avatarProfileRequest: null, avatarProfileError: false,
             myReady: false,
             oppReady: false,
             oppJoined: false,
@@ -1691,7 +1926,11 @@ class Main {
 
     /** 处理 onShow（好友点卡片进入时拿参数加入房间） */
     handleShow(res) {
+        heart.invalidateDisplayState();
+        coin.invalidateDisplayCoins();
+        if (this.backgrounded) this.homeReportVisit = false;
         this.backgrounded = false;
+        this.syncSoloReportClock();
         ad.onShow();
         if (this.adFlow || (this.soloOperationBusy && this.soloOperationBusy.kind === 'restore')) {
             this.lastTime = Date.now(); return;
@@ -1717,7 +1956,7 @@ class Main {
         }
         if (!query || typeof query !== 'object' || query.invite !== '1' ||
             this.state === 'battle_wait' || this.state === 'battle_playing') return;
-        if (this.state === 'playing' || this.state === 'daily_playing') {
+        if (this.state === 'playing' || this.state === 'solo_settings' || this.state === 'daily_playing') {
             this.showBattleNotice('请先完成当前挑战，再打开好友邀请');
             return;
         }
@@ -1735,6 +1974,8 @@ class Main {
     // 后台暂停计时。
     handleHide() {
         this.backgrounded = true;
+        this.homeEntryDrawn = false;
+        this.syncSoloReportClock();
         this.rewardedTouch = null;
         ad.onHide();
         this.menuBattlePress = null;
@@ -1866,6 +2107,27 @@ class Main {
         });
     }
 
+    /** Optional portrait writes never lock readiness, items or score synchronization. */
+    syncBattleAvatar() {
+        const b = this.battle, avatarUrl = userProfile.getSharedAvatarUrl();
+        const inRoom = this.state === 'battle_wait' || this.state === 'battle_playing' || this.state === 'battle_result';
+        if (!b || !b.roomId || !inRoom || !avatarUrl || b.avatarProfileRequest) return;
+        const request = b.avatarProfileRequest = {};
+        b.avatarProfileError = false;
+        cloudBattle.call('profile', this.battleRequestData(b, { avatarUrl }), BATTLE_WAIT_REQUEST).then(res => {
+            if (this.battle !== b || b.avatarProfileRequest !== request) return;
+            b.avatarProfileRequest = null;
+            if (!res.ok) throw new Error('profile unconfirmed');
+            if (userProfile.getSharedAvatarUrl() !== avatarUrl) this.syncBattleAvatar();
+        }).catch(() => {
+            if (this.battle !== b || (b.avatarProfileRequest && b.avatarProfileRequest !== request)) return;
+            b.avatarProfileRequest = null;
+            if (userProfile.getSharedAvatarUrl() !== avatarUrl) { this.syncBattleAvatar(); return; }
+            b.avatarProfileError = true;
+            if (this.state === 'battle_wait') this.showBattleNotice('头像暂未同步，点头像重试');
+        });
+    }
+
     /** 等待页：取消/退出 */
     battleCancel() {
         if (!this.battle) return;
@@ -1886,6 +2148,7 @@ class Main {
             });
         }
         this.stopPolling();
+        userProfile.clearRoomProfile();
         this.battleCreating = false;
         this.battle = null;
         this.battleCore = null;
@@ -2259,12 +2522,14 @@ class Main {
 
     handleTouchCancel() {
         this.rewardedTouch = null;
+        this.shopTouch = null;
         this.retentionTouch = null; this.catalogTouch = null; this.companionTouch = null;
         if (this.board && this.board.onTouchCancel) this.board.onTouchCancel();
     }
 
     handleTouchStart(e) {
         this.rewardedTouch = null;
+        this.shopTouch = null;
         if (this.adFlow || this.soloOperationBusy || this.soloResumePrompt) return;
         if (this.soloResumeSaveFailed) { this.retrySoloResume(); return; }
         if (!e.touches || !e.touches.length) return;
@@ -2273,6 +2538,18 @@ class Main {
         const x = e.touches[0].clientX;
         const y = e.touches[0].clientY;
         if (this.handleGuideTouch(x, y)) return;
+        if(this.state==='battle_wait'&&userProfile.isPromptOpen()){
+            if(this.avatarConsentButtons&&UI.hitTest(x,y,this.avatarConsentButtons.cancel))userProfile.dismissPrompt();
+            return;
+        }
+        if(this.state==='solo_settings'){
+            const buttons=this.soloSettingsButtons;if(!buttons)return;
+            if(UI.hitTest(x,y,buttons.resume))this.resumeSoloSettings();
+            else if(UI.hitTest(x,y,buttons.home))this.exitSoloSettings();
+            else if(UI.hitTest(x,y,buttons.music)){AudioFX.setMusicEnabled(!AudioFX.isMusicEnabled());if(AudioFX.isSfxEnabled())AudioFX.click();}
+            else if(UI.hitTest(x,y,buttons.sfx)){const next=!AudioFX.isSfxEnabled();AudioFX.setSfxEnabled(next);if(next)AudioFX.click();}
+            return;
+        }
         if (this.battleCreating) return;
         if (this.handleStaminaDialogTouch(x, y, e)) return;
 
@@ -2307,6 +2584,7 @@ class Main {
             else this.dailyBoard.onTouchStart(x,y);
         } else if (this.state === 'playing' && this.board) {
             if (e.touches.length !== 1) { this.board.onTouchCancel(); return; }
+            if(UI.hitTest(x,y,this.soloSettingsButton)){AudioFX.click();this.openSoloSettings();return;}
             if(this.board.selectedTool) {
                 const savedItems=coin.getItems();
                 if(!savedItems){this.board.selectedTool=null;this.showBattleNotice('道具记录待保存，请重试');return;}
@@ -2317,9 +2595,11 @@ class Main {
             if (this.menuBattlePress) return;
             if (UI.hitTest(x, y, this.menuButtons.battle)) {
                 AudioFX.click();
+                this.reportHomeClick('pvp');
                 this.menuBattlePress = { elapsed: 0 };
             } else if (UI.hitTest(x, y, this.menuButtons.start)) {
                 AudioFX.click();
+                this.reportHomeClick('solo');
                 if (this.offerSoloResume(true)) return;
                 const hearts = this.readHeartState(true);
                 if (!hearts) return;
@@ -2337,6 +2617,7 @@ class Main {
             } else if (UI.hitTest(x, y, this.menuButtons.shop)) {
                 AudioFX.click();
                 this.state = 'shop';
+                this.shopOffset = 0;
                 this.recoverAdRewards(true);
             } else if (UI.hitTest(x, y, this.menuButtons.daily)) {
                 AudioFX.click(); this.openDaily();
@@ -2388,14 +2669,17 @@ class Main {
             this.levelMapTouch = { x: x, y: y, lastY: y };
             this.levelMapDragged = false;
         } else if (this.state === 'shop' && this.shopButtons) {
+            if (e.touches.length !== 1) return;
+            this.shopTouch = { x, y, lastY:y, id:e.touches[0].identifier,
+                scroll:UI.hitTest(x,y,this.shopButtons.viewport) };
             if (UI.hitTest(x, y, this.shopButtons.buy_heart)) {
-                this.buyHeart();
+                this.armAdTouch(e, this.shopButtons.buy_heart, () => this.buyHeart());
             } else if (UI.hitTest(x, y, this.shopButtons.buy_hammer)) {
-                this.buyItem('hammer');
+                this.armAdTouch(e, this.shopButtons.buy_hammer, () => this.buyItem('hammer'));
             } else if (UI.hitTest(x, y, this.shopButtons.buy_bomb)) {
-                this.buyItem('bomb');
+                this.armAdTouch(e, this.shopButtons.buy_bomb, () => this.buyItem('bomb'));
             } else if (UI.hitTest(x, y, this.shopButtons.buy_color)) {
-                this.buyItem('color');
+                this.armAdTouch(e, this.shopButtons.buy_color, () => this.buyItem('color'));
             } else if (UI.hitTest(x, y, this.shopButtons.reward_hammer)) {
                 this.armAdTouch(e, this.shopButtons.reward_hammer, () => this.claimShopAdItem('hammer'));
             } else if (UI.hitTest(x, y, this.shopButtons.reward_bomb)) {
@@ -2405,8 +2689,7 @@ class Main {
             } else if (UI.hitTest(x, y, this.shopButtons.reward_heart)) {
                 this.armAdTouch(e, this.shopButtons.reward_heart, () => this.handleAddHeart('shop'));
             } else if (UI.hitTest(x, y, this.shopButtons.back)) {
-                AudioFX.click();
-                this.state = 'menu';
+                this.armAdTouch(e, this.shopButtons.back, () => { AudioFX.click(); this.state = 'menu'; });
             }
         } else if (this.state === 'result' && this.resultButtons) {
             if (this.soloPendingResult) {
@@ -2439,7 +2722,9 @@ class Main {
                 this.leaveSoloResult(this.backToMenu.bind(this));
             }
         } else if (this.state === 'battle_wait' && this.battleButtons) {
-            if (BattleUI.hitTest(x, y, this.battleButtons.invite)) {
+            if (this.battle.avatarProfileError && BattleUI.hitTest(x, y, this.battleButtons.avatar)) {
+                this.syncBattleAvatar();
+            } else if (BattleUI.hitTest(x, y, this.battleButtons.invite)) {
                 this.battleInvite();
             } else if (battleItems.keys(this.battle).some(key => {
                 for (const [suffix, delta] of [['Minus', -1], ['Plus', 1]]) {
@@ -2484,6 +2769,18 @@ class Main {
     }
 
     handleTouchMove(e) {
+        // A drag may begin over a buy/video button. Cancel its release action,
+        // then continue scrolling instead of spending coins or starting an ad.
+        if (this.state === 'shop' && this.shopTouch) {
+            const t=this.shopTouch,p=e.touches&&e.touches[0];
+            if (!p || e.touches.length!==1 || p.identifier!==t.id || this.adFlow || this.backgrounded) {
+                this.shopTouch=null;this.rewardedTouch=null;return;
+            }
+            if (Math.abs(p.clientX-t.x)>8 || Math.abs(p.clientY-t.y)>8) t.dragged=true;
+            if (t.dragged) this.rewardedTouch=null;
+            if (t.dragged && t.scroll && this.shopButtons) this.shopOffset=Math.max(0,Math.min(this.shopButtons.maxScroll||0,(this.shopOffset||0)+t.lastY-p.clientY));
+            t.lastY=p.clientY;return;
+        }
         if (this.rewardedTouch) {
             if (!this.validAdTouch(e.touches)) this.rewardedTouch = null;
             return;
@@ -2545,6 +2842,7 @@ class Main {
     }
 
     handleTouchEnd(e) {
+        this.shopTouch = null;
         if (this.rewardedTouch) {
             const t = this.rewardedTouch;
             const valid = e && !(e.touches && e.touches.length) && this.validAdTouch(e.changedTouches);
@@ -2622,6 +2920,7 @@ class Main {
     }
 
     update(dt) {
+        this.syncSoloReportClock();
         if (this.menuBattlePress) {
             if (this.state !== 'menu' || this.guide || this.battleCreating) {
                 this.menuBattlePress = null;
@@ -2678,7 +2977,7 @@ class Main {
                 storageReady: !!heartState,
                 canPlay: !!heartState && heartState.count > 0,
                 canAd: !!heartState && ad.isRewardedAvailable()
-            }, { coins: coin.getCoins(), retentionPreview: this.retentionPreviewEnabled,
+            }, { coins: coin.getDisplayCoins(), retentionPreview: this.retentionPreviewEnabled,
                 catalogPreview: this.catalogPreviewEnabled,
                 companion: this.companion && this.companion.selection,
                 coinsReady: this.retention&&this.retention.hasClaimable(),
@@ -2701,6 +3000,10 @@ class Main {
         } else if (this.state === 'playing' && this.board) {
             this.board.toolAdAvailable = ad.isRealRewardedAvailable();
             this.board.draw();
+            this.soloSettingsButton=UI.drawSoloSettingsButton(this.ctx,this.screen);
+        } else if(this.state==='solo_settings'&&this.board){
+            this.board.draw();
+            this.soloSettingsButtons=UI.drawSoloSettings(this.ctx,this.screen,{musicEnabled:AudioFX.isMusicEnabled(),sfxEnabled:AudioFX.isSfxEnabled()});
         } else if (this.state === 'result') {
             if(this.retention&&this.result)this.result.retentionMessage=this.retentionNotice||
                 (this.retentionSolo&&this.retentionSolo.validMove?(this.result.win?'每日任务待同步':'结束本局后同步每日任务'):'');
@@ -2716,7 +3019,8 @@ class Main {
                 heartReady: !!heartState,
                 heartCount: heartState ? heartState.count : null,
                 heartMax: heart.HEART_CONFIG.maxHeart,
-                heartPending: this.heartAdPending
+                heartPending: this.heartAdPending,
+                offset: this.shopOffset
             });
         } else if (this.state === 'levelselect') {
             this.levelSelectButtons = UI.drawLevelSelect(
@@ -2749,9 +3053,16 @@ class Main {
                 isHost: this.battle.isHost,
                 offline: this.battle.offline, actionPending: this.battle.actionPending,
                 pendingAction: this.battle.pendingAction, pollPending: this.battle.pollPending,
-                myAvatar: userProfile.getAvatarImage(), canChangeAvatar: userProfile.canChangeAvatar()
+                myAvatar: userProfile.getAvatarImage(), oppAvatar: userProfile.getOpponentAvatarImage(this.battle.oppAvatarUrl),
+                canChangeAvatar: userProfile.canChangeAvatar(), avatarShared: !!userProfile.getSharedAvatarUrl()
             });
-            userProfile.ensureButton(this.battleButtons.avatar);
+            if(!this.guide&&userProfile.isPromptOpen()){
+                this.avatarConsentButtons=UI.drawAvatarConsent(this.ctx,this.screen,userProfile.canChangeAvatar());
+                userProfile.ensureButton(this.avatarConsentButtons.confirm,{shareWithRoom:true});
+            }else if(!this.guide){
+                this.avatarConsentButtons=null;
+                userProfile.ensureButton(this.battleButtons.avatar, { shareWithRoom: true });
+            }else userProfile.destroyButton();
         } else if (this.state === 'battle_playing' && this.battleBoard && this.battle) {
             const now = this.battleNow();
             this.battleBoard.draw();
@@ -2760,6 +3071,7 @@ class Main {
                 protocolVersion: this.battle.protocolVersion, roundNumber: this.battle.roundNumber,
                 myWins: this.battle.myWins, oppWins: this.battle.oppWins,
                 timeLeft: timeLeft,
+                myAvatar: userProfile.getAvatarImage(), oppAvatar: userProfile.getOpponentAvatarImage(this.battle.oppAvatarUrl),
                 settling: this.battle.itemRulesVersion === 3 && now >= this.battle.endTime && this.battle.scoreCloseAt > this.battle.endTime,
                 myScore: this.battle.myScore,
                 oppScore: this.battle.oppScore,
@@ -2805,6 +3117,8 @@ class Main {
         } else if (this.state === 'battle_result' && this.battle) {
             this.battleButtons = BattleUI.drawResult(this.ctx, this.screen, {
                 result: this.battle.result,
+                myName: this.battle.myName, oppName: this.battle.oppName,
+                myAvatar: userProfile.getAvatarImage(), oppAvatar: userProfile.getOpponentAvatarImage(this.battle.oppAvatarUrl),
                 myScore: this.battle.myScore,
                 oppScore: this.battle.oppScore,
                 coinReward: this.battle.coinReward,
@@ -2828,6 +3142,9 @@ class Main {
             });
         }
         this.guideButtons = this.guide ? OnboardingUI.draw(this.ctx, this.screen, this.guide.key, this.guideContext()) : null;
+        if (!this.guide && !/^battle_|^daily_/.test(this.state)) drawAdDiagnostics(this.ctx, this.screen, ad.getDiagnosticLines());
+        this.reportHomeFrame();
+        this.reportActivationFrame();
     }
 }
 

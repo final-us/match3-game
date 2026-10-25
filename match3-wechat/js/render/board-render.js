@@ -12,6 +12,7 @@ const coin = require('../core/coin');
 const AudioFX = require('../audio');
 const specialTriggerDelays = require('../special-trigger-timing');
 const assets = require('./assets');
+const illustration = require('./illustration-art');
 const THEME = require('./theme');
 const typography = require('./typography');
 const newObstacles = require('./new-obstacles-render');
@@ -270,7 +271,9 @@ class BoardRenderer {
             const key = t.type === 'hammer' ? 'uiToolHammer' : (t.type === 'bomb' ? 'uiToolBomb' : 'uiToolYarn');
             const img = assets.get(key);
             const iconSize = t.r * 1.55;
-            if (img && img.width > 0) {
+            if (illustration.drawItem(ctx, t.type, t.x - iconSize / 2, t.y - iconSize / 2, iconSize)) {
+                // The same detailed equipment family is shared with preparation and shop.
+            } else if (img && img.width > 0) {
                 ctx.drawImage(img, t.x - iconSize / 2, t.y - iconSize / 2, iconSize, iconSize);
             } else {
                 ctx.fillStyle = '#FFF4FB';
@@ -285,7 +288,7 @@ class BoardRenderer {
             });
             // 沿用原数量角标；仅零库存且广告可用时替换为同风格加号。
             const canAdd = count === 0 && this.toolAdAvailable && this.onToolAd && !this.battleMode;
-            ctx.fillStyle = THEME.primary;
+            ctx.fillStyle = canAdd ? THEME.buttonPalettes.ad[2] : THEME.primary;
             ctx.beginPath();
             ctx.arc(t.x + t.r * 0.62, t.y - t.r * 0.62, 11, 0, Math.PI * 2);
             ctx.fill();
@@ -1009,13 +1012,6 @@ class BoardRenderer {
         });
         const y = layout.hudY;
         moon.scorePanel(ctx,this.screen,10,y,w-20,layout.hudH);
-        ctx.save();
-        ctx.fillStyle = '#FFF5E8';
-        ctx.shadowColor = '#30375D'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
-        if (layout.headlineY) typography.drawFit(ctx, '单人闯关', 14, layout.headlineY, Math.min(200, w - 140), {
-            size: 16, minSize: 14, weight: 'bold'
-        });
-        ctx.restore();
         const sideW = (w - 96) / 2, roomy = layout.headerH > 60;
         const centers = [10+sideW/2,w/2,w-10-sideW/2];
         for (const [cx,width,label,value,color,size] of [

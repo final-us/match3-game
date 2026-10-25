@@ -91,6 +91,6 @@ async function playOne() {
     assert(notices.some(s=>s.includes('过期')),'expired unconfirmed events are explained');
     assert.equal(store[client.KEY].pending.length,0);
     assert(!notices.some(s=>s.includes('每日任务已同步')), 'ordinary progress must never emit a success toast');
-    assert(notices.some(s=>s.includes('每日金币 +')), 'credited reward feedback must remain visible');
+    assert(notices.some(s=>/^领取成功 \+\d+金币/.test(s)), 'credited reward feedback must remain visible');
     console.log('retention integration: actual Main/core two games, repeated level reward boundary, sign cycle/hammer, week chests, quit and offline expiry passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -25,6 +25,31 @@ The same small transaction executor also normalizes the seven retention/catalog
 profile transaction paths; their existing reward and request deduplication rules
 remain in the callback. Other transaction entry points are unchanged.
 
+## Optional room portraits (local, 2026-10-20)
+
+`create` and `join` may supply `avatarUrl`. The member-only `profile` action
+updates only the caller's portrait and uses the same current protocol, round and
+item-rules identity as other room mutations. Omission preserves the stored value;
+an empty string clears it. Nonempty values must be HTTPS `qlogo.cn` URLs or valid
+subdomains, at most 768 characters, without credentials, ports, fragments,
+whitespace or backslashes. Invalid values return `INVALID_AVATAR_URL`. The cloud
+function stores the URL without fetching it. It does not return OpenIDs or other
+profile fields. `query.opp.avatarUrl` exposes the opponent's optional portrait to
+the other current room member. Ready state, loadout, scores and cooldowns are
+unchanged by a portrait write; same-room rematches retain the portrait.
+
+The first room entry shows a skippable sharing disclosure. An explicit portrait
+selection saves its sharing-consent version on this device. A historical portrait
+without that choice is not automatically shared. Leaving or entering a new room
+clears the in-memory room portrait; reuse requires a matching saved consent version,
+current WeChat authorization and the same safe portrait URL. Revocation, a changed
+portrait or an unsuccessful authorization check returns to the optional prompt or
+fallback. A same-room rematch retains the room portrait. Pending explicit choices
+may finish during play or results without locking game requests. The matching
+`battle` profile route was deployed and downloaded for verification on 2026-10-25;
+deployment evidence and the user-reported device results remain in the current
+experience-polish task record.
+
 ## Loadout and effects
 
 The default loadout is `{freeze:2,disturb:1,reflect:1,cheer:1}`. Every v3

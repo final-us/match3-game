@@ -8,6 +8,64 @@
 - `node_modules/` 仅用于本地依赖验证，不加入 Git。
 - `assets/_incoming/` 是本地制作档案，不随公开 Git 分发；包含供应商输出/记录、未采用候选及第三方试听参考。下文对此目录的路径均为本地追溯位置，不是公开下载承诺。已采用游戏图片和原创 BGM 随 `match3-wechat/res/` 提交；含 Mixkit 的 `sfx-acoustic.mp3` 另按许可只保留本地终端发布副本。
 
+## 笑脸页头猫 · 2026-10-25，已采用
+
+用户明确要求重新设计，并回复“采用这张”。商店、每日任务和七日签到共用的`uiIllustrationHeaderCat`保持原路径`ui-art/header-cat.png`，现替换为新生成的微笑奶油白猫、淡粉珍珠蝴蝶结，448×336 RGBA、48,994bytes；没有改胜负结果猫或第7天独立奖励猫。旧56,992bytes图备份于`assets/_incoming/header-smile-20261025/previous-header-cat.png`，可原样回退。
+
+本轮内置imagegen实际一次、新生成且无输入图，无外部供应商/购买、玩家资料或代码上传；模型/seed/费用工具未返回，记未知。原1448×1086真透明PNG、精确prompt、必要源/运行hash及处理参数见同目录`provenance.md`与`prompt.txt`。运行图等比缩至448宽、128色PNG（dither0.35、compression9），是有损调色板编码，不称无损；保留实际alpha。已经在原生Canvas三尺寸页头预览，角色采用由用户确认；不代替本轮最终真机或隐私/云端验收。
+
+替换节省7,998bytes，ui-art15张PNG合计1,564,128/1,572,864bytes，内部余8,736bytes。主包没有新增图片，所有预算上限保持。以下各期数值及旧图来源保留为历史，不代表本轮当前包体。
+
+## 花瓣与高光细节精修 · 2026-10-25
+
+新增`ui-art/blossom-cluster.png`，128×128 RGBA、25,189bytes，替代房名牌/每日按钮的规则几何小花，并补签到主按钮、商店返回按钮两侧花饰。内置`image_gen`实际调用1次，沿用本轮内置不限次、自有参考/现有额度授权；输入仅为本项目`ui-art/header-cat.png`风格参考，无新增供应商、购买、代码或个人资料上传。原始1254×1254 RGBA图、完整提示、返回路径及必要来源hash在`assets/_incoming/ui-detail-polish-20261025/{source.png,prompt.txt,generation.json}`，model/seed/cost不可见，记未知。
+
+生成源alpha范围0–255，795,176像素完全透明；白/暗底检查见同目录`alpha-review.png`，未见烘焙背景。运行图仅Lanczos等比缩为128×128、RGBA PNG无损编码，无调色板量化；绘制约18–37逻辑像素，适合2×显示。新增后ui-art合计1,572,126/1,572,864bytes，仍未放宽原预算；启动资源仍21keys/20unique，无新启动阻塞。按钮反光、猫爪浮雕与边框局部亮线是原生Canvas，不新增整图界面。2026-10-25用户明确“这次可以”，本轮本地视觉已接受；不等于独立QA、微信真机或发布接受。
+
+## 第7天独立猫咪与胜利插画复用 · 2026-10-25
+
+用户本轮要求第7天不要继续复用页头猫，并明确双人胜利复用单人胜利猫。双人胜利现直接使用既有`result-art/win-moon.png`，未重新生成该图。原`ui-art/win-cat.png`（61,922bytes）从活动分包移出，原样保留于`assets/_incoming/day7-reward-20261025/retired-pvp-win-cat.png`，来源继续见下方历史表。
+
+新增`ui-art/day7-cat.png`：抱粉色猫爪锤打盹的小猫，256×171 RGBA、54,720bytes，仅用于第7天奖励；原生200金币/锤子×1文字及规则不变。沿用本轮内置生成不限次、自有参考、现有额度授权，实际新增一次内置`image_gen`调用，无外部供应商/购买、代码或玩家资料上传。输入仅为本项目`ui-art/header-cat.png`风格参考；完整prompt、原始输出路径、来源hash、处理参数见`assets/_incoming/day7-reward-20261025/generation.json`，model/seed/cost未返回，记未知。原图1536×1024，直接Lanczos缩小、RGBA PNG无损编码，未调色板量化；原图与运行图均有真实透明通道，白/暗底检查在`alpha-review.png`。本地接入不代表最终视觉/设备或发布接受。替换后ui-art合计1,546,937bytes，预算上限不变。
+
+## 平局与备战双猫 · 2026-10-25，本地接入
+
+首轮经用户批准通过内置 `image_gen` 生成两张透明插画，仅使用自有参考和现有额度，不含代码、账号或玩家资料，无外部收费服务或购买。首轮完整prompt及原始输出路径见 `assets/_incoming/ui-illustration-production-20261020/refinement-20261022/generation.json`。用户随后将本轮内置生成次数授权改为不限次，实际另生成A/B两稿；原完成事件、prompt匹配、透明检查与来源见 `assets/_incoming/prep-duo-variants-20261022/generation.json`。2026-10-25用户明确选择“蓄势动作b”，本地采用B，A继续留在制作档案；未新增生成调用。model/seed/单次费用工具未返回，记未知。方向选择不代表最终运行、真机或发布接受。
+
+- `ui-art/draw-cat.png`：平局的单猫/月牙/花饰，448×309，59,476bytes；与已接受胜负卡保持同一世界，未替换胜负插画。
+- `ui-art/prep-duo.png`：B圆脸短绒双猫，左猫俯身蓄势、右猫抬爪回应，640×320 RGBA，250,060bytes；从1774×887原图用Lanczos等比缩小，PNG无损编码，无调色板量化。原90,035bytes活动图已备份为`prep-duo-before-b.png`。下方玩家头像仍为原生独立槽位；无人头像使用B图局部猫脸，保持本地，不上传虚构头像。
+- 首轮两图先确认实际透明区域，再透明外围trim（threshold8）、Lanczos3等比缩放、256色PNG编码（dither0.6）；该RGB/alpha有损编码现仅适用于保留的平局图和旧双猫。B原图与运行图alpha范围均0–255，原图白/深底及运行小尺寸检查见UI任务记录。
+- 现有 `ui-art/items.png` 保持768×384/4×2单元与内容，转为256色PNG，370,808降至96,705bytes；原文件另存 `items-before.png`，无重生成或删除原始制作档案。采用B后ui-art图片合计1,554,139bytes，保持既有1.5MiB上限；主包/总包/result-art上限不变。
+
+## 页面复刻细节资产 · 前一轮本地候选
+
+按用户继续对照已接受设计图的请求，由当前主会话通过内置 `image_gen` 追加四张独立无字透明装饰，未使用子智能体或外部供应商。原图、完整prompt、输入参照角色、返回来源和技术处理记录在 `assets/_incoming/ui-illustration-production-20261020/refinement/details/generation.json`；精确model、seed、cost未返回，均未知。不是整页截图：功能文字、数据、布局及操作仍为原生Canvas。
+
+| 用途键 | 活动文件 | 尺寸 | 字节 |
+| --- | --- | --- | ---: |
+| 原uiIllustrationHeaderCat（已替换，见顶部） | 原ui-art/header-cat.png，备份于header-smile-20261025/previous-header-cat.png | 512×368 | 56,992 |
+| 原uiIllustrationWinCat（已退出活动包） | 原ui-art/win-cat.png，保留于上方制作档案 | 512×368 | 61,922 |
+| uiIllustrationCoins | ui-art/reward-coins.png | 256×160 | 18,699 |
+| uiIllustrationResultFrame | ui-art/result-frame.png | 512×680 | 143,717 |
+
+新增合计281,330字节。源RGBA保留，活动文件经透明边界裁切、Lanczos3等比缩放和256色PNG编码；RGB/alpha有损量化，不称无损。金币原源有极淡alpha噪声造成大留白，按alpha>8的实体边界加16源像素余量裁切再缩放，未改变币堆结构。主会话实际查看四资产原/量化白暗对照，未见背景烘焙、明显条带或边缘脏色。金币裁边后对照随记录更新。结算新框仅用于双人页，不替换已接受的单人结果素材；体力不足仍使用与失败页相同的旧`uiResultLoseMoon`，不把新睁眼猫替代它。
+
+新`ui-art`为1,518,706字节，明确追加上述家族后的内部分包预算为1.5MiB；原主包4MiB、总包30MiB、result-art1.6MiB未变。微信编译、真机下载/解码/性能与发布不在本轮本地运行证明内。
+
+## 页面插画路径迁移 · 2026-10-20
+
+五张既有自有图片原样迁入普通 `ui-art/` 分包：`ui-art/tool-hammer.png`（39,822bytes）、`ui-art/tool-yarn.png`（50,478）、`ui-art/result-happy-cat.png`（143,010）、`ui-art/result-sad-cat.png`（156,531）、`ui-art/daily-invitation.png`（168,970）。来源仍继承本台账原 `res/ui/` 对应条目及原始制作记录；迁移未重新生成、改alpha或扩大许可。旧炸弹图 `res/ui/tool-bomb.png`（43,468bytes）保留启动加载，以维持局内类型标记及携带徽标；单人新道具插画仍用图集。历史表中的旧路径仅作来源追溯，当前发布路径以上述 `ILLUSTRATION_ASSETS` 为准。
+
+新图集 `ui-art/items.png`（768×384 RGBA，370,808bytes）与 `ui-art/chests.png`（576×192 RGBA，162,133bytes）分别由本项目内置 `image_gen` 各一次生成，共两次，沿用用户接受的页面插画方向；无新外部供应商。原始返回路径逐项见 `assets/_incoming/ui-illustration-production-20261020/outputs.json`，对应本地留存 `items-source.png` / `chests-source.png`；完整提示为 `items-prompt.md` / `chests-prompt.md`，白/深底检查为 `items-white.jpg` / `items-dark.jpg` 与 `chests-white.jpg` / `chests-dark.jpg`。model、seed及独立cost未返回，均记为未知，不补造。
+
+每个规则单元按alpha≥16内容边界裁切，再用Lanczos等比缩放到168px内容、居中放入192px透明单元；保留原生RGBA/alpha范围0–255，不删色或生成透明替代。道具4×2按行freeze/disturb/reflect/cheer/hammer/bomb/color/空，宝箱3×1。主任务实看静态素材通过，不代替整页运行视觉、微信/真机、商业账户条款与最终发布接受。旧 `result-art/` 四张素材及其来源保持不变。本轮仅本地实现，无上传、提交或部署。
+
+### 空白纸面框补充 · 2026-10-21，本地
+
+`ui-art/paper-frame.png`（512×680，145,624bytes）注册为 `uiIllustrationFrame`，参考已接受商店效果稿的右侧面板，由内置 `image_gen` 单次生成一张无文字空白装饰框：暖象牙纸面、金双细线、粉缎带和四角花、空白靛蓝标题牌及平直底，无猫、道具、按钮或台座。原始返回路径、完整prompt、原RGBA及全部编码/白暗底对照留存在 `assets/_incoming/ui-illustration-production-20261020/refinement/` 的 `paper-frame-output.json`、`paper-frame-prompt.md`、`paper-frame-source.png`、`paper-frame.png` 与对照图。model/seed/cost未返回，记未知；不追加外部供应商或生成调用。
+
+先仅trim非零alpha边界、Lanczos3等比置入512×680透明画布，RGBA候选515,120bytes完整保留；活动版采用本地Sharp/libimagequant的256色PNG、dither1、compression9、effort10编码。此为有损RGB/alpha量化，不称完全无损：编码前alpha0–255，活动版0–253、最大逐像素alpha差42，真实透明外围保留。执行者实看原/量化白底及暗底对照，金线与透明边保留，无明显带状或脏边，纸面有轻微均匀抖动；主任务明确允许此编码alpha变化并采用，最终整页运行与独立视觉复核仍属对应验收。原RGBA未覆盖，包上限不变，含新框的ui-art图片共1,237,376bytes，低于既有1.2MiB；无提交、上线或外部上传。
+
 ## 第三方组件与调研来源
 
 | 组件/来源 | 版本或精确信息 | 许可证/状态 | 采用范围与处置 |
@@ -27,6 +85,12 @@
 | Gem-Match3 | CC BY-NC-ND 4.0；仅做过调研 | 拒绝复用 | 未复制代码、素材或其他可识别内容；因商业使用与禁止演绎限制，不进入项目或发布包。公开 README 不引用该名称。 |
 
 ## 当前发布素材
+
+### 2026-10-18 单人结算C保真修订 · 仅本地候选
+
+`match3-wechat/result-art/frame.png`、`win-moon.png`、`lose-moon.png` 为本项目内置ImageGen各一次生成的独立无文字装饰，以已生成C概念作参考；不含第三方界面素材，未将整屏概念图接入产品。原始输出、完整提示、输入范围、原生alpha、裁切/缩放及来源记录见 `assets/_incoming/result-card-c-fidelity-20261018/README.md`、`prompts.md`、`technical.json`。仅在独立资源分包预取，文字/目标/统计/按钮仍原生。保持本地候选，待用户运行视觉与微信/真机接受；未上传、发布或提交，不将此条登记视为接受或新的外部许可证明。
+
+2026-10-19按用户对失败目标区的反馈，另一次内置ImageGen生成六类无文字目标图集，运行文件`result-art/goal-icons.png`（480×320 RGBA，196,867字节）。同项目C概念作参考，每格机械裁边/缩放、保留原生alpha；完整输入、原始输出、裁切与四文件来源记录同上。目标名称/剩余数仍原生，收集猫仍复用既有棋子图；该新增候选同样未取得用户最终视觉或发布接受。
 
 ### 最新本地候选（2026-09-29）
 
@@ -263,3 +327,5 @@ res/toolBar.png
 - Fairy arcade sparkle，Mixkit ID866，https://mixkit.co/free-sound-effects/sparkle/ ，许可https://mixkit.co/license/#sfxFree 。完整1.497秒作普通消除，第2–6连以+2/+4/+5/+7/+9半音播放速率复用，不叠加旧clear。允许商业游戏终端作品；禁止单独或随源码分发，不能主张原创或注册权利管理服务。
 - `.gitignore`排除match3-wechat/res/audio/sfx-acoustic.mp3；selected-sfx-20260915目录排除全部原始/派生音频。本次Git只允许后续单独授权的代码和文本记录，不得强制加音频；微信本地终端发布包仍须含该文件。源码克隆者须自行获取许可输入/合法本地副本，否则不能完成正式音频/包体门禁。
 - 精灵61,022bytes，21cue，15.255510秒；新rocket/win源哈希及编码延迟核验在assets/_incoming/selected-sfx-20260915/rocket-win/provenance.json，旧冰裂/消除来源见同目录上层runtime-provenance.json。随包THIRD_PARTY_NOTICES覆盖全部来源。本轮未提交、推送或上传。
+
+- 2026-10-20 `res/ui/avatar-tap.png`：项目内程序生成的1×1全透明RGBA点击表面，只供原生可选头像按钮命中，避免遮盖Canvas中的真实头像；不含第三方内容，不作美术资产。

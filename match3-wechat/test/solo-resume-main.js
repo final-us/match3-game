@@ -14,7 +14,7 @@ function bridgeClone(value) {
  return out;
 }
 const audio=new Proxy({}, {get:()=>()=>{}});
-const ad={isBusy:()=>false,isRewardedAvailable:()=>true,isRealRewardedAvailable:()=>true,onShow(){},onHide(){},markRewardGranted(){},onSoloResultExit:()=>Promise.resolve(false),
+const ad={failureMessage:()=> '广告未看完，本次不发放奖励',getDiagnosticLines:()=>[],getRewardedBlockReason:()=>null,isBusy:()=>false,isRewardedAvailable:()=>true,isRealRewardedAvailable:()=>true,onShow(){},onHide(){},markRewardGranted(){},onSoloResultExit:()=>Promise.resolve(false),
  showRewarded(){adShows++;return new Promise(r=>{closeAd=r;});}};
 global.wx={getStorageSync:k=>k in disk?(bridgeStorage?bridgeClone(disk[k]):foreignStorage?vm.runInNewContext('JSON.parse(input)',{input:JSON.stringify(disk[k])}):clone(disk[k])):'',setStorageSync(k,v){
  const mode=fault&&fault(k,v);if(mode==='before')throw Error('write');disk[k]=clone(v);if(mode==='after')throw Error('after');
@@ -176,6 +176,9 @@ const guard=setTimeout(()=>{console.error('Main resume hung');process.exit(1);},
  const c=app();assert(await c.restoreSoloResume(journal.read().record));assert.strictEqual(coin.getCoins(),total);assert.strictEqual(heart.getHeartState().count,3);
  assert.strictEqual(c.state,'result');let left=0;assert(await c.leaveSoloResult(()=>left++));assert.strictEqual(left,1);assert.strictEqual(journal.read().record,null);
  setup();a=failed();await watch(a);a.core.ended=true;a.core.won=false;a.core.movesLeft=0;a.state='result';a.result={win:false,canRevive:true};assert(a.saveSoloResume(a.result));
+ b=app();assert(await b.restoreSoloResume(journal.read().record));
+ assert.deepStrictEqual(clone(b.result.remainingGoals),clone(b.remainingSoloGoals()),'old saved results regain goals from the restored core');
+ a=b;
  let watching=a.reviveGame();await flush();closeAd(false);await watching;assert.strictEqual(a.core.movesLeft,0);
  watching=a.reviveGame();await flush();closeAd(true);await watching;assert.strictEqual(a.core.movesLeft,5);assert.strictEqual(a.soloReviveCount,2);assert.strictEqual(adShows,3);
  setup();a=failed();await watch(a);const mismatch=journal.read().record;mismatch.snapshot.level.contentRevision+='-mismatch';disk[journal.KEY]=mismatch;

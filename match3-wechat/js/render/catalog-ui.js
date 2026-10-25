@@ -81,11 +81,7 @@ function lockedArt(ctx,cat,r) {
     ctx.restore();
 }
 function button(ctx,r,str,tone) {
-    const colors=tone==='lavender'?['#F7F0FF','#C9B3E8','#E0D1F4']:['#F0EDF5','#D7D1E2','#E4DFED'];
-    ctx.save();ctx.fillStyle=gradient(ctx,r.y,r.h,colors);round(ctx,r.x,r.y,r.w,r.h,r.h/2);ctx.fill();
-    ctx.strokeStyle=tone==='lavender'?'#AE92CF':'#C5BDCF';ctx.lineWidth=1.2;ctx.stroke();
-    ctx.strokeStyle='rgba(255,255,255,.9)';round(ctx,r.x+2,r.y+2,r.w-4,r.h-4,r.h/2-2);ctx.stroke();
-    label(ctx,str,r.x+r.w/2,r.y+r.h/2,r.w-14,14,INK,true);ctx.restore();
+    moon.button(ctx,r.x,r.y,r.w,r.h,str,tone==='lavender'?'pink':tone==='blue'?'blue':'muted',14);
 }
 function layout(screen,model) {
     const x=Math.max(16,(screen.safeLeft||0)+8),right=Math.max(16,(screen.safeRight||0)+8);
@@ -221,7 +217,7 @@ function drawOverlay(ctx,screen,model,l) {
     ctx.save();ctx.fillStyle='rgba(28,25,53,.58)';ctx.fillRect(0,0,screen.width,screen.height);
     frame(ctx,screen,{x,y,w,h},'#C2A7DD');
     const add=(key,str,by,tone,bx=x+18,bw=w-36)=>{
-        const r={x:bx,y:by,w:bw,h:44};button(ctx,r,str,tone);buttons[key]=r;
+        const r={x:bx,y:by,w:bw,h:44};button(ctx,r,str,key==='dismiss'?'blue':tone);buttons[key]=r;
     };
     if(kind==='feed'){
         paw(ctx,cx,y+37,30,'#BA97CA');

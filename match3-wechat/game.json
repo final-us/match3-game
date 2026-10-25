@@ -9,8 +9,16 @@
   },
   "subpackages": [
     {
+      "name": "result-art",
+      "root": "result-art/"
+    },
+    {
       "name": "catalog",
       "root": "catalog/"
+    },
+    {
+      "name": "ui-art",
+      "root": "ui-art/"
     }
   ]
 }

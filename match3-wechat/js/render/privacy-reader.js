@@ -93,7 +93,7 @@ function draw(ctx, screen, requestedOffset) {
     ctx.globalAlpha = prevEnabled ? 1 : 0.5;
     moon.button(ctx, b.prev.x, b.prev.y, b.prev.w, b.prev.h, '上一屏', 'blue', 15);
     ctx.globalAlpha = nextEnabled ? 1 : 0.5;
-    moon.button(ctx, b.next.x, b.next.y, b.next.w, b.next.h, '下一屏', 'blue', 15);
+    moon.button(ctx, b.next.x, b.next.y, b.next.w, b.next.h, '下一屏', 'pink', 15);
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#293B63';
     ctx.fillStyle = '#F6F4FF';

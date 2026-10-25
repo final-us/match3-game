@@ -1,0 +1,34 @@
+'use strict';
+// Actual client/service/wallet, delayed transport only; no live player or cloud data.
+const assert=require('assert'),crypto=require('crypto');
+const {createRetentionDb,copy}=require('./helpers/retention-db');
+const client=require('../js/platform/retention-client'),backend=require('../cloudfunctions/battle/retention'),coin=require('../js/core/coin');
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+(async()=>{
+    const now=Date.UTC(2026,9,25,4),f=createRetentionDb(),service=backend.createService(f.db,crypto,()=>now);
+    const values={match3_coin_v1:1000,match3_items_v1:{hammer:0,bomb:0,color:0}},notices=[],calls=[];
+    const api=global.wx={getStorageSync:k=>copy(values[k]),setStorageSync:(k,v)=>{values[k]=copy(v);}};
+    const routes={retentionInfo:'info',retentionRecord:'record',retentionClaimTask:'claimTask',retentionAck:'ack'};
+    const event=id=>({event:{id:'solo:'+id,mode:'solo',levelId:1,date:backend.beijingDate(now),validMove:true,completed:true,cleared:80}});
+    await service.info('presentation',{taskClaimMode:'manual-v1'});await service.record('presentation',event('one'));
+    let hold='retentionInfo',gate;
+    const call=async(action,input)=>{calls.push(action);if(action===hold)await new Promise((resolve,reject)=>{gate={resolve,reject};});return service[routes[action]]('presentation',input);};
+    const c=client.create(api,call,coin,m=>notices.push(m),()=>now);
+    const opening=c.sync();assert.strictEqual(c.sync(),opening,'opening shares a single request');
+    assert.equal(c.model.status,'loading');assert(c.model.busy);assert(!c.model.loaded);
+    c.activate('primary');assert.equal(calls.length,1,'shell cannot claim before state is confirmed');
+    hold='';gate.resolve();await opening;assert(c.model.loaded&&!c.model.busy);
+    c.model.tab='tasks';c.model.offset=73;hold='retentionClaimTask';c.activate('task0');const claim=c.sync();await tick();
+    assert(c.model.busy&&c.model.loaded);assert.equal(c.model.pendingAction,'task0');assert.equal(c.model.status,'pending');assert.equal(c.model.offset,73);
+    c.activate('task0');c.activate('task2');assert.equal(calls.filter(a=>a==='retentionClaimTask').length,1,'pending taps cannot enqueue another claim');
+    assert.equal(coin.getCoins(),1000,'request alone never credits');assert.equal(notices.length,0);
+    hold='';gate.resolve();await claim;assert.equal(coin.getCoins(),1040);assert.equal(c.model.offset,73);assert.equal(c.model.status,'ready');assert(!c.model.busy);
+    assert.equal(notices.filter(n=>n.startsWith('领取成功')).length,1);
+    hold='retentionAck';c.activate('task2');const ack=c.sync();await tick();assert.equal(coin.getCoins(),1100,'only durably saved credit triggers success');
+    hold='';gate.reject(Error('network'));await ack;assert.equal(c.model.status,'ready','ACK loss cannot show a failed-claim page');assert.equal(values[client.KEY].acks.length,1);
+    await c.sync();assert.equal(coin.getCoins(),1100);assert.equal(values[client.KEY].acks.length,0);assert.equal(notices.filter(n=>n.startsWith('领取成功')).length,2);
+    c.record(event('two').event);await c.sync();hold='retentionClaimTask';c.activate('task1');const failed=c.sync();await tick();hold='';gate.reject(Error('network'));await failed;
+    assert(['error','offline'].includes(c.model.status),'unconfirmed real failure uses the recovery page');assert.equal(coin.getCoins(),1100);assert.equal(values[client.KEY].pending.length,1);
+    await c.sync();assert.equal(coin.getCoins(),1160);await c.sync();assert.equal(coin.getCoins(),1160,'retry credits once');
+    console.log('retention presentation: first-load shell, pending lock/scroll, credit feedback, ACK-only continuity and failed-claim retry passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

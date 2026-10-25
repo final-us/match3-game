@@ -53,7 +53,7 @@ const routes={retentionInfo:'info',retentionRecord:'record',retentionSign:'sign'
     c.record(event('client-next',80).event);await c.sync();
     failWallet=true;c.activate('task2');await c.sync();assert.equal(c.model.status,'error');assert.equal(balance,40);
     failWallet=false;c=make();await c.sync();assert.equal(balance,100);
-    lose='retentionAck';c.activate('task0');await c.sync();assert.equal(balance,140);assert.equal(c.model.status,'error');
+    lose='retentionAck';c.activate('task0');await c.sync();assert.equal(balance,140);assert.equal(c.model.status,'ready');assert(c.model.message.includes('已到账'));
     c=make();await c.sync();assert.equal(balance,140);
     c.record(event('client-second',1).event);await c.sync();offline=true;c.activate('task1');await c.sync();
     at+=86400000;offline=false;c=make();await c.sync();assert.equal(balance,140,'unconfirmed claim expires');assert(notices.some(m=>m.includes('昨日任务奖励已过期')));

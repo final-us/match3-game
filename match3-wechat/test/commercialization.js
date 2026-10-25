@@ -58,6 +58,7 @@ async function checkAdFailureRecovery() {
             for (const failure of ['event_then_reject', 'show_throw', 'load_throw']) {
                 if (format === 'interstitial' && failure === 'load_throw') continue;
                 const instances = [];
+                let showCalls = 0;
                 const store = {};
                 global.wx = {
                     getStorageSync: function (key) { return store[key]; },
@@ -69,12 +70,16 @@ async function checkAdFailureRecovery() {
                         onClose: function (fn) { this.close = fn; },
                         onError: function (fn) { this.error = fn; },
                         show: function () {
+                            showCalls++;
                             if (!first) return Promise.resolve();
                             if (failure === 'show_throw') throw new Error('show unavailable');
                             if (failure === 'event_then_reject') this.error({ errCode: 1003 });
                             return Promise.reject(new Error('show failed'));
                         },
-                        load: function () { throw new Error('load failed'); }
+                        load: function () {
+                            if (first && failure === 'load_throw') throw new Error('load failed');
+                            return Promise.resolve();
+                        }
                     };
                     instances.push(instance);
                     return instance;
@@ -91,6 +96,7 @@ async function checkAdFailureRecovery() {
                 await flush();
                 assert.strictEqual(outcome, false, format + '/' + failure + '应安全返回失败而非抛错或挂起');
                 assert.strictEqual(unhandled.length, 0, format + '/' + failure + '不得产生未处理拒绝');
+                assert.strictEqual(showCalls, failure === 'load_throw' ? 0 : 1, format + '/' + failure + '必须到达标注的失败分支');
                 const next = show();
                 let nextOutcome = 'pending';
                 next.then(function (value) { nextOutcome = value; });
@@ -141,9 +147,11 @@ async function run() {
         config.AD_CONFIG.rewardedAdUnitId = 'test-rewarded';
         assert.strictEqual(ad.isRealRewardedAvailable(), true, '真实广告配置且运行时可创建时应可用');
         const cancelled = ad.showRewarded('revive');
+        await Promise.resolve();
         rewardedClose({ isEnded: false });
         assert.strictEqual(await cancelled, false, '提前关闭激励视频不得发奖励');
         const completed = ad.showRewarded('revive');
+        await Promise.resolve();
         rewardedClose({ isEnded: true });
         assert.strictEqual(await completed, true, '完整观看激励视频应允许发奖励');
 

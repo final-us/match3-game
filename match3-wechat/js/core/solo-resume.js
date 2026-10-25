@@ -15,6 +15,7 @@ function read() {
             !['prepared','ready','action','result'].includes(r.stage) || !snapshot.validate(r.snapshot) ||
             !Number.isSafeInteger(r.sequence) || r.sequence < 0 || !r.meta ||
             !Number.isSafeInteger(r.meta.reviveCount) || r.meta.reviveCount < 0 ||
+            (r.meta.settingsPausedMs != null && (!Number.isSafeInteger(r.meta.settingsPausedMs) || r.meta.settingsPausedMs < 0)) ||
             !Number.isFinite(r.clockAt) || typeof r.clockRunning !== 'boolean' ||
             (r.revision != null && (!Number.isSafeInteger(r.revision) || r.revision < 0)) ||
             (r.elapsedMs != null && (!Number.isFinite(r.elapsedMs) || r.elapsedMs < 0))) return { ok: false, reason: 'invalid_resume' };

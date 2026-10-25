@@ -53,7 +53,15 @@ function readPng(file) {
     const data = fs.readFileSync(file);
     assert(data.length >= 33 && data.subarray(0, 8).equals(pngSignature), '不是有效 PNG: ' + projectRelative(file));
     assert(data.readUInt32BE(8) === 13 && data.toString('ascii', 12, 16) === 'IHDR', 'PNG 缺少 IHDR: ' + projectRelative(file));
+    let hasTransparencyChunk = false;
+    for (let offset = 8; offset + 12 <= data.length;) {
+        const length = data.readUInt32BE(offset);
+        if (offset + length + 12 > data.length) break;
+        if (data.toString('ascii', offset + 4, offset + 8) === 'tRNS') hasTransparencyChunk = true;
+        offset += length + 12;
+    }
     return {
+        hasAlpha: data[25] === 4 || data[25] === 6 || (data[25] === 3 && hasTransparencyChunk),
         width: data.readUInt32BE(16),
         height: data.readUInt32BE(20),
         colorType: data[25]
@@ -97,6 +105,44 @@ const packages = (gameConfig.subpackages || []).map(function (entry) {
 });
 const catalogPackage = packages.find(function (entry) { return entry.name === 'catalog' && entry.root === 'catalog'; });
 assert(catalogPackage, '图鉴须声明普通 catalog/ 分包');
+const resultPackage = packages.find(entry => entry.name === 'result-art' && entry.root === 'result-art');
+assert(resultPackage, '结算装饰须位于 result-art 分包，不占启动包');
+const resultPaths = Object.values(assetModule.RESULT_ASSETS);
+assert(resultPaths.length === 4 && new Set(resultPaths).size === 4, '结算须注册三个无字装饰与目标图集');
+let resultBytes = 0;
+resultPaths.forEach(relative => {
+    assert(relative.startsWith('result-art/') && !relative.split('/').includes('..') && !isIgnored(relative), '结算素材路径无效');
+    const file = path.join(projectRoot, relative), png = readPng(file);
+    assert(png.width <= 640 && png.height <= 900 && (png.colorType === 4 || png.colorType === 6), '结算装饰尺寸/alpha不合规');
+    if(relative===assetModule.RESULT_ASSETS.uiResultGoals)assert(png.width===480&&png.height===320, '目标图集须保持3×2个160px单元');
+    resultBytes += fs.statSync(file).size;
+});
+assert(resultBytes <= 1.6 * 1024 * 1024, '结算装饰分包素材超过1.6MiB预算');
+walk(path.join(projectRoot, resultPackage.root)).map(projectRelative).forEach(relative => {
+    assert(relative === 'result-art/game.js' || resultPaths.includes(relative), '结算分包存在未注册文件: ' + relative);
+});
+const illustrationPackage = packages.find(entry => entry.name === 'ui-art' && entry.root === 'ui-art');
+assert(illustrationPackage && !gameConfig.subpackages.find(entry => entry.name === 'ui-art').independent, '页面插画须声明普通 ui-art 分包');
+assert(assets.uiToolBomb === 'res/ui/tool-bomb.png' && !assetModule.ILLUSTRATION_ASSETS.uiToolBomb, '局内炸弹类型标记须保留启动资源');
+const illustrationPaths = Object.values(assetModule.ILLUSTRATION_ASSETS);
+assert(illustrationPaths.length === 15 && new Set(illustrationPaths).size === 15, '页面插画须注册既有14图及独立花簇');
+let illustrationBytes = 0;
+illustrationPaths.forEach(relative => {
+    assert(relative.startsWith('ui-art/') && !relative.split('/').includes('..') && !isIgnored(relative), '页面插画路径无效');
+    const file = path.join(projectRoot, relative), png = readPng(file);
+    assert(png.hasAlpha, '页面插画须保留alpha: ' + relative);
+    if (relative === assetModule.ILLUSTRATION_ASSETS.uiIllustrationItems)
+        assert([192, 256].some(cell => png.width === cell * 4 && png.height === cell * 2), '道具图集须为4×2个192或256px单元');
+    if (relative === assetModule.ILLUSTRATION_ASSETS.uiIllustrationChests)
+        assert([192, 256].some(cell => png.width === cell * 3 && png.height === cell), '宝箱图集须为3×1个192或256px单元');
+    if (relative === assetModule.ILLUSTRATION_ASSETS.uiIllustrationFrame)
+        assert(png.width === 512 && png.height === 680, '空白纸面框须保持512×680');
+    illustrationBytes += fs.statSync(file).size;
+});
+walk(path.join(projectRoot, illustrationPackage.root)).map(projectRelative).forEach(relative => {
+    assert(relative === 'ui-art/game.js' || illustrationPaths.includes(relative), '页面插画分包存在未注册文件: ' + relative);
+});
+assert(illustrationBytes <= 1.5 * 1024 * 1024, '含平局猫/备战双猫的页面插画分包超过1.5MiB预算');
 assert(catalogAssets && Object.keys(catalogAssets).length === 21, '图鉴须注册 16 张成长原画、初见图集和 4 张遮罩');
 const catalogPaths = new Set();
 Object.keys(catalogAssets).forEach(function (key) {
@@ -152,11 +198,20 @@ unreferenced.forEach(function (relative) {
 
 assert(activeBytes <= maxActiveBytes, '活跃素材超过预算: ' + activeBytes + ' > ' + maxActiveBytes);
 
-// 运行真实微信分支，检查背景别名在异步加载下均可用，且不会请求被排除文件。
-for (const failOne of [false, true]) {
+['Primary', 'Secondary'].forEach(function (variant) {
+    const relative = 'res/home/button-' + variant.toLowerCase() + '.png';
+    assert(!Object.prototype.hasOwnProperty.call(assets, 'homeButton' + variant), '未使用的首页按钮不得注册为启动素材');
+    assert(fs.existsSync(path.join(projectRoot, relative)) && fileIgnoreValues.has(relative), '首页按钮源图须保留并精确排除: ' + relative);
+});
+
+// 运行真实微信分支，按源文件去重，但进度仍按注册键结算。
+const startupKeys = Object.keys(assets);
+const startupSources = new Set(Object.values(assets));
+const assetSource = fs.readFileSync(path.join(projectRoot, 'js/render/assets.js'), 'utf8');
+for (const failure of ['none', 'single', 'background']) {
     const requests = [];
     const fixture = { exports: {} };
-    vm.runInNewContext(fs.readFileSync(path.join(projectRoot, 'js/render/assets.js'), 'utf8'), {
+    vm.runInNewContext(assetSource, {
         module: fixture,
         wx: { createImage: function () { const img = {}; requests.push(img); return img; } }
     });
@@ -164,15 +219,34 @@ for (const failOne of [false, true]) {
     let completed = 0;
     loader.preload(function () { completed++; });
     assert(!loader.isReady() && completed === 0, '异步资源未完成时不得提前就绪');
-    assert(requests.length === Object.keys(assets).length, '预加载数量须与注册键一致');
+    assert(loader.getProgress() === 0, '异步资源初始进度须为零');
+    assert(requests.length === startupSources.size && new Set(requests.map(img => img.src)).size === requests.length,
+        '每个启动源文件须仅请求一个 Image');
+    assert(loader.get('homeBackground') === loader.get('gameBackground'), '背景别名须共享同一个 Image');
+    let settledKeys = 0;
     requests.slice().reverse().forEach(function (img, index) {
         assert(!isIgnored(img.src) && fs.existsSync(path.join(projectRoot, img.src)), '请求资源必须在发布包中: ' + img.src);
-        if (failOne && index === 0) img.onerror();
+        if ((failure === 'single' && index === 0) || (failure === 'background' && img.src === assets.homeBackground)) img.onerror();
         else img.onload();
+        settledKeys += startupKeys.filter(key => assets[key] === img.src).length;
+        assert(loader.getProgress() === settledKeys / startupKeys.length, '共享素材成功/失败须按别名键数推进进度');
+        assert(completed === (settledKeys === startupKeys.length ? 1 : 0), '全部键结算前不得触发完成回调');
+        img.onload();
+        img.onerror();
+        assert(loader.getProgress() === settledKeys / startupKeys.length, '重复成功/失败回调不得重复结算');
+        assert(completed === (settledKeys === startupKeys.length ? 1 : 0), '重复事件不得提前或重复触发完成回调');
     });
     assert(loader.isReady() && loader.getProgress() === 1 && completed === 1, '异步加载完成/失败必须正确结束等待');
-    assert(loader.get('homeBackground').src === loader.get('gameBackground').src, '两种背景入口须加载同一发布文件');
 }
+
+// 同步开发分支也保留背景别名与逐键完成语义。
+const synchronousFixture = { exports: {} };
+vm.runInNewContext(assetSource, { module: synchronousFixture });
+let synchronousCompleted = 0;
+synchronousFixture.exports.preload(function () { synchronousCompleted++; });
+assert(synchronousFixture.exports.get('homeBackground') === synchronousFixture.exports.get('gameBackground'), '同步背景别名须共享同一个对象');
+assert(synchronousFixture.exports.isReady() && synchronousFixture.exports.getProgress() === 1 && synchronousCompleted === 1,
+    '同步资源须结算全部键并仅回调一次');
 
 const estimatedPackageFiles = walk(projectRoot).map(function (file) {
     return { file: file, relative: projectRelative(file) };
@@ -197,7 +271,10 @@ assert(estimatedTotalBytes <= maxEstimatedTotalPackageBytes,
     '静态总包估算超过 30 MiB: ' + estimatedTotalBytes + ' > ' + maxEstimatedTotalPackageBytes);
 
 console.log('包体预算: 通过');
+console.log('启动图片: ' + startupKeys.length + ' keys / ' + startupSources.size + ' unique requests');
 console.log('活跃素材: ' + activeBytes + ' bytes / ' + maxActiveBytes + ' bytes');
+console.log('结算装饰分包: ' + resultBytes + ' bytes / ' + (1.6 * 1024 * 1024) + ' bytes');
+console.log('页面插画分包: ' + illustrationBytes + ' bytes / ' + (1.5 * 1024 * 1024) + ' bytes');
 console.log('双 BGM: ' + bgmBytes + ' bytes / ' + maxBgmBytes + ' bytes');
 console.log('音效精灵: ' + sfxBytes + ' bytes / ' + maxSfxBytes + ' bytes');
 console.log('新特殊音效: ' + newSpecialSfxBytes + ' bytes / ' + maxNewSpecialSfxBytes + ' bytes');

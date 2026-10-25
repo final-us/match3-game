@@ -39,7 +39,8 @@ function fixture() {
     assert.equal(f.calls.filter(c=>c.action==='retentionSign').length,2,'retry retains original request');
 
     f=fixture();c=f.make();await c.sync();f.lose('retentionAck');c.activate('primary');await c.sync();
-    assert.equal(f.values.match3_coin_v1,700);assert.equal(c.model.status,'error');
+    assert.equal(f.values.match3_coin_v1,700);assert.equal(c.model.status,'ready','lost ACK after durable credit keeps reward cards visible');
+    assert(c.model.message.includes('已到账'));assert.equal(f.values[client.KEY].acks.length,1);
     c=f.make();await c.sync();assert.equal(f.values.match3_coin_v1,700);assert.equal(f.values.match3_items_v1.hammer,3);
     assert.equal(f.values[client.KEY].acks.length,0,'lost ACK safely retries');
 

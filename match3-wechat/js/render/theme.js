@@ -4,6 +4,15 @@
  */
 
 const THEME = {
+    // Stable action roles shared by every native control (2026-10-22).
+    buttonPalettes: {
+        pink: ['#FFF7FC', '#F6CEE4', '#E9A4CD', '#F7D9E9'],
+        blue: ['#F7FBFF', '#E3F0FF', '#B6D1F2', '#E4F2FF'],
+        ad: ['#E3F8FF', '#8FD8FF', '#439BF6', '#97D7FF'],
+        cream: ['#FFFDF6', '#FFF8E9', '#F3DFBE', '#FFF4DC'],
+        muted: ['#F2EFF4', '#E0DCE8', '#B8B6CA', '#E2DCE8']
+    },
+    buttonText: { pink: '#493454', blue: '#293C70', ad: '#17365E', cream: '#493F65', muted: '#65607C' },
     // 背景（自上而下渐变）
     bgTop: '#A9BBDF',
     bgMid: '#CBD6EF',

@@ -12,11 +12,31 @@ const HEART_CONFIG = {
 
 const STORAGE_KEY = 'match3_heart_v1';
 
+let displayState = null;
+let displayStore = null;
+let displayReadAt = 0;
+function invalidateDisplayState() { displayState = null; }
+
+// The countdown is calculated from this snapshot; settle recovery at its deadline.
+function getDisplayState() {
+    const store = getStore(), now = Date.now();
+    const recoveryDue = displayState && displayState.count < HEART_CONFIG.maxHeart &&
+        displayState.lastLossTime > 0 && now - displayState.lastLossTime >= HEART_CONFIG.regenMs;
+    if (!displayState || displayStore !== store || now < displayReadAt || recoveryDue) {
+        const state = getHeartState();
+        displayState = Object.assign({}, state);
+        displayStore = store;
+        displayReadAt = now;
+    }
+    return Object.assign({}, displayState);
+}
+
 function getStore() {
     return typeof wx !== 'undefined' ? wx : global.wx;
 }
 
 function save(state) {
+    invalidateDisplayState();
     const store = getStore();
     if (!store || !store.setStorageSync) throw new Error('storage_unavailable');
     store.setStorageSync(STORAGE_KEY, state);
@@ -24,6 +44,7 @@ function save(state) {
 
 /** 读取并结算（含离线恢复）的体力状态 */
 function getHeartState() {
+    invalidateDisplayState();
     const store = getStore();
     const now = Date.now();
     let state = null;
@@ -114,8 +135,8 @@ function claimRewardedHeart(receiptId) {
 }
 
 /** 距离下一颗体力恢复的剩余毫秒（满心返回 0） */
-function getRecoverTimeLeft() {
-    const state = getHeartState();
+function getRecoverTimeLeft(state) {
+    state = state || getHeartState();
     if (state.count >= HEART_CONFIG.maxHeart) return 0;
     const elapsed = Date.now() - state.lastLossTime;
     const left = HEART_CONFIG.regenMs - elapsed;
@@ -123,8 +144,8 @@ function getRecoverTimeLeft() {
 }
 
 /** 格式化剩余恢复时间 mm:ss */
-function formatTimeLeft() {
-    const ms = getRecoverTimeLeft();
+function formatTimeLeft(state) {
+    const ms = getRecoverTimeLeft(state);
     const totalSec = Math.ceil(ms / 1000);
     const min = Math.floor(totalSec / 60);
     const sec = totalSec % 60;
@@ -135,6 +156,8 @@ module.exports = {
     HEART_CONFIG: HEART_CONFIG,
     claimRewardedHeart: claimRewardedHeart,
     getHeartState: getHeartState,
+    getDisplayState: getDisplayState,
+    invalidateDisplayState: invalidateDisplayState,
     consumeHeart: consumeHeart,
     refundConsumedHeart: refundConsumedHeart,
     addHeart: addHeart,

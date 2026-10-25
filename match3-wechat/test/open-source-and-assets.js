@@ -30,22 +30,16 @@ const activePaths = [
     'res/home/duel-cats.png',
     'res/home/duel-heads.png',
     'res/home/title-logo.png',
-    'res/home/button-primary.png',
-    'res/home/button-secondary.png',
     'res/level-background-v2.jpg',
     'res/ui/coin.png',
     'res/ui/heart.png',
+    'res/ui/avatar-tap.png',
     'res/ui/moves-paw.png',
     'res/ui/settings.png',
     'res/ui/shop.png',
     'res/ui/special-row-beam.png',
     'res/ui/timer.png',
     'res/ui/tool-bomb.png',
-    'res/ui/tool-hammer.png',
-    'res/ui/tool-yarn.png',
-    'res/ui/result-happy-cat.png',
-    'res/ui/result-sad-cat.png',
-    'res/ui/daily-invitation.png',
     'res/piece1-runtime.png',
     'res/piece2-runtime.png',
     'res/piece3-runtime.png',
@@ -188,6 +182,10 @@ assert(readme.includes('[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)'), 
 assert.strictEqual(Object.keys(assets).length, activePaths.length + 1, '仅首页/棋盘背景允许共用一个文件');
 assert.strictEqual(assets.gameBackground, assets.homeBackground, '相同背景必须共用发布文件');
 assert.deepStrictEqual(Array.from(new Set(Object.values(assets))).sort(), activePaths.slice().sort(), 'assets.js 活跃素材清单发生漂移');
+const illustrationPaths = ['ui-art/tool-hammer.png','ui-art/tool-yarn.png','ui-art/result-happy-cat.png','ui-art/result-sad-cat.png','ui-art/daily-invitation.png','ui-art/items.png','ui-art/chests.png',
+    'ui-art/draw-cat.png','ui-art/prep-duo.png','ui-art/paper-frame.png','ui-art/header-cat.png','ui-art/day7-cat.png','ui-art/blossom-cluster.png','ui-art/reward-coins.png','ui-art/result-frame.png'];
+assert.deepStrictEqual(Object.values(assetModule.ILLUSTRATION_ASSETS).sort(), illustrationPaths.slice().sort(), '插画分包清单漂移');
+illustrationPaths.forEach(relative=>{assert(fs.existsSync(path.join(projectRoot,relative)), '插画资源缺失 '+relative);assert(!isIgnored(relative,ignoreRules), '插画不得被忽略 '+relative);});
 assert.deepStrictEqual(Object.values(assetModule.CATALOG_ASSETS).filter(function (relative) {
     return relative.startsWith('catalog/naitang-');
 }).sort(), movedCatalogPaths.slice().sort(), '奶糖成长图须从图鉴分包加载');

@@ -3,6 +3,7 @@ const assets = require('./assets');
 const theme = require('./theme');
 const type = require('./typography');
 const moon = require('./moon-controls');
+const art = require('./illustration-art');
 const dailyRules = require('../core/daily-challenge').DAILY_RULES;
 
 function text(ctx, value, x, y, width, size, bold, numbers) {
@@ -21,50 +22,52 @@ function background(ctx, screen, assetKey) {
 }
 // Accepted invitation: decorative skin only; every value, label and hitbox stays native.
 function drawDetail(ctx, screen, data) {
-    // Main paints the live home underneath; this state consumes touches before menu.
-    ctx.fillStyle='rgba(24,31,63,.60)';ctx.fillRect(0,0,screen.width,screen.height);
     const cx=screen.width/2, top=Math.max(72,screen.contentTop||screen.safeTop||0);
-    const compact=screen.height-top-(screen.safeBottom||0)<530;
-    const w=Math.min(358,screen.width-40), x=cx-w/2;
-    const available=screen.height-(screen.safeBottom||0)-24-top;
-    const cardH=Math.min(550,w*1.65,available),cardY=top+(available-cardH)/2;
-    const bh=compact?44:48,bw=w*.65;
-    const buttons={back:{x:x+w-40,y:cardY,w:44,h:44}};
+    const bottom=screen.height-(screen.safeBottom||0)-24;
+    const compact=bottom-top<530,w=Math.min(370,screen.width-24),x=cx-w/2;
+    const titleH=compact?32:42,titleW=Math.min(w-72,272);
+    art.scene(ctx,screen);
+    type.drawDisplay(ctx,'每日猫咪挑战',cx-12,top+titleH/2,titleW,compact?24:30);
+    const bh=compact?44:52,bw=w*.72,by=bottom-bh;
+    const cardY=top+(compact?42:58),cardH=by-12-cardY;
+    const buttons={back:{x:screen.width-52,y:top,w:44,h:44}};
     const skin=assets.get('dailyInvitation');
-    // Three vertical bands preserve the cats/moon and bottom filigree while the quiet
-    // middle stretches. Only the blank paper/side ribbon band changes height.
-    const scale=w/1122, capTop=530*scale, capBottom=170*scale;
-    if(skin&&skin.width) {
-        const ih=skin.height, cut1=ih*530/1402, cut2=ih*1232/1402;
-        ctx.drawImage(skin,0,0,skin.width,cut1,x,cardY,w,capTop);
-        ctx.drawImage(skin,0,cut1,skin.width,cut2-cut1,x,cardY+capTop,w,cardH-capTop-capBottom);
-        ctx.drawImage(skin,0,cut2,skin.width,ih-cut2,x,cardY+cardH-capBottom,w,capBottom);
-    } else {
-        moon.panel(ctx,screen,x,cardY+capTop*.6,w,cardH-capTop*.6);
+    // Keep cats and corner flowers proportional. Long cards extend the empty
+    // band below the pendants; short cards only compress the pendant section.
+    // Content can use the clear centre beside the flowers, so its bottom inset
+    // is smaller than the protected decorative footer.
+    const scale=w/1122,capTop=530*scale,capBottom=170*scale;
+    if(skin&&skin.width){
+        const footerH=400*scale,middleH=cardH-capTop-footerH;
+        const pendantH=Math.min(430*scale,middleH),quietH=middleH-pendantH;
+        const slice=(from,to,y,h)=>ctx.drawImage(skin,0,skin.height*from/1402,skin.width,skin.height*(to-from)/1402,x,y,w,h);
+        slice(0,530,cardY,capTop);
+        slice(530,960,cardY+capTop,pendantH);
+        if(quietH>0)slice(960,1002,cardY+capTop+pendantH,quietH);
+        slice(1002,1402,cardY+cardH-footerH,footerH);
+    }else{
+        art.paperFrame(ctx,x,cardY,w,cardH);
+        contain(ctx,assets.get('uiIllustrationHeaderCat'),cx-w*.30,cardY,w*.60,capTop);
     }
-    const bodyTop=cardY+capTop, bodyH=cardH-capTop-capBottom;
-    const innerW=w*.73, challenge=data.challenge, claimed=!!data.claimed;
-    const target=challenge?challenge.target:dailyRules.target;
-    const reward=challenge?challenge.reward:dailyRules.reward;
-    const by=bodyTop+bodyH-(compact?10:12)-bh;
-    text(ctx,dailyRules.moveCount+'步内达到'+target+'分',cx,bodyTop+(compact?22:26),innerW,compact?19:22,true,true);
-    const ribbonY=bodyTop+(compact?53:62);
+    const bodyTop=cardY+capTop,bodyH=cardH-capTop-capBottom;
+    const innerW=w*.73,challenge=data.challenge,claimed=!!data.claimed;
+    const target=challenge?challenge.target:dailyRules.target,reward=challenge?challenge.reward:dailyRules.reward;
+    text(ctx,dailyRules.moveCount+'步内达到'+target+'分',cx,bodyTop+bodyH*.08,innerW,compact?18:23,true,true);
+    const ribbonY=bodyTop+bodyH*.26;
     ribbon(ctx,cx,ribbonY,Math.min(innerW-16,196),compact?23:29);
     ctx.fillStyle='#77532E';
     type.drawFit(ctx,claimed?'今日奖励已领取':data.pending?'奖励待确认':'达标奖励',cx,ribbonY,innerW-30,{size:compact?12:14,minSize:11,align:'center',weight:'bold'});
-    if(compact) {
-        contain(ctx,assets.get('uiCoin'),cx-65,bodyTop+75,36,36);
-        text(ctx,reward+' 金币',cx+19,bodyTop+93,innerW-54,22,true,true);
-    } else {
-        const coinY=bodyTop+88;
-        contain(ctx,assets.get('uiCoin'),cx-49,coinY+13,36,36);
-        contain(ctx,assets.get('uiCoin'),cx+14,coinY+16,36,36);
-        contain(ctx,assets.get('uiCoin'),cx-26,coinY,52,52);
-        text(ctx,reward+'金币',cx,bodyTop+164,innerW,28,true,true);
+    const coins=assets.get('uiIllustrationCoins')||assets.get('uiCoin');
+    if(compact){
+        contain(ctx,coins,cx-83,bodyTop+bodyH*.38,65,40);
+        text(ctx,reward+' 金币',cx+27,bodyTop+bodyH*.52,innerW-68,23,true,true);
+    }else{
+        contain(ctx,coins,cx-58,bodyTop+bodyH*.35,116,bodyH*.24);
+        text(ctx,reward+'金币',cx,bodyTop+bodyH*.64,innerW,30,true,true);
     }
-    const recordY=by-70;
-    ctx.fillStyle='#666390';
-    type.drawFit(ctx,'今日成绩  '+(data.best?String(data.best)+' 分':'—'),cx,recordY,innerW-12,{size:compact?12:14,minSize:11,align:'center',numbers:true});
+    const recordY=bodyTop+bodyH*(compact?.72:.77);
+    if(!compact)art.rule(ctx,cx-innerW*.36,recordY-20,innerW*.72);
+    ctx.fillStyle='#666390';type.drawFit(ctx,'今日成绩  '+(data.best?String(data.best)+' 分':'—'),cx,recordY,innerW-12,{size:compact?12:14,minSize:11,align:'center',numbers:true});
 
     let status=data.lastCompleted&&challenge&&data.lastCompleted.date!==challenge.date
         ? data.lastCompleted.date.slice(5).replace('-','.')+' 成绩 '+data.lastCompleted.score+' 已记录'
@@ -78,9 +81,10 @@ function drawDetail(ctx, screen, data) {
     else if(data.completed||claimed){label='今日已完成';active=false;}
     else if(!challenge){status='正在获取今日挑战…';label='加载中…';active=false;}
     // Rules, recovery message and primary action all stay inside the invitation.
-    text(ctx,data.retentionMessage||'每日一局 · 不耗体力 · 不限时',cx,by-44,innerW,11,false);
-    if(status) text(ctx,status,cx,by-22,innerW,10,false);
+    text(ctx,data.retentionMessage||'每日一局 · 不耗体力 · 不限时',cx,bodyTop+bodyH*(compact?.85:.88),innerW,11,false);
+    if(status) text(ctx,status,cx,bodyTop+bodyH*.98,innerW,10,false);
     invitationButton(ctx,cx-bw/2,by,bw,bh,label,active);
+    art.blossom(ctx,cx-bw/2+1,by+bh*.60,compact?15:22);art.blossom(ctx,cx+bw/2-1,by+bh*.60,compact?15:22);
     if(active)buttons.start={x:cx-bw/2,y:by,w:bw,h:bh};
     const close=buttons.back;
     moon.button(ctx,close.x,close.y,close.w,close.h,'','blue');
@@ -100,9 +104,7 @@ function ribbon(ctx,cx,y,w,h) {
     ctx.fillStyle=g;rounded(ctx,cx-w/2,y-h/2,w,h,4);ctx.fill();ctx.strokeStyle='#FFF5D4';ctx.lineWidth=1;ctx.stroke();ctx.restore();
 }
 function invitationButton(ctx,x,y,w,h,label,active) {
-    moon.button(ctx,x,y,w,h,label,active?'blue':'muted',23);
-    ctx.save();ctx.strokeStyle=active?'#CDBA97':'#C1C6D8';ctx.lineWidth=1.2;
-    rounded(ctx,x,y,w,h,h/2);ctx.stroke();ctx.restore();
+    art.decoratedButton(ctx,x,y,w,h,label,active?'pink':'muted',23);
 }
 function rounded(ctx,x,y,w,h,r) {
     ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);

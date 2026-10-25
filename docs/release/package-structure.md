@@ -1,6 +1,47 @@
 # 微信小游戏包结构与忽略规则
 
-## 当前候选核对 · 2026-10-17 22:43失效预览
+## 当前页头猫替换 · 2026-10-25
+
+用户已选定的新笑脸猫替换现有`ui-art/header-cat.png`，没有新增路径或分包。当前ui-art15张PNG合计1,564,128bytes，比替换前减少7,998bytes，原1.5MiB内部上限保持，余8,736bytes。仍由现有加载器整组发布，启动不等待装饰；当前整体预算与未验边界见[六项调整记录](../../project-status/development-steps.md#experience-polish-20261025)，来源与回退见[素材台账](open-source-and-assets.md)。以下为各次接入历史。
+
+## 插画复刻细节家族初次接入 · 历史本地候选
+
+`ui-art`目前12个已注册PNG：五张迁移原图、道具/宝箱图集、平底纸框，以及header-cat/win-cat/reward-coins/result-frame四张细节图。图片总1,518,706字节；在既有普通分包内追加281,330字节细节家族后，内部预算明确从1.2MiB调整为1.5MiB（1,572,864字节），没有放宽主包/总包/旧result-art上限、排除活动素材或增加分包。新四图用途、来源与有损透明编码见`open-source-and-assets.md`对应段。
+
+仍由现有`loadIllustrationArt`一次下载、原子解码发布，启动不等待装饰。`illustration-art.paperFrame`用于平底暖纸；`resultFrame`使用独立弧冠星空到暖纸框；`drawFrame`保留旧素材供回退。`scene`只为新留存页绘制完整静态场景，避免透出首页控件；其他控件/标题/数量仍原生绘制。下方1.2MiB数据为初次迁移历史，不代表当前包体。
+
+## 页面插画资源分包 · 2026-10-20，本地实现
+
+新增普通 `ui-art/` 分包（独立于 `result-art/`，不是独立分包模式）。`ILLUSTRATION_ASSETS` 注册 `ui-art/items.png`（4列×2行，单元192或256px，按行freeze/disturb/reflect/cheer/hammer/bomb/color/空）与 `ui-art/chests.png`（3列×1行，相同单元规格），以及五张原图迁移：
+
+| 用途键 | 新路径 | 原文件字节 |
+| --- | --- | ---: |
+| uiToolHammer | `ui-art/tool-hammer.png` | 39,822 |
+| uiToolYarn | `ui-art/tool-yarn.png` | 50,478 |
+| uiResultHappyCat | `ui-art/result-happy-cat.png` | 143,010 |
+| uiResultSadCat | `ui-art/result-sad-cat.png` | 156,531 |
+| dailyInvitation | `ui-art/daily-invitation.png` | 168,970 |
+
+五图合计558,811字节，从 `res/ui/` 原样移动、不重复打包、不重编码；同名用途键从启动 `ASSETS` 移入 `ILLUSTRATION_ASSETS`，加载前由现有调用方选择原生回退。币、心、按钮及 `uiToolBomb` 等必要UI仍启动加载；旧炸弹图恢复 `res/ui/tool-bomb.png`，供局内BOMB类型与携带徽标使用，单人新插画仍从道具图集绘制。`loadIllustrationArt()` 非阻塞、并发复用同一Promise，下载及全部解码后一次发布；错误或20秒超时不发布半套资源，后续调用可重试，迟到回调失效。`getIllustrationArtState()` 返回idle/loading/ready/error/unavailable状态；`get()` 沿用原接口。
+
+`illustration-art` 提供布尔返回值的 `drawItem(ctx,key,x,y,size)`、`drawChest(ctx,index,x,y,size)`（index 0–2）与 `drawFrame(ctx,x,y,w,h)`；缺图返回false，由调用方决定回退。前两者按单元裁图，后者复用 `uiResultFrame` 九切保留拱顶与花台。全部文字、数值及动作由原生UI负责。
+
+实际道具图集768×384、370,808字节；宝箱576×192、162,133字节，均为192px单元。两图532,941字节，加迁移图共1,091,752字节；新包图片预算明确为1.2MiB（包含迁移图），仅允许空入口及全部注册的PNG。旧 `result-art` 四图/1.6MiB、主包4MiB、总包30MiB门及忽略规则不变。启动炸弹依赖修正后 `package-budget` 通过：ui-art图片1,091,752/1,258,291.2字节，静态主包3,644,543/4,194,304（89文件），总包8,207,756/31,457,280（124文件）；为当次共同工作树静态估算，非微信编译值，后续相关源变化须重新核对。迁移的daily-invitation为带tRNS的索引色PNG，预算检查识别该透明格式，不重编码旧图。主任务已实看素材白/深底预览，仅属静态素材检查；新包的微信编译、真机、整页视觉接受及发布仍需对应证据。
+
+## 当前候选核对 · D2诊断预览，2026-10-18 16:38失效
+
+- 微信实际主包3761.8KB、catalog1753.3KB、总包5515KB；原4M/4M/30M限制和忽略规则保持。
+- 静态主包4,183,082/4,194,304字节（余11,222）、总包5,978,447；本轮没有新增素材压缩或画质/音频变更。
+- 源输入/private/tmp/match3-ad-d2-20261018-dg3w00bm共116份，普通预览前后字节相同；截图/private/tmp/match3-ad-d2-preview-20261018.png。只做开发预览传输，未正式上传/提审发布。
+
+## 历史候选 · D1诊断预览，2026-10-18 12:39失效
+
+- 微信实际主包3760.9KB、catalog1753.3KB、总包5514KB；原4M/4M/30M限制及忽略规则不变。
+- 静态主包4,181,524/4,194,304字节（余12,780）、总包5,976,889；新增诊断源码已计入，不把静态估算与原生结果混用。
+- duel-heads.png只重编码IDAT，83,161→65,615字节，省17,546；全部非IDAT块与CRC保留、175,104解码RGBA字节相同，独立QA确认像素无损。
+- 源输入/private/tmp/match3-ad-diagnostic-20261018-3d0th7jc共116份，普通预览前后逐字节相同；截图/private/tmp/match3-ad-diagnostic-preview-20261018.png。没有正式上传/提审/发布，后续输入变化不能沿用本候选身份。
+
+## 历史候选 · 2026-10-17 22:43失效预览
 
 - 全激励入口抬手修复候选：微信实际主包3774.6KB、catalog1753.3KB、总包5528KB；原4M/4M/30M限制及忽略规则均未改变。
 - 静态主包4,192,148/4,194,304字节（余2,156）、总包5,987,513；静态估算与实际编译分别记录，不将二者混用。
@@ -15,6 +56,8 @@
 - 云函数继续保留在项目内，通过微信开发者工具单独上传和部署；不移动目录。
 
 ## 客户端打包忽略规则
+
+2026-10-18至19日本地结算C修订新增普通资源分包`result-art/`（`game.json`声明同名root/name），只含空入口`game.js`、3张无文字主装饰及1张六目标图集PNG，共1,675,962图片字节。`ASSETS`启动列表、catalog包与忽略规则保持；`RESULT_ASSETS`在单人开局调用独立加载器预取，四文件完全就绪才发布，失败不阻塞结算。`test/package-budget.js`另校验此包路径、唯一性、PNG尺寸/alpha、480×320图集合同及1.6MiB美术预算，同时保留原4MiB静态主包与30MiB总包门。当前源已不同于上方旧预览候选，最终本地静态数值见[本轮原任务记录](../../project-status/ui-production.md#单人结算卡片方案--2026-10-18)；未用旧微信包体证明新分包可用，也未发起预览上传。
 
 `project.config.json` 的 `packOptions.ignore` 排除以下仅开发或服务端目录：
 

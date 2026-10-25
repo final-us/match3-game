@@ -26,7 +26,7 @@ global.wx={
 Object.assign(config.AD_CONFIG,{enabled:true,rewardedAdUnitId:'isolated',interstitialAdUnitId:'isolated'});
 const coin=require('../js/core/coin'),heart=require('../js/core/heart'),journal=require('../js/core/ad-rewards');
 const Core=require('../js/core/game-core');
-const audio={active:false,setAdActive(v){this.active=v;},reward(){},invalid(){},click(){},unlock(){}};
+const audio={isMusicEnabled:()=>true,isSfxEnabled:()=>true,active:false,setAdActive(v){this.active=v;},reward(){},invalid(){},click(){},unlock(){}};
 const mainModule={exports:{}};
 vm.runInNewContext(fs.readFileSync(mainFile,'utf8'),{module:mainModule,require:n=>n==='./audio'?audio:realRequire(n),wx:global.wx},{filename:mainFile});
 const flush=async()=>{for(let i=0;i<16;i++)await Promise.resolve();};
@@ -42,6 +42,8 @@ const watchdog=setTimeout(()=>{console.error('ad Main test hung');process.exit(1
     const point=(x=20,id=7)=>({clientX:x,clientY:20,identifier:id});
     const down={touches:[point()]},up={touches:[],changedTouches:[point()]};
     const routes=[
+        ['shop','shopButtons','buy_hammer','buy:hammer'],
+        ['shop','shopButtons','buy_heart','buy:heart'],
         ['shop','shopButtons','reward_hammer','shop:hammer'],
         ['shop','shopButtons','reward_bomb','shop:bomb'],
         ['shop','shopButtons','reward_color','shop:color'],
@@ -55,6 +57,7 @@ const watchdog=setTimeout(()=>{console.error('ad Main test hung');process.exit(1
         function routed(){
             const a=app(state);a[buttons]={[key]:rect};a.core={};a.result={win:false};
             a.staminaDialog=buttons==='staminaDialogButtons';a.calls=[];
+            a.buyItem=k=>a.calls.push('buy:'+k);a.buyHeart=()=>a.calls.push('buy:heart');
             a.claimShopAdItem=k=>a.calls.push('shop:'+k);
             a.handleAddHeart=k=>a.calls.push('heart:'+k);a.reviveGame=()=>a.calls.push('revive');
             return a;
@@ -77,11 +80,38 @@ const watchdog=setTimeout(()=>{console.error('ad Main test hung');process.exit(1
         a=routed();a.handleTouchStart(down);a.handleTouchEnd({touches:[],changedTouches:[point(20,8)]});
         assert.deepStrictEqual(a.calls,[]);gestureCases++;
     }
+    // Real shop layout + Main gesture path: scrolling through an action must
+    // never buy or show an ad, and a later deliberate tap may run exactly once.
+    for(const key of ['buy_hammer','reward_hammer']){
+        const a=app('shop');a.shopOffset=0;a.calls=[];
+        a.shopButtons={viewport:{x:0,y:0,w:200,h:200},maxScroll:160,[key]:{x:80,y:60,w:86,h:44}};
+        a.buyItem=k=>a.calls.push('buy:'+k);a.claimShopAdItem=k=>a.calls.push('ad:'+k);
+        const p=(y,id=9)=>({clientX:100,clientY:y,identifier:id});
+        a.handleTouchStart({touches:[p(80)]});
+        a.handleTouchMove({touches:[p(40)]});
+        assert.equal(a.shopOffset,40,'drag beginning on action scrolls the list');
+        a.handleTouchMove({touches:[p(80)]});
+        a.handleTouchEnd({touches:[],changedTouches:[p(80)]});
+        assert.deepStrictEqual(a.calls,[],'returning to start never resurrects a canceled action');
+        a.handleTouchStart({touches:[p(80)]});a.handleTouchEnd({touches:[],changedTouches:[p(80)]});a.handleTouchEnd({touches:[],changedTouches:[p(80)]});
+        assert.deepStrictEqual(a.calls,[key==='buy_hammer'?'buy:hammer':'ad:hammer']);
+    }
     // Actual SDK/consumer: a shop press cannot present until release, then only once.
     const tapped=app('shop');tapped.shopButtons={reward_hammer:rect};
     const beforeTap=showCount;tapped.handleTouchStart(down);await flush();assert.strictEqual(showCount,beforeTap);
     tapped.handleTouchEnd(up);tapped.handleTouchEnd(up);await flush();assert.strictEqual(showCount,beforeTap+1);
     reward.close(false);await flush();assert(!tapped.adFlow&&!tapped.shopRewardPending);
+    assert.strictEqual(tapped.notice,'广告已提前关闭，未获得奖励');
+    let cancelAgain=tapped.claimShopAdItem('hammer');await flush();reward.close(false);
+    assert.strictEqual(await cancelAgain,false);assert.strictEqual(tapped.notice,'广告已提前关闭，未获得奖励');
+    const loaded=reward.load,shown=showCount;
+    reward.load=()=>Promise.reject({errCode:1004,errMsg:'not for display'});
+    assert.strictEqual(await tapped.claimShopAdItem('hammer'),false);
+    assert.strictEqual(tapped.notice,'暂无广告，请稍后再试');
+    assert.strictEqual(showCount,shown);assert(!tapped.shopRewardPending&&!tapped.adFlow&&!journal.hasPending());
+    assert.strictEqual(coin.getRewardedItemState().count,0,'cancels/failure cannot consume shop quota');
+    assert.strictEqual(require('../js/core/analytics').getEvents().filter(e=>e.event==='ad_fail').pop().reason,'sdk_1004');
+    reward.load=loaded;
     console.log('rewarded entry gestures: '+gestureCases+' route cases + real shop single-show passed');
     const shop=app('shop');
     let task=shop.claimShopAdItem('hammer');await flush();assert(shop.adFlow&&audio.active);

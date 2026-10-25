@@ -55,4 +55,26 @@ for (const key of ['match3_heart_v1','match3_coin_pending_credit_v1','match3_coi
         app.startGame(1);app.handleLevelEnd(won);assert.strictEqual(app.result.coinReward,0);
     }
 }
-console.log('solo economy: first/repeat/legacy wins, loss/revival/quit, refund and wallet failure recovery PASS');
+// Result goals use actual core state, including layer counts and per-color collection.
+const Core = require('../js/core/game-core');
+app=fixture();
+app.core=new Core({id:999,rows:8,columns:8,moveCount:10,goals:[
+    {type:'score',target:1000},{type:'collect',pieceType:1,target:10},{type:'jelly',target:2},
+    {type:'ice',target:1},{type:'yarn',target:3},{type:'moonbud',target:1},{type:'parcel',target:1}],
+    underlays:{'2:2':2},obstacles:{'3:4':1},yarn:{source:'3:3',health:3,spreadEvery:2,maxVines:3},
+    moonbuds:['4:3'],parcels:[{id:'result-parcel',row:5,column:4}],parcelExits:[4]},{});
+app.core.score=420;app.core.collectedCounts[1]=4;app.core.yarnSource.health=1;
+app.handleLevelEnd({win:false,score:420,movesLeft:0,reason:'moves'});
+assert.strictEqual(app.state,'result');
+assert.deepStrictEqual(app.result.remainingGoals.map(g=>[g.type,g.left,g.target]),[
+    ['score',580,1000],['collect',6,10],['jelly',2,2],['ice',1,1],['yarn',1,3],['moonbud',1,1],['parcel',1,1]]);
+const frozenGoals=copy(app.result.remainingGoals);
+app.core.score=1000;app.core.collectedCounts[1]=10;app.core.jellyGrid.forEach(r=>r.fill(0));
+app.core.iceGrid.forEach(r=>r.fill(0));app.core.yarnSource.health=0;app.core.moonbudCells={};app.core.parcels=[];
+assert.deepStrictEqual(app.remainingSoloGoals(),[],'completed objectives are not presented as remaining');
+assert.deepStrictEqual(copy(app.result.remainingGoals),frozenGoals,'result goal data is a detached snapshot');
+app.core.level.goals=[];app.core.jellyGrid[2][2]=2;
+assert.deepStrictEqual(app.remainingSoloGoals().map(g=>[g.type,g.left]),[['jelly',2]],'legacy implicit jelly goal');
+app.core.jellyTotal=0;app.core.jellyGrid[2][2]=0;app.core.score=420;
+assert.deepStrictEqual(app.remainingSoloGoals().map(g=>[g.type,g.left]),[['score',580]],'legacy default score goal');
+console.log('solo economy: rewards/recovery and result objective snapshots PASS');

@@ -1,0 +1,1 @@
+// Optional illustration resource subpackage.

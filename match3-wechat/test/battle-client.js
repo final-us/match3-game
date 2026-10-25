@@ -8,14 +8,16 @@ const mainFile = require.resolve('../js/main');
 const mainRequire = require('module').createRequire(mainFile);
 const flush = function () { return new Promise(function (resolve) { setImmediate(resolve); }); };
 
-function fixture() {
+function fixture(options = {}) {
     const clock = { now: 5000 };
     const requests = [];
     const notices = [];
     const modals = [];
     const shares = [];
     const receipts = new Set();
-    const wallet = { fail: false, balance: 0, addCoins(n) { this.balance += n; },
+    const wallet = { fail: false, balance: 0, displayInvalidations: 0,
+        invalidateDisplayCoins() { this.displayInvalidations++; },
+        addCoins(n) { this.balance += n; },
         creditOnce(id, n) {
             if (this.fail) return { ok: false };
             if (!receipts.has(id)) { receipts.add(id); this.balance += n; }
@@ -41,9 +43,11 @@ function fixture() {
         wx: wx,
         require: function (name) {
             if (name === './net/cloud-battle') return cloud;
+            if (name === './platform/user-profile' && options.profile) return Object.assign({beginRoom(){},isPromptOpen(){return false;},dismissPrompt(){}},options.profile);
             if (name === './core/coin') return wallet;
             if (name === './core/ad-rewards') return { recover: () => ({ok:true,granted:false,pending:false}) };
-            if (name === './audio') return new Proxy({}, { get: function () { return function () {}; } });
+            if (name === './core/solo-resume' && options.soloResume) return options.soloResume;
+            if (name === './audio') return options.audio || new Proxy({}, { get: function () { return function () {}; } });
             if (name === './core/analytics') return { track: function () {} };
             if (name === './core/runtime') return { applyReadyUpdate: function () { return false; } };
             return mainRequire(name);
@@ -162,6 +166,7 @@ if (require.main === module) (async function () {
             f.app.state = 'playing';
             f.app.core = { resumeTimer: function () {} };
             f.app.handleShow({ query: { invite: '1', roomId: 'R12345678abcdef0123' } });
+            assert.strictEqual(f.wallet.displayInvalidations, 1, '回前台应失效金币展示快照');
             assert.strictEqual(f.requests.length, 0, '单人进行中不得被分享邀请切走');
             assert.strictEqual(f.app.state, 'playing');
             assert.strictEqual(f.notices.length, 1, '保留当前局时应说明如何再加入邀请');

@@ -9,6 +9,7 @@ const assets = require('./assets');
 const typography = require('./typography');
 const moon = require('./moon-controls');
 const gameLayout = require('./game-layout');
+const illustration = require('./illustration-art');
 
 const BattleUI = {};
 
@@ -49,7 +50,7 @@ function drawBg(ctx, screen) {
 
 function roomDisplayName(roomId) {
     const prefixes = ['紫藤', '星灯', '月桂', '晚樱', '云朵', '蜜桃', '铃兰', '萤火'];
-    const places = ['猫眠亭', '爪爪巷', '月牙桥', '绒球庭', '星愿台', '软软坡', '花影阁', '猫语泉'];
+    const places = ['猫眠亭', '爪爪巷', '猫月桥', '猫绒庭', '猫愿台', '猫掌坡', '猫影阁', '猫语泉'];
     let hash = 2166136261;
     const text = String(roomId || '');
     for (let i = 0; i < text.length; i++) {
@@ -58,6 +59,10 @@ function roomDisplayName(roomId) {
     }
     hash >>>= 0;
     return prefixes[hash % prefixes.length] + places[Math.floor(hash / prefixes.length) % places.length];
+}
+
+function playerDisplayName(name,index) {
+    return !name || ['我','对手','猫咪玩家'].includes(name) ? (index ? '星星猫咪' : '月光小猫') : name;
 }
 
 function drawImageCoverCircle(ctx, image, cx, cy, r) {
@@ -83,7 +88,7 @@ function drawAvatar(ctx, cx, cy, r, image, fallbackKey) {
     ctx.strokeStyle = THEME.gold;
     ctx.lineWidth = 2;
     ctx.stroke();
-    if (!drawImageCoverCircle(ctx, image || assets.get(fallbackKey), cx, cy, r)) {
+    if (!drawImageCoverCircle(ctx, image && image.width && image.height ? image : assets.get(fallbackKey), cx, cy, r)) {
         ctx.fillStyle = THEME.textMid;
         typography.drawFit(ctx, '猫咪', cx, cy + 1, r * 1.6, {
             size: 15, minSize: 10, weight: 'bold', align: 'center'
@@ -96,76 +101,141 @@ const V3_ITEMS = [
     ['reflect','镜面反弹','5秒反弹一次'], ['cheer','猫咪鼓舞','5秒得分×2']
 ];
 
+function drawItemArt(ctx, key, x, y, size) {
+    if (!illustration.drawItem(ctx, key, x, y, size)) moon.battleIcon(ctx, key, x, y, size);
+}
+
+const ILLUSTRATION_SERIF = '"Songti SC","STSong","Noto Serif CJK SC",Georgia,serif';
+function serif(ctx, text, x, y, width, size, color, minimum) {
+    ctx.fillStyle = color;
+    return typography.drawFit(ctx, String(text), x, y, width, { size, minSize: minimum || 10,
+        weight: 'bold', align: 'center', family: ILLUSTRATION_SERIF });
+}
+function rewardCoins(ctx, x, y, size) {
+    const pile=assets.get('uiIllustrationCoins');
+    if(pile&&pile.width&&pile.height){
+        const w=size*1.24,h=w*pile.height/pile.width;
+        ctx.drawImage(pile,x-size*.12,y+(size-h)/2,w,h);return;
+    }
+    const coin = assets.get('uiCoin');
+    if (!coin || !coin.width || !coin.height) return;
+    for (const [dx, dy, scale] of [[0, .34, .58], [.42, .30, .58], [.2, .02, .68]]) {
+        ctx.drawImage(coin, x + dx * size, y + dy * size, size * scale, size * scale);
+    }
+}
+function drawPreparationFrame(ctx, x, y, w, h, compact) {
+    // Short screens reduce the decorative bands, never the editable content or
+    // touch targets. The shared paper frame retains all four floral corners.
+    const decorationScale = compact ? .35 : .75;
+    const framed = illustration.paperFrame(ctx, x, y, w, h, decorationScale);
+    const head = w * .24 * decorationScale, foot = w * .245 * decorationScale;
+    const inset = w * .085;
+    return { x: x + inset, y: y + head, w: w - inset * 2, h: h - head - foot,
+        titleY: y + w * .135 * decorationScale, titleW: w * .48, framed };
+}
+
 function drawWaitV3(ctx, screen, data) {
-    const cx=screen.width/2, top=Math.max(72,Number(screen.contentTop)||Number(screen.safeTop)||0);
-    const bottom=screen.height-(Number(screen.safeBottom)||0)-12;
-    const width=screen.width-32, buttons={};
-    drawBg(ctx,screen);
-    moon.button(ctx,cx-105,top,210,32,'对战准备','blue',18);
-    ctx.fillStyle=THEME.textDark;
-    typography.drawFit(ctx,'相遇地点 · '+roomDisplayName(data.roomId),cx,top+44,width-12,{size:12,minSize:9,weight:'bold',align:'center'});
-    const roomLine=data.protocolVersion===2?'第 '+data.roundNumber+' 局 · 累计胜场 '+data.myWins+' : '+data.oppWins:'邀请识别码 '+String(data.roomId||'').slice(-6).toUpperCase();
-    typography.drawFit(ctx,roomLine,cx,top+59,width-12,{size:10,minSize:8,align:'center',numbers:true});
-    const avatarTop=top+67, avatarH=78, gap=10, playerW=(width-gap)/2;
+    const cx = screen.width / 2, top = Math.max(72, Number(screen.contentTop) || Number(screen.safeTop) || 0);
+    const bottom = screen.height - (Number(screen.safeBottom) || 0) - 12;
+    const width = screen.width - 32, buttons = {}, compact = bottom - top < 540;
+    const headerH = compact ? 43 : 68;
+    const duoH = compact ? 64 : Math.min(172, (bottom - top) * .24);
+    const playerH = compact ? 64 : 75, avatarH = duoH + playerH;
+    drawBg(ctx, screen);
+    ctx.fillStyle='rgba(16,26,67,.18)';ctx.fillRect(0,0,screen.width,screen.height);
+    const titleW = Math.min(width - 30, compact ? 228 : 270), titleH = compact ? 28 : 42;
+    illustration.titlePlaque(ctx,cx-titleW/2,top,titleW,titleH,roomDisplayName(data.roomId));
+    const roundLabel = data.protocolVersion === 2 ? '第 ' + data.roundNumber + ' 局 · 累计胜场 ' + data.myWins + ' : ' + data.oppWins : '对战准备';
+    ctx.save();ctx.shadowColor='#27315D';ctx.shadowBlur=3;ctx.shadowOffsetY=1;
+    serif(ctx,roundLabel+(compact?' · 各道具冷却10秒':''),cx,top+(compact?36:56),width,compact?10:14,'#FFF1CC');ctx.restore();
+    const avatarTop=top+headerH, duo=assets.get('uiIllustrationPrepDuo');
+    if(duo&&duo.width&&duo.height){
+        const scale=Math.min((width-4)/duo.width,duoH/duo.height),dw=duo.width*scale,dh=duo.height*scale;
+        ctx.drawImage(duo,cx-dw/2,avatarTop+duoH-dh,dw,dh);
+    }else{
+        const fallback=assets.get('homeDuelIcon');
+        if(fallback&&fallback.width) {const sw=Math.min(width*.60,duoH*2);ctx.drawImage(fallback,cx-sw/2,avatarTop,sw,duoH);}
+    }
+    const playerTop=avatarTop+duoH+2,gap=12,playerW=(width-gap)/2;
     const awaitingInvite=data.isHost&&!data.oppJoined;
-    for(const [index,name,ready,image,key] of [
-        [0,data.myName||'我',data.myReady,data.myAvatar,'piece1'],
-        [1,data.oppJoined?(data.oppName||'对手'):'等待加入',data.oppReady,null,data.oppJoined?'piece2':'piece5']
-    ]) {
-        const x=16+index*(playerW+gap), avatarX=x+27, avatarY=avatarTop+39;
-        moon.panel(ctx,screen,x,avatarTop,playerW,avatarH);
-        drawAvatar(ctx,avatarX,avatarY,22,image,key);
-        if(index===0) buttons.avatar={x:avatarX-22,y:avatarY-22,w:44,h:44};
-        if(index===1&&awaitingInvite) {
-            const invite={x:x+55,y:avatarTop+17,w:playerW-61,h:44};
-            const enabled=!data.offline&&!data.actionPending;
-            moon.button(ctx,invite.x,invite.y,invite.w,invite.h,'邀请好友',enabled?'pink':'muted',12);
-            if(enabled) buttons.invite=invite;
-        } else {
-            const textX=x+55, textW=playerW-61;
-            ctx.fillStyle=THEME.textDark;
-            typography.drawFit(ctx,name,textX+textW/2,avatarTop+29,textW,{size:13,minSize:9,weight:'bold',align:'center'});
-            typography.drawFit(ctx,index===1&&!data.oppJoined?'等待好友':ready?'已准备':'配置中',textX+textW/2,avatarTop+53,textW,{size:11,minSize:9,align:'center'});
+    for(const [index,name,ready,avatar,key] of [
+        [0,playerDisplayName(data.myName,0),data.myReady,data.myAvatar,'piece1'],
+        [1,playerDisplayName(data.oppJoined?data.oppName:null,1),data.oppReady,data.oppJoined?data.oppAvatar:null,'piece2']
+    ]){
+        const px=16+index*(playerW+gap), radius=22, cy=playerTop+24;
+        illustration.card(ctx,px,playerTop,playerW,48,false);
+        // The portrait remains a real optional player image. The illustrated
+        // fallback is rendered locally and is never sent to the room profile.
+        if(!avatar&&duo&&duo.width){
+            const region=index?[.59,.04,.25,.55]:[.23,0,.27,.59];
+            ctx.save();ctx.beginPath();ctx.arc(px+25,cy,21,0,Math.PI*2);ctx.clip();
+            ctx.fillStyle='#F6E9F4';ctx.fill();
+            ctx.drawImage(duo,duo.width*region[0],duo.height*region[1],duo.width*region[2],duo.height*region[3],px+3,cy-22,44,44);ctx.restore();
+            ctx.strokeStyle='#DDBA80';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(px+25,cy,22,0,Math.PI*2);ctx.stroke();
+        }else drawAvatar(ctx,px+25,cy,radius,avatar,key);
+        if(!index)buttons.avatar={x:px+3,y:cy-radius,w:44,h:44};
+        const copyX=px+51,copyW=playerW-55;
+        serif(ctx,name,copyX+copyW/2,playerTop+13,copyW,compact?12:15,'#303864',11);
+        const showShare=!index&&data.canChangeAvatar!==false&&!data.avatarShared;
+        if(index&&awaitingInvite){
+            const invite={x:copyX,y:playerTop+4,w:copyW,h:44};
+            // Name remains below the invite action when the slot is vacant.
+            illustration.button(ctx,invite.x,invite.y,invite.w,invite.h,'邀请好友',data.offline||data.actionPending?'muted':'pink',compact?12:15);
+            if(!data.offline&&!data.actionPending)buttons.invite=invite;
+            serif(ctx,name,px+playerW/2,playerTop+58,playerW-6,11,'#FFF3DC',11);
+        }else{
+            serif(ctx,showShare?'点头像设置':ready?'已准备':'配置中',copyX+copyW/2,playerTop+33,copyW,compact?10:12,'#615076',10);
+            if(showShare){ctx.save();ctx.shadowColor='#25305B';ctx.shadowBlur=3;ctx.shadowOffsetY=1;
+                serif(ctx,'向本房间好友展示',px+playerW/2,playerTop+58,playerW-2,11,'#FFF5DD',11);ctx.restore();}
         }
     }
-    const configY=avatarTop+86;
-    // Keep the complete 2x2 grid and footer within the 320x568 safe area.
-    const configH=Math.min(226,Math.max(204,bottom-configY-74));
-    moon.panel(ctx,screen,16,configY,width,configH);
-    const items=data.items||{};
-    const total=V3_ITEMS.reduce((sum,[key])=>sum+(Number(items[key])||0),0);
-    const locked=!!(data.myReady||data.actionPending||data.offline);
-    ctx.fillStyle=THEME.textDark;
-    typography.drawFit(ctx,'对战道具 '+total+'/5 · 剩余 '+Math.max(0,5-total)+(data.myReady?' · 已锁定':''),cx,configY+20,width-20,{size:13,minSize:10,weight:'bold',numbers:true,align:'center'});
-    const cellW=(width-24)/2, cellH=(configH-30)/2;
-    for(let i=0;i<V3_ITEMS.length;i++) {
-        const [key,name,description]=V3_ITEMS[i], col=i%2,row=Math.floor(i/2);
-        const x=22+col*(cellW+12), y=configY+28+row*cellH, center=x+cellW/2;
-        moon.battleIcon(ctx,key,center-51,y+3,25);
-        ctx.fillStyle=THEME.textDark;
-        typography.drawFit(ctx,name,center+10,y+17,Math.max(65,cellW-45),{size:12,minSize:10,weight:'bold',align:'center'});
-        typography.drawFit(ctx,description,center,y+33,cellW-8,{size:10,minSize:8,align:'center',numbers:true});
-        const buttonY=y+cellH-48, count=Number(items[key])||0;
-        const minus={x,y:buttonY,w:44,h:44},plus={x:x+cellW-44,y:buttonY,w:44,h:44};
-        const canMinus=!locked&&count>0,canPlus=!locked&&total<5;
-        moon.button(ctx,minus.x,minus.y,44,44,'−',canMinus?'blue':'muted',21);
-        moon.button(ctx,plus.x,plus.y,44,44,'+',canPlus?'pink':'muted',21);
-        ctx.fillStyle=THEME.textDark;
-        typography.drawFit(ctx,String(count),center,buttonY+28,cellW-92,{size:20,minSize:13,weight:'bold',numbers:true,align:'center'});
-        if(canMinus) buttons[key+'Minus']=minus;
-        if(canPlus) buttons[key+'Plus']=plus;
+    const footerH = compact ? 44 : 54, footerY = bottom - footerH;
+    const configY = avatarTop + avatarH + 2, configH = footerY - configY - (compact ? 16 : 48);
+    const content = drawPreparationFrame(ctx, 6, configY, screen.width - 12, configH, compact);
+    const items = data.items || {}, total = V3_ITEMS.reduce((sum, [key]) => sum + (Number(items[key]) || 0), 0);
+    const locked = !!(data.myReady || data.actionPending || data.offline);
+    if(compact){
+        // The small floral caps keep their aspect ratio; a native plaque gives
+        // the full-size title a quiet, sufficiently tall background.
+        ctx.save();ctx.fillStyle='#293E79';roundRect(ctx,cx-99,content.titleY-13,198,26,13);ctx.fill();
+        ctx.strokeStyle='#E7C58A';ctx.lineWidth=1;ctx.stroke();ctx.restore();
     }
-    const hintY=configY+configH+13;
-    ctx.fillStyle=THEME.textDark;
-    const hint=data.offline?(data.pollPending?'正在重连并核对房间状态…':'状态尚未确认，请点击重试连接'):
-        data.actionPending?(data.pendingAction==='items'?'正在保存道具配置…':'正在同步准备状态…'):
-        total<5?'还需分配 '+(5-total)+' 次额度':awaitingInvite?'邀请好友加入，再一起准备':'双方准备后 3 秒开局';
-    typography.drawFit(ctx,hint,cx,hintY,width,{size:11,minSize:9,align:'center',numbers:true});
-    const footerY=Math.min(bottom-48,hintY+13),bw=(width-12)/2;
-    moon.button(ctx,16,footerY,bw,48,data.actionPending?'同步中…':data.offline?(data.pollPending?'重连中…':'重试连接'):data.myReady?'取消准备':'准备',data.myReady||awaitingInvite||total<5?'blue':'pink',17);
-    moon.button(ctx,28+bw,footerY,bw,48,data.isHost?'取消房间':'退出房间','blue',15);
-    buttons.ready={x:16,y:footerY,w:bw,h:48};
-    buttons.cancel={x:28+bw,y:footerY,w:bw,h:48};
+    serif(ctx, '对战道具 ' + total + '/5', cx, content.titleY, content.titleW, compact ? 16 : 20, content.framed || compact ? '#FFF1CC' : '#303864', 13);
+    const cellGap = compact ? 6 : 8, rowGap = compact ? 4 : 8;
+    const cellW = (content.w - cellGap) / 2, cellH = (content.h - rowGap) / 2;
+    for (let i = 0; i < V3_ITEMS.length; i++) {
+        const [key, name, description] = V3_ITEMS[i], col = i % 2, row = Math.floor(i / 2);
+        const x = content.x + col * (cellW + cellGap), y = content.y + row * (cellH + rowGap), center = x + cellW / 2;
+        const count = Number(items[key]) || 0;
+        illustration.card(ctx, x, y, cellW, cellH, false);
+        const artSize = compact ? 32 : Math.min(72, cellW - 94, cellH - 14);
+        const artX = x + 4, artY = compact ? y + 4 : y + (cellH - artSize) / 2;
+        const copyW = cellW - artSize - 14, copyX = x + artSize + 8 + copyW / 2;
+        drawItemArt(ctx, key, artX, artY, artSize);
+        serif(ctx, name, copyX, y + 9, copyW, compact ? 11 : 14, '#303864', 11);
+        serif(ctx, description, copyX, y + 24, copyW, 10, '#805778', 10);
+        const buttonY = y + cellH - 48;
+        const minus = { x: x + cellW - 94, y: buttonY, w: 44, h: 44 }, plus = { x: x + cellW - 49, y: buttonY, w: 44, h: 44 };
+        const canMinus = !locked && count > 0, canPlus = !locked && total < 5;
+        // Compact jewel faces sit inside the unchanged 44px touch targets.
+        illustration.button(ctx, minus.x + 8, minus.y + 8, 28, 28, '−', canMinus ? 'blue' : 'muted', 18);
+        illustration.button(ctx, plus.x + 8, plus.y + 8, 28, 28, '+', canPlus ? 'pink' : 'muted', 18);
+        serif(ctx, String(count), (minus.x + plus.x) / 2 + 22, buttonY + 22, 18, 21, '#303864', 13);
+        if (canMinus) buttons[key + 'Minus'] = minus;
+        if (canPlus) buttons[key + 'Plus'] = plus;
+    }
+    const hint = data.offline ? (data.pollPending ? '正在重连并核对房间状态…' : '状态尚未确认，请点击重试连接') :
+        data.actionPending ? (data.pendingAction === 'items' ? '正在保存道具配置…' : '正在同步准备状态…') :
+        total < 5 ? '还需分配 ' + (5 - total) + ' 次额度' : awaitingInvite ? '邀请好友加入，再一起准备' : (data.myReady ? '已锁定 · ' : '') + '双方准备后 3 秒开局';
+    ctx.save(); ctx.shadowColor = '#26335A'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+    serif(ctx, hint, cx, configY + configH + (compact ? 8 : 13), width, compact ? 10 : 13, '#FFF6E7');
+    if (!compact) serif(ctx, '各道具冷却10秒', cx, footerY - 15, width, 12, '#FFF6E7');
+    ctx.restore();
+    const bw = (width - 12) / 2;
+    illustration.decoratedButton(ctx, 16, footerY, bw, footerH, data.actionPending ? '同步中…' : data.offline ? (data.pollPending ? '重连中…' : '重试连接') : data.myReady ? '取消准备' : '准备', data.actionPending ? 'muted' : data.myReady ? 'blue' : 'pink', compact ? 20 : 25);
+    illustration.decoratedButton(ctx, 28 + bw, footerY, bw, footerH, data.isHost ? '取消房间' : '退出房间', 'blue', compact ? 16 : 19);
+    buttons.ready = { x: 16, y: footerY, w: bw, h: footerH };
+    buttons.cancel = { x: 28 + bw, y: footerY, w: bw, h: footerH };
     return buttons;
 }
 
@@ -201,7 +271,7 @@ BattleUI.drawWait = function (ctx, screen, data) {
     const awaitingInvite = data.isHost && !data.oppJoined;
     for (const [index,name,ready,image,key] of [
         [0,data.myName||'我',data.myReady,data.myAvatar,'piece1'],
-        [1,data.oppJoined?(data.oppName||'对手'):'等待加入',data.oppReady,null,data.oppJoined?'piece2':'piece5']
+        [1,data.oppJoined?(data.oppName||'对手'):'等待加入',data.oppReady,data.oppJoined?data.oppAvatar:null,data.oppJoined?'piece2':'piece5']
     ]) {
         const x=16+index*(playerW+22), pc=x+playerW/2;
         moon.panel(ctx,screen,x,avatarTop,playerW,avatarH);
@@ -217,7 +287,9 @@ BattleUI.drawWait = function (ctx, screen, data) {
         typography.drawFit(ctx,name,pc,avatarY+r+17,playerW-12,{size:14,minSize:9,weight:'bold',align:'center'});
         const label=index===1&&!data.oppJoined?'等待好友':ready?'已准备':'配置中';
         const stateY=avatarY+r+30;
-        moon.button(ctx,x+12,stateY,playerW-24,24,label,ready?'pink':'muted',11);
+        const showAvatarSharing=index===0&&data.canChangeAvatar!==false&&!data.avatarShared;
+        moon.button(ctx,x+12,stateY,playerW-24,24,label+(showAvatarSharing?'·点头像设置':''),ready?'pink':'muted',11);
+        if(showAvatarSharing) typography.drawFit(ctx,'向本房间好友展示',pc,avatarTop+avatarH+3,playerW-8,{size:11,minSize:11,align:'center'});
         if(index===0) buttons.avatar={x:pc-r,y:avatarY-r,w:r*2,h:r*2};
     }
     ctx.fillStyle=THEME.textDark;
@@ -232,7 +304,7 @@ BattleUI.drawWait = function (ctx, screen, data) {
     typography.drawFit(ctx,'对战道具 '+total+'/3'+(data.myReady?' · 已锁定':''),cx,configY+20,width-24,{size:14,minSize:10,weight:'bold',numbers:true,align:'center'});
     for(const [index,key,name] of [[0,'freeze','冰冻'],[1,'disturb','干扰']]) {
         const gx=22+index*(width/2), gw=width/2-12, pc=gx+gw/2;
-        moon.battleIcon(ctx,key,pc-40,configY+34,28);
+        drawItemArt(ctx,key,pc-40,configY+34,28);
         ctx.fillStyle=THEME.textDark;
         typography.drawFit(ctx,name,pc+12,configY+49,56,{size:13,minSize:10,weight:'bold',align:'center'});
         const rowY=configY+72, count=Number(items[key])||0;
@@ -244,7 +316,7 @@ BattleUI.drawWait = function (ctx, screen, data) {
     }
     ctx.fillStyle=THEME.textDark;
     const hintY=configY+configH+16;
-    typography.drawFit(ctx,data.offline?(data.pollPending?'正在重连并核对房间状态…':'状态尚未确认，请点击重试连接'):data.actionPending?(data.pendingAction==='items'?'正在保存道具配置…':'正在同步准备状态…'):awaitingInvite?'邀请好友加入，再一起准备':'双方准备后 3 秒开局'+(!data.myAvatar&&data.canChangeAvatar!==false?' · 点头像可更换':''),cx,hintY,width,{size:11,minSize:8,align:'center',numbers:true});
+    typography.drawFit(ctx,data.offline?(data.pollPending?'正在重连并核对房间状态…':'状态尚未确认，请点击重试连接'):data.actionPending?(data.pendingAction==='items'?'正在保存道具配置…':'正在同步准备状态…'):awaitingInvite?'邀请好友加入，再一起准备':'双方准备后 3 秒开局',cx,hintY,width,{size:11,minSize:8,align:'center',numbers:true});
     const footerY=Math.min(bottom-48,hintY+24), gap=12, bw=(width-gap)/2;
     moon.button(ctx,16,footerY,bw,48,data.actionPending?'同步中…':data.offline?(data.pollPending?'重连中…':'重试连接'):data.myReady?'取消准备':'准备',data.myReady||awaitingInvite?'blue':'pink',18);
     moon.button(ctx,16+bw+gap,footerY,bw,48,data.isHost?'取消房间':'退出房间','blue',15);
@@ -255,7 +327,7 @@ BattleUI.drawWait = function (ctx, screen, data) {
 
 /**
  * 对战顶部栏（倒计时 + 双方分数）
- * @param data { timeLeft, myScore, oppScore, myName, oppName }
+ * @param data { timeLeft, myScore, oppScore, myAvatar, oppAvatar }
  */
 BattleUI.drawTop = function (ctx, screen, data) {
     const cx = screen.width / 2;
@@ -283,12 +355,12 @@ BattleUI.drawTop = function (ctx, screen, data) {
     ctx.beginPath();ctx.moveTo(x + 12, top + h - footerH);ctx.lineTo(x + w - 12, top + h - footerH);ctx.stroke();
 
     for (const side of [
-        { x: x, label: '我的得分', score: data.myScore, wins: data.myWins, color: '#914E73', key: 'piece1', right: false },
-        { x: cx + 38, label: '对手得分', score: data.oppScore, wins: data.oppWins, color: '#426494', key: 'piece2', right: true }
+        { x: x, label: '我的得分', score: data.myScore, wins: data.myWins, avatar: data.myAvatar, color: '#914E73', key: 'piece1', right: false },
+        { x: cx + 38, label: '对手得分', score: data.oppScore, wins: data.oppWins, avatar: data.oppAvatar, color: '#426494', key: 'piece2', right: true }
     ]) {
         const center = side.x + sideW / 2;
         const avatarX = side.right ? side.x + sideW - 17 : side.x + 17;
-        drawAvatar(ctx, avatarX, labelY, roomy ? 14 : 11, null, side.key);
+        drawAvatar(ctx, avatarX, labelY, roomy ? 14 : 11, side.avatar, side.key);
         ctx.fillStyle = side.color;
         typography.drawFit(ctx, side.label, side.right ? avatarX - 18 : avatarX + 18, labelY, sideW - 42,
             { size: roomy ? 14 : 11, minSize: 9, weight: '600', align: side.right ? 'right' : 'left' });
@@ -355,7 +427,7 @@ BattleUI.drawItems = function (ctx, screen, data) {
     const sharedRemaining = data.sharedCooldown ? Math.max(0, ...Object.values(cooldowns)) : Number(data.cooldownRemaining) || 0;
     const pending = !!(data.pending || data.actionPending);
     const status = data.settling ? '正在确认成绩…' : data.frozen ? '冰冻中 · 无法使用道具' :
-        pending ? '正在确认道具…' : sharedRemaining > 0 ? '共享冷却 ' + Math.ceil(sharedRemaining / 1000) + '秒' : '对战道具';
+        pending ? '正在确认道具…' : sharedRemaining > 0 ? '共享冷却 ' + Math.ceil(sharedRemaining / 1000) + '秒' : data.sharedCooldown ? '对战道具' : '对战道具 · 各自冷却10秒';
     ctx.save();
     ctx.save();
     ctx.fillStyle = '#FFF7EB';
@@ -376,7 +448,7 @@ BattleUI.drawItems = function (ctx, screen, data) {
         const enabled = count > 0 && remaining <= 0 && !data.settling && !pending && !data.frozen;
         ctx.save();
         ctx.globalAlpha = enabled ? 1 : .48;
-        moon.battleIcon(ctx, key, center - iconSize / 2, iconY, iconSize);
+        drawItemArt(ctx, key, center - iconSize / 2, iconY, iconSize);
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#FFF7EB';
         ctx.shadowColor = 'rgba(25, 32, 63, .95)';
@@ -410,48 +482,73 @@ BattleUI.drawItems = function (ctx, screen, data) {
  * @returns { again, menu }
  */
 BattleUI.drawResult = function (ctx, screen, data) {
-    const cx=screen.width/2;
-    drawBg(ctx,screen);
-    ctx.fillStyle='rgba(71,86,133,.18)';ctx.fillRect(0,0,screen.width,screen.height);
-    const w=Math.min(346,screen.width-32), h=414;
-    const safeTop=Math.max(72,Number(screen.contentTop)||Number(screen.safeTop)||0)+18;
-    const y=Math.max(safeTop,Math.min((screen.height-h)/2,screen.height-(Number(screen.safeBottom)||0)-h-16)),x=cx-w/2;
-    moon.panel(ctx,screen,x,y,w,h);
-    const won=data.result==='win', tied=data.result==='draw';
-    moon.button(ctx,cx-110,y-12,220,44,won?'对战胜利':tied?'平局':'对战失败',won?'pink':'blue',24);
-    const cat=assets.get(won?'uiResultHappyCat':tied?'homeDuelIcon':'uiResultSadCat');
-    if(cat&&cat.width) {
-        const scale=Math.min(210/cat.width,128/cat.height),cw=cat.width*scale,ch=cat.height*scale;
-        ctx.drawImage(cat,cx-cw/2,y+38+(128-ch)/2,cw,ch);
+    const cx = screen.width / 2, top = Math.max(72, Number(screen.contentTop) || Number(screen.safeTop) || 0);
+    const bottom = screen.height - (Number(screen.safeBottom) || 0) - 12, compact = bottom - top < 540;
+    drawBg(ctx, screen);
+    ctx.fillStyle = 'rgba(20,30,70,.32)'; ctx.fillRect(0, 0, screen.width, screen.height);
+    const w = Math.min(370, screen.width - 20), frameH = compact ? 310 : 428;
+    const heroSpace = compact ? 64 : 160, gap = compact ? 8 : 10, actionH = compact ? 48 : 56;
+    const h = heroSpace + frameH + gap + actionH, y = top + (bottom - top - h) / 2, x = cx - w / 2;
+    const frameY = y + heroSpace, bodyY = frameY + w * (compact ? .28 : .30);
+    const won = data.result === 'win', tied = data.result === 'draw';
+    const framed = illustration.resultFrame(ctx, x, frameY, w, frameH);
+    const cat = assets.get(tied ? 'uiIllustrationDrawCat' : won ? 'uiResultWinMoon' : 'uiResultLoseMoon') || assets.get(tied ? 'piece1' : won ? 'uiResultHappyCat' : 'uiResultSadCat');
+    if (cat && cat.width && cat.height) {
+        const heroH = heroSpace + w * (compact ? .10 : .12), scale = Math.min(w * .86 / cat.width, heroH / cat.height);
+        const pawDock=tied?(compact?7:23):0;
+        ctx.drawImage(cat, cx - cat.width * scale / 2, y + heroH - cat.height * scale + pawDock, cat.width * scale, cat.height * scale);
     }
-    for(const [sx,label,value,tone] of [[x+18,'我',data.myScore,'pink'],[cx+16,'对手',data.oppScore,'blue']]) {
-        const sw=(w-68)/2;
-        moon.button(ctx,sx,y+190,sw,58,'',tone);
-        ctx.fillStyle=THEME.textDark;
-        typography.drawFit(ctx,label,sx+sw/2,y+204,sw-12,{size:11,minSize:9,align:'center'});
-        typography.drawFit(ctx,String(value),sx+sw/2,y+226,sw-12,{size:23,minSize:9,weight:'bold',numbers:true,align:'center'});
+    ctx.save(); ctx.shadowColor = won ? '#CB5E95' : '#8475C5'; ctx.shadowBlur = compact ? 3 : 5; ctx.shadowOffsetY = 1;
+    serif(ctx, won ? '对战胜利' : tied ? '平局' : '对战失败', cx, frameY + w * .21, w * .72, compact ? 29 : 38, framed ? won ? '#FFF1B8' : '#F6EEFF' : '#343961', 22);
+    ctx.restore();
+    const scoreW = w * .34, r = compact ? 22 : 32, avatarY = bodyY + (compact ? 23 : 35);
+    for (const [index, label, value, image, key] of [
+        [0, playerDisplayName(data.myName,0), data.myScore, data.myAvatar, 'piece1'],
+        [1, playerDisplayName(data.oppName,1), data.oppScore, data.oppAvatar, 'piece2']
+    ]) {
+        const center = cx + (index ? 1 : -1) * w * .245;
+        drawAvatar(ctx, center, avatarY, r, image, key);
+        serif(ctx, label, center, bodyY + (compact ? 56 : 82), scoreW, compact ? 12 : 16, '#343961', 10);
+        const winner = !tied && (index ? data.oppScore > data.myScore : data.myScore > data.oppScore);
+        ctx.save();
+        if (winner) { ctx.shadowColor = '#F3CEAA'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1; }
+        serif(ctx, String(value), center, bodyY + (compact ? 79 : 112), scoreW, compact ? 27 : 34, winner ? '#AD680F' : '#5C5CA0', 12);
+        ctx.restore();
     }
-    ctx.fillStyle=THEME.textDark;typography.drawFit(ctx,'VS',cx,y+219,28,{size:13,minSize:10,weight:'bold',align:'center'});
-    if(data.protocolVersion===2) typography.drawFit(ctx,'第 '+data.roundNumber+' 局 · 累计胜场 '+data.myWins+' : '+data.oppWins,cx,y+174,w-36,{size:13,minSize:10,weight:'bold',numbers:true,align:'center'});
-    const rewardLabel=data.rewardPending?'金币待保存 · 点击重试':'奖励 +'+(data.coinReward||0)+' 金币';
-    typography.drawFit(ctx,rewardLabel,cx,y+274,w-36,{size:15,minSize:10,weight:'bold',numbers:!data.rewardPending,align:'center'});
-    let label='再来一局', status='双方确认后，再次配置道具并准备';
-    if(data.protocolVersion!==2) { label='重新邀请'; status='邀请好友，开启新房间'; }
-    else if(data.expired) { label='重新邀请'; status='房间已失效，可以重新邀请好友'; }
-    else if(data.oppLeft) { label='重新邀请'; status='好友已离开，可以重新邀请'; }
-    else if(data.offline) { label='重试连接'; status='连接暂时中断，正在同步房间'; }
-    else if(data.myRematch) { label='取消等待'; status=data.oppOnline?'已确认 · 等待好友再来一局':'已确认 · 等待好友回到房间'; }
-    else if(data.oppRematch) status='好友想再来一局，等你确认';
-    else if(!data.oppOnline) status='好友暂时离线，回来后可继续';
-    if(data.actionPending) label='同步中…';
-    ctx.fillStyle=THEME.textMid;
-    typography.drawFit(ctx,status,cx,y+315,w-28,{size:12,minSize:9,align:'center'});
-    const by=y+h-68,bw=(w-48)/2;
-    moon.button(ctx,x+18,by,bw,48,label,data.actionPending?'muted':'pink',17);
-    moon.button(ctx,x+w-18-bw,by,bw,48,'返回首页','blue',17);
-    const buttons = {again:{x:x+18,y:by,w:bw,h:48},menu:{x:x+w-18-bw,y:by,w:bw,h:48}};
-    if(data.rewardPending) buttons.reward={x:x+18,y:y+252,w:w-36,h:44};
-    if(data.retentionMessage)typography.drawFit(ctx,data.retentionMessage,cx,y+h-9,w-30,{size:9,minSize:9,align:'center'});
+    ctx.save(); ctx.shadowColor = '#F5D99A'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
+    serif(ctx, 'VS', cx, avatarY + (compact ? 8 : 14), w * .17, compact ? 25 : 34, '#B57A23', 20);
+    ctx.restore();
+    const roundY = bodyY + (compact ? 102 : 146);
+    illustration.rule(ctx, x + w * .14, roundY - (compact ? 12 : 16), w * .72);
+    if (data.protocolVersion === 2) serif(ctx, '第 ' + data.roundNumber + ' 局 · 累计胜场 ' + data.myWins + ' : ' + data.oppWins, cx, roundY, w * .76, compact ? 11 : 15, '#4A426B', 10);
+    const rewardY = bodyY + (compact ? 116 : 166), rewardH = compact ? 54 : 76, coinSize = compact ? 54 : 76;
+    const rewardW = w * .72, rewardX = cx - rewardW / 2;
+    rewardCoins(ctx, rewardX + 4, rewardY, coinSize);
+    const rewardCopyX = rewardX + coinSize + 10, rewardCopyW = rewardW - coinSize - 14;
+    serif(ctx, '奖励', rewardCopyX + rewardCopyW / 2, rewardY + (compact ? 11 : 17), rewardCopyW, compact ? 13 : 17, '#71486B', 11);
+    serif(ctx, '+' + (data.coinReward || 0) + ' 金币', rewardCopyX + rewardCopyW / 2, rewardY + (compact ? 35 : 49), rewardCopyW, compact ? 23 : 29, won ? '#C93F82' : '#505DAB', 14);
+    let label = '再来一局', status = '双方确认后，再次配置道具并准备';
+    if (data.protocolVersion !== 2) { label = '重新邀请'; status = '邀请好友，开启新房间'; }
+    else if (data.expired) { label = '重新邀请'; status = '房间已失效，可以重新邀请好友'; }
+    else if (data.oppLeft) { label = '重新邀请'; status = '好友已离开，可以重新邀请'; }
+    else if (data.offline) { label = '重试连接'; status = '连接暂时中断，正在同步房间'; }
+    else if (data.myRematch) { label = '取消等待'; status = data.oppOnline ? '已确认 · 等待好友再来一局' : '已确认 · 等待好友回到房间'; }
+    else if (data.oppRematch) status = '好友想再来一局，等你确认';
+    else if (!data.oppOnline) status = '好友暂时离线，回来后可继续';
+    if (data.actionPending) label = '同步中…';
+    const statusY = bodyY + (compact ? 184 : 270);
+    if (!data.rewardPending) illustration.rule(ctx, x + w * .2, statusY - (compact ? 12 : 19), w * .6);
+    serif(ctx, status, cx, statusY, w * .70, compact ? 10 : 13, '#57527E', 9);
+    const by = frameY + frameH + gap, bw = (w - 20) / 2;
+    illustration.button(ctx, x + 4, by, bw, actionH, label, data.actionPending ? 'muted' : data.myRematch ? 'blue' : 'pink', compact ? 18 : 21);
+    illustration.button(ctx, x + w - 4 - bw, by, bw, actionH, '返回首页', 'blue', compact ? 18 : 21);
+    const buttons = { again: { x: x + 4, y: by, w: bw, h: actionH }, menu: { x: x + w - 4 - bw, y: by, w: bw, h: actionH } };
+    if (data.rewardPending) {
+        buttons.reward = { x: rewardX, y: rewardY, w: rewardW, h: rewardH };
+        // The retry affordance is a separate line, leaving the reward amount legible.
+        serif(ctx, '金币待保存 · 点击重试', cx, rewardY + rewardH + (compact ? 1 : 9), w * .72, compact ? 9 : 11, '#8D426D', 9);
+    }
+    if (data.retentionMessage) serif(ctx, data.retentionMessage, cx, statusY + (compact ? 16 : 20), w * .65, 9, '#71486B', 9);
     return buttons;
 };
 
